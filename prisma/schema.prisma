@@ -1,0 +1,358 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────── Enums ─────────
+
+enum Role {
+  ADMIN
+  STORE_INCHARGE
+  QA_INSPECTOR
+  PRODUCTION_LEAD
+  DISPATCH_OFFICER
+}
+
+enum Segment {
+  AUTOMOTIVE
+  NON_AUTOMOTIVE
+}
+
+enum ItemCategory {
+  RM_RESIN
+  RM_MASTERBATCH
+  RM_ADDITIVE
+  RM_FILLER
+  BOP
+  PACKAGING
+  RETURNABLE
+  FG
+  REGRIND
+}
+
+enum PoStatus {
+  DRAFT
+  APPROVED
+  PARTIAL
+  CLOSED
+  CANCELLED
+}
+
+enum QcStatus {
+  PENDING_QC
+  APPROVED
+  REJECTED
+  DEVIATED
+}
+
+enum LocationType {
+  STAGING
+  STORAGE
+}
+
+enum TxnType {
+  GRN_IN
+  QC_RELEASE
+  TRANSFER
+  ISSUE
+  RETURN
+  PRODUCTION_IN
+  REGRIND_IN
+  SCRAP
+  DISPATCH
+  ADJUST
+}
+
+enum RequestStatus {
+  OPEN
+  PARTIAL
+  ISSUED
+  CANCELLED
+}
+
+// ───────── Users & API tokens ─────────
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  tokens       ApiToken[]
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  label      String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+}
+
+// ───────── Masters ─────────
+
+model Customer {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  segment     Segment
+  labelFormat String  @default("GENERIC") // GENERIC | OEM
+  active      Boolean @default(true)
+}
+
+model Supplier {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  name         String
+  leadTimeDays Int             @default(7)
+  active       Boolean         @default(true)
+  pos          PurchaseOrder[]
+  prices       PriceMaster[]
+}
+
+model Item {
+  id            String                @id @default(cuid())
+  code          String                @unique
+  name          String
+  category      ItemCategory
+  uom           String                @default("KG")
+  polymerGrade  String? // e.g. PP, ABS, PA66
+  minStock      Decimal               @default(0) @db.Decimal(14, 3)
+  maxStock      Decimal               @default(0) @db.Decimal(14, 3)
+  reorderPoint  Decimal               @default(0) @db.Decimal(14, 3)
+  safetyStock   Decimal               @default(0) @db.Decimal(14, 3)
+  shelfLifeDays Int?
+  requiresCoa   Boolean               @default(false)
+  maxRegrindPct Decimal?              @db.Decimal(5, 2)
+  active        Boolean               @default(true)
+  prices        PriceMaster[]
+  poLines       PurchaseOrderLine[]
+  lots          Lot[]
+  requestLines  MaterialRequestLine[]
+}
+
+model PriceMaster {
+  id         String   @id @default(cuid())
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  price      Decimal  @db.Decimal(14, 4)
+  validFrom  DateTime @default(now())
+
+  @@unique([itemId, supplierId])
+}
+
+model Warehouse {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  locations Location[]
+}
+
+model Location {
+  id          String             @id @default(cuid())
+  warehouseId String
+  warehouse   Warehouse          @relation(fields: [warehouseId], references: [id])
+  code        String             @unique // scannable bin barcode, e.g. A-01-03
+  rack        String
+  shelf       String
+  bin         String
+  type        LocationType       @default(STORAGE)
+  balances    StockBalance[]
+  txns        StockTransaction[]
+}
+
+model Machine {
+  id      String  @id @default(cuid())
+  code    String  @unique
+  name    String
+  tonnage Int?
+  moulds  Mould[]
+}
+
+model Mould {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  cavities      Int      @default(1)
+  shotWeightG   Decimal? @db.Decimal(10, 2)
+  runnerWeightG Decimal? @db.Decimal(10, 2)
+  machineId     String?
+  machine       Machine? @relation(fields: [machineId], references: [id])
+}
+
+// ───────── Procurement ─────────
+
+model PurchaseOrder {
+  id          String              @id @default(cuid())
+  poNumber    String              @unique
+  supplierId  String
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  segment     Segment             @default(NON_AUTOMOTIVE)
+  status      PoStatus            @default(DRAFT)
+  createdAt   DateTime            @default(now())
+  createdById String?
+  lines       PurchaseOrderLine[]
+  gateEntries GateEntry[]
+  grns        Grn[]
+}
+
+model PurchaseOrderLine {
+  id           String        @id @default(cuid())
+  poId         String
+  po           PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  itemId       String
+  item         Item          @relation(fields: [itemId], references: [id])
+  qty          Decimal       @db.Decimal(14, 3)
+  receivedQty  Decimal       @default(0) @db.Decimal(14, 3)
+  price        Decimal       @db.Decimal(14, 4)
+  expectedDate DateTime?
+  grnLines     GrnLine[]
+}
+
+// ───────── Inward: gate entry, GRN, lots, QC ─────────
+
+model GateEntry {
+  id            String         @id @default(cuid())
+  entryNumber   String         @unique
+  poId          String?
+  po            PurchaseOrder? @relation(fields: [poId], references: [id])
+  vehicleNumber String
+  invoiceNumber String
+  arrivedAt     DateTime       @default(now())
+  grns          Grn[]
+}
+
+model Grn {
+  id          String        @id @default(cuid())
+  grnNumber   String        @unique
+  gateEntryId String?
+  gateEntry   GateEntry?    @relation(fields: [gateEntryId], references: [id])
+  poId        String
+  po          PurchaseOrder @relation(fields: [poId], references: [id])
+  coaUrl      String? // COA attachment (stored filename / URL)
+  createdAt   DateTime      @default(now())
+  createdById String?
+  lines       GrnLine[]
+}
+
+model GrnLine {
+  id       String            @id @default(cuid())
+  grnId    String
+  grn      Grn               @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  poLineId String
+  poLine   PurchaseOrderLine @relation(fields: [poLineId], references: [id])
+  lot      Lot?
+}
+
+model Lot {
+  id            String             @id @default(cuid())
+  lotNumber     String             @unique // internal, printed on QR tag
+  itemId        String
+  item          Item               @relation(fields: [itemId], references: [id])
+  grnLineId     String?            @unique
+  grnLine       GrnLine?           @relation(fields: [grnLineId], references: [id])
+  supplierLotNo String // manufacturer lot / heat number
+  bags          Int?
+  receivedQty   Decimal            @db.Decimal(14, 3)
+  receivedAt    DateTime           @default(now())
+  expiryDate    DateTime?
+  qcStatus      QcStatus           @default(PENDING_QC)
+  inspections   QcInspection[]
+  balances      StockBalance[]
+  txns          StockTransaction[]
+  issueLines    IssueLine[]
+
+  @@index([itemId, qcStatus, receivedAt])
+}
+
+model QcInspection {
+  id            String   @id @default(cuid())
+  lotId         String
+  lot           Lot      @relation(fields: [lotId], references: [id])
+  mfi           Decimal? @db.Decimal(10, 3)
+  moisturePct   Decimal? @db.Decimal(6, 3)
+  density       Decimal? @db.Decimal(8, 4)
+  tensile       Decimal? @db.Decimal(10, 3)
+  decision      QcStatus
+  remarks       String?
+  coaUrl        String?
+  inspectedAt   DateTime @default(now())
+  inspectedById String?
+}
+
+// ───────── Stock ─────────
+
+model StockBalance {
+  id         String   @id @default(cuid())
+  lotId      String
+  lot        Lot      @relation(fields: [lotId], references: [id])
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  qty        Decimal  @db.Decimal(14, 3)
+
+  @@unique([lotId, locationId])
+}
+
+model StockTransaction {
+  id         String    @id @default(cuid())
+  type       TxnType
+  lotId      String
+  lot        Lot       @relation(fields: [lotId], references: [id])
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  qty        Decimal   @db.Decimal(14, 3) // signed: + in, - out
+  refType    String? // GRN | QC | ISSUE | TRANSFER ...
+  refId      String?
+  clientUuid String?   @unique // idempotency key for offline sync
+  note       String?
+  userId     String?
+  createdAt  DateTime  @default(now())
+
+  @@index([lotId])
+}
+
+// ───────── Shop floor ─────────
+
+model MaterialRequest {
+  id            String                @id @default(cuid())
+  requestNumber String                @unique
+  status        RequestStatus         @default(OPEN)
+  machineId     String?
+  requestedById String?
+  createdAt     DateTime              @default(now())
+  lines         MaterialRequestLine[]
+}
+
+model MaterialRequestLine {
+  id        String          @id @default(cuid())
+  requestId String
+  request   MaterialRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item            @relation(fields: [itemId], references: [id])
+  qty       Decimal         @db.Decimal(14, 3)
+  issuedQty Decimal         @default(0) @db.Decimal(14, 3)
+  issues    IssueLine[]
+}
+
+model IssueLine {
+  id                 String              @id @default(cuid())
+  requestLineId      String
+  requestLine        MaterialRequestLine @relation(fields: [requestLineId], references: [id])
+  lotId              String
+  lot                Lot                 @relation(fields: [lotId], references: [id])
+  qty                Decimal             @db.Decimal(14, 3)
+  fifoOverrideReason String?
+  clientUuid         String?             @unique
+  issuedById         String?
+  issuedAt           DateTime            @default(now())
+}

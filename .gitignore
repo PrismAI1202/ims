@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# keep the example env file tracked
+!.env.example
+
+# local tooling / editors
+.claude/
+.idea/
+.vscode/
+
+# logs and local databases
+*.log
+*.db
+*.sqlite
+
+# test output
+/playwright-report
+/test-results
