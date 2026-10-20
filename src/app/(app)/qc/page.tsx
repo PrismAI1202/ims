@@ -2,7 +2,8 @@ import Link from "next/link";
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordQc } from "@/server/services/inventory";
-import { btnCls, Flash, inputCls } from "@/components/flash";
+import { btnDangerCls, btnOkCls, btnWarnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -40,57 +41,67 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
   ]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">QC Queue</h1>
+    <div className="space-y-4">
+      <PageHeader eyebrow="INWARD" title="Inward QC" subtitle={`${pending.length} lot${pending.length === 1 ? "" : "s"} waiting`} />
       <Flash error={error} ok={ok} />
-      {pending.length === 0 && <p className="text-slate-500">No lots waiting for QC.</p>}
+      {pending.length === 0 && (
+        <Card><p className="text-ink-3">Nothing here right now. No lots waiting for QC.</p></Card>
+      )}
       {pending.map((l) => (
-        <form key={l.id} action={decide} className="max-w-4xl space-y-3 rounded-lg border bg-white p-4">
-          <input type="hidden" name="lotId" value={l.id} />
-          <div className="flex flex-wrap justify-between gap-2 text-sm">
-            <div><span className="font-semibold">{l.lotNumber}</span> · {l.item.code} {l.item.name}</div>
-            <div className="text-slate-600">
-              {Number(l.receivedQty)} {l.item.uom} · heat/lot {l.supplierLotNo} · {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}
+        <form key={l.id} action={decide}>
+          <Card className="space-y-3">
+            <input type="hidden" name="lotId" value={l.id} />
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="font-display text-base font-bold">Lot <Mono>{l.lotNumber}</Mono></div>
+                <div className="text-[13px] text-ink-2">{l.item.code} {l.item.name}</div>
+              </div>
+              <div className="text-right text-xs text-ink-2">
+                <div><Mono>{Number(l.receivedQty)}</Mono> {l.item.uom} · heat/lot <Mono>{l.supplierLotNo}</Mono></div>
+                <Badge tone={l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "info" : "neutral"}>
+                  {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}
+                </Badge>
+              </div>
             </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="text-sm">MFI (g/10min)<input name="mfi" type="number" step="any" className={inputCls} /></label>
-            <label className="text-sm">Moisture %<input name="moisture" type="number" step="any" className={inputCls} /></label>
-            <label className="text-sm">Density (g/cm³)<input name="density" type="number" step="any" className={inputCls} /></label>
-            <label className="text-sm">Tensile (MPa)<input name="tensile" type="number" step="any" className={inputCls} /></label>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-sm">Remarks (required for deviation)<input name="remarks" className={inputCls} /></label>
-            <label className="text-sm">Put-away bin (on approval)
-              <select name="bin" className={inputCls}>
-                <option value="">Leave in staging</option>
-                {bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="flex gap-2">
-            <button name="decision" value="APPROVED" className={btnCls}>Approve</button>
-            <button name="decision" value="DEVIATED" className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white">Accept with deviation</button>
-            <button name="decision" value="REJECTED" className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white">Reject</button>
-          </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <label className="text-[13px]">MFI (g/10min)<input name="mfi" type="number" step="any" className={inputCls} /></label>
+              <label className="text-[13px]">Moisture %<input name="moisture" type="number" step="any" className={inputCls} /></label>
+              <label className="text-[13px]">Density (g/cm³)<input name="density" type="number" step="any" className={inputCls} /></label>
+              <label className="text-[13px]">Tensile (MPa)<input name="tensile" type="number" step="any" className={inputCls} /></label>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-[13px]">Remarks (required for deviation)<input name="remarks" className={inputCls} /></label>
+              <label className="text-[13px]">Put-away bin (on approval)
+                <select name="bin" className={inputCls}>
+                  <option value="">Leave in staging</option>
+                  {bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}
+                </select>
+              </label>
+            </div>
+            <Eyebrow>DECISION</Eyebrow>
+            <div className="grid gap-2 md:grid-cols-3">
+              <button name="decision" value="APPROVED" className={btnOkCls}>Approve</button>
+              <button name="decision" value="DEVIATED" className={btnWarnCls}>Accept with deviation</button>
+              <button name="decision" value="REJECTED" className={btnDangerCls}>Reject</button>
+            </div>
+          </Card>
         </form>
       ))}
 
-      <h2 className="text-lg font-semibold">Recently decided</h2>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr><th className="p-2">Lot</th><th className="p-2">Item</th><th className="p-2">Status</th><th className="p-2">Tag</th></tr></thead>
-          <tbody>
-            {recent.map((l) => (
-              <tr key={l.id} className="border-t">
-                <td className="p-2 font-medium">{l.lotNumber}</td><td className="p-2">{l.item.code}</td><td className="p-2">{l.qcStatus}</td>
-                <td className="p-2">{l.qcStatus !== "REJECTED" && <Link className="underline" href={`/qc/tag/${l.id}`} target="_blank">Print QR tag</Link>}</td>
-              </tr>
-            ))}
-            {recent.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={4}>Nothing yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>RECENTLY DECIDED</Eyebrow>
+      <DataTable>
+        <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
+        <tbody>
+          {recent.map((l) => (
+            <tr key={l.id}>
+              <td className="font-semibold"><Mono>{l.lotNumber}</Mono></td><td>{l.item.code}</td>
+              <td><Badge tone={l.qcStatus === "APPROVED" ? "ok" : l.qcStatus === "REJECTED" ? "danger" : "warn"}>{l.qcStatus}</Badge></td>
+              <td>{l.qcStatus !== "REJECTED" && <Link className="font-semibold text-accent underline" href={`/qc/tag/${l.id}`} target="_blank">Print QR tag</Link>}</td>
+            </tr>
+          ))}
+          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={4}>Nothing yet.</td></tr>}
+        </tbody>
+      </DataTable>
     </div>
   );
 }

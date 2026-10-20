@@ -3,6 +3,7 @@ import { can } from "@/server/auth/permissions";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
 
@@ -30,41 +31,43 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   });
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Stock &amp; Bins</h1>
+    <div className="space-y-4">
+      <PageHeader eyebrow="STORES" title="Stock & bins">
+        <StoresTabs active="/stock" />
+      </PageHeader>
       <Flash error={error} ok={ok} />
 
       {can(user.role, "stock.transfer") && (
-        <form action={transfer} className="grid max-w-4xl gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
-          <label className="text-sm">Lot no.<input name="lotNumber" required placeholder="scan lot" className={inputCls} /></label>
-          <label className="text-sm">From bin<input name="fromCode" required placeholder="scan bin" className={inputCls} /></label>
-          <label className="text-sm">To bin<input name="toCode" required placeholder="scan bin" className={inputCls} /></label>
-          <label className="text-sm">Qty<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
-          <div className="flex items-end"><button className={btnCls}>Transfer</button></div>
-        </form>
+        <Card>
+          <form action={transfer} className="grid gap-3 md:grid-cols-5">
+            <label className="text-[13px]">Lot no.<input name="lotNumber" required placeholder="scan lot" className={inputCls} /></label>
+            <label className="text-[13px]">From bin<input name="fromCode" required placeholder="scan bin" className={inputCls} /></label>
+            <label className="text-[13px]">To bin<input name="toCode" required placeholder="scan bin" className={inputCls} /></label>
+            <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
+            <div className="flex items-end"><button className={`${btnCls} w-full`}>Transfer</button></div>
+          </form>
+        </Card>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">Bin</th><th className="p-2">Item</th><th className="p-2">Lot</th>
-            <th className="p-2">Heat / mfr lot</th><th className="p-2">QC</th><th className="p-2 text-right">Qty</th>
-          </tr></thead>
-          <tbody>
-            {balances.map((b) => (
-              <tr key={b.id} className="border-t">
-                <td className="p-2 font-medium">{b.location.code}{b.location.type === "STAGING" && " (staging)"}</td>
-                <td className="p-2">{b.lot.item.code}</td>
-                <td className="p-2">{b.lot.lotNumber}</td>
-                <td className="p-2">{b.lot.supplierLotNo}</td>
-                <td className="p-2">{b.lot.qcStatus}</td>
-                <td className="p-2 text-right">{Number(b.qty).toLocaleString()} {b.lot.item.uom}</td>
-              </tr>
-            ))}
-            {balances.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={6}>No stock in any bin yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <DataTable>
+        <thead><tr>
+          <th>Bin</th><th>Item</th><th>Lot</th>
+          <th>Heat / mfr lot</th><th>QC</th><th className="text-right!">Qty</th>
+        </tr></thead>
+        <tbody>
+          {balances.map((b) => (
+            <tr key={b.id}>
+              <td className="font-semibold"><Mono>{b.location.code}</Mono>{b.location.type === "STAGING" && " (staging)"}</td>
+              <td>{b.lot.item.code}</td>
+              <td><Mono className="text-xs">{b.lot.lotNumber}</Mono></td>
+              <td><Mono className="text-xs">{b.lot.supplierLotNo}</Mono></td>
+              <td><Badge tone={b.lot.qcStatus === "APPROVED" ? "ok" : b.lot.qcStatus === "REJECTED" ? "danger" : "warn"}>{b.lot.qcStatus}</Badge></td>
+              <td className="text-right"><Mono>{Number(b.qty).toLocaleString()}</Mono> {b.lot.item.uom}</td>
+            </tr>
+          ))}
+          {balances.length === 0 && <tr><td className="text-ink-3" colSpan={6}>No stock in any bin yet.</td></tr>}
+        </tbody>
+      </DataTable>
     </div>
   );
 }

@@ -6,8 +6,8 @@ export const instant = false;
 export default async function ScanIssue() {
   await requirePermission("stock.issue");
   return (
-    <div className="space-y-3">
-      <h1 className="text-xl font-semibold">Issue to shop floor</h1>
+    <div className="space-y-4">
+      <h1 className="font-display text-xl font-extrabold">Issue to shop floor</h1>
       <IssueForm />
     </div>
   );

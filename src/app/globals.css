@@ -3,19 +3,61 @@
 /* The app UI is light-themed throughout; pin the scheme so OS dark mode doesn't wash out text. */
 :root {
   color-scheme: light;
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --canvas: #eeece6;
+  --ink: #15171a;
+  --ink-2: #3d4046;
+  --ink-3: #585c63;
+  --shell: #1c1f23;
+  --shell-2: #2a2e34;
+  --shell-line: #4a4f57;
+  --on-shell: #f4f3ef;
+  --on-shell-2: #b9bcc2;
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
+  --line: #e7e4dd;
+  --border: #d6d3cb;
+  --danger: #b42318;
+  --danger-bg: #fcedeb;
+  --ok: #1e7a46;
+  --ok-bg: #dcefe3;
+  --ok-ink: #10502d;
+  --warn-bg: #fdf0e4;
+  --warn-ink: #8a4b00;
+  --info-bg: #dbe6fb;
+  --info-ink: #12306e;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-shell: var(--shell);
+  --color-shell-2: var(--shell-2);
+  --color-shell-line: var(--shell-line);
+  --color-on-shell: var(--on-shell);
+  --color-on-shell-2: var(--on-shell-2);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-line: var(--line);
+  --color-border: var(--border);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-ink: var(--ok-ink);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-ink: var(--warn-ink);
+  --color-info-bg: var(--info-bg);
+  --color-info-ink: var(--info-ink);
+  --font-sans: var(--font-plex-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-display: var(--font-archivo), sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-plex-sans), "Segoe UI", sans-serif;
+  font-size: 15px;
 }

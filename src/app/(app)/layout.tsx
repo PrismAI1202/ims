@@ -1,22 +1,12 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth, signOut } from "@/auth";
-import { can, type Permission } from "@/server/auth/permissions";
+import { can } from "@/server/auth/permissions";
+import { BottomNav } from "@/components/bottom-nav";
+import { SideNav } from "@/components/side-nav";
+import { NAV_GROUPS } from "@/components/nav-data";
 
 export const instant = false;
-
-const NAV: { href: string; label: string; perm: Permission }[] = [
-  { href: "/dashboard", label: "Stock Dashboard", perm: "stock.view" },
-  { href: "/masters", label: "Masters", perm: "masters.manage" },
-  { href: "/purchase", label: "Purchase Orders", perm: "po.manage" },
-  { href: "/grn", label: "Gate Entry & GRN", perm: "grn.create" },
-  { href: "/qc", label: "QC Queue", perm: "qc.inspect" },
-  { href: "/stock", label: "Stock & Bins", perm: "stock.view" },
-  { href: "/requests", label: "Material Requests", perm: "request.create" },
-  { href: "/issue", label: "Issue to Shop Floor", perm: "stock.issue" },
-  { href: "/scan", label: "Scanner", perm: "stock.transfer" },
-];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   await connection(); // session reads are request-time; opt out of prerendering
@@ -24,31 +14,48 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect("/login");
   const role = session.user.role;
 
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((n) => !n.perm || can(role, n.perm)),
+  })).filter((g) => g.items.length > 0);
+
   return (
-    <div className="min-h-screen md:flex bg-slate-50">
-      <aside className="md:w-60 bg-slate-900 text-slate-100 p-4 md:min-h-screen">
-        <div className="font-semibold mb-4">IMS · Moulding</div>
-        <nav className="flex md:flex-col gap-1 overflow-x-auto text-sm">
-          {NAV.filter((n) => can(role, n.perm)).map((n) => (
-            <Link key={n.href} href={n.href}
-              className="px-3 py-2 rounded hover:bg-slate-800 whitespace-nowrap">
-              {n.label}
-            </Link>
-          ))}
-        </nav>
+    <div className="min-h-screen bg-canvas md:flex">
+      <aside className="hidden bg-shell p-4 text-on-shell md:block md:min-h-screen md:w-64 md:flex-none">
+        <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">PLANT 2 · MOULDING SHOP</div>
+        <div className="font-display text-xl font-extrabold">IMS · Moulding</div>
+        <SideNav groups={groups} />
         <form
-          className="mt-6 text-xs text-slate-400"
+          className="mt-6 border-t border-shell-line pt-4 text-xs text-on-shell-2"
           action={async () => {
             "use server";
             await signOut({ redirectTo: "/login" });
           }}
         >
-          <div>{session.user.name}</div>
+          <div className="text-sm text-on-shell">{session.user.name}</div>
           <div className="mb-2">{role.replace("_", " ")}</div>
-          <button className="underline">Sign out</button>
+          <button className="min-h-9 rounded-lg bg-on-shell px-3 font-semibold text-ink">Sign out</button>
         </form>
       </aside>
-      <main className="flex-1 p-4 md:p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8">
+        <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
+          <span className="text-sm text-ink-3">
+            {session.user.name} · {role.replace("_", " ")}
+          </span>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/login" });
+            }}
+          >
+            <button className="min-h-9 rounded-lg border border-border bg-white px-3 text-[13px] font-semibold">
+              Sign out
+            </button>
+          </form>
+        </div>
+        {children}
+      </main>
+      <BottomNav />
     </div>
   );
 }

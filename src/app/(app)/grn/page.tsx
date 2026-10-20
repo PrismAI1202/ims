@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -47,62 +48,77 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
   });
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Gate Entry &amp; GRN</h1>
+    <div className="space-y-4">
+      <PageHeader eyebrow="INWARD" title="Gate entry & GRN" />
       <Flash error={error} ok={ok} />
 
-      <form className="flex max-w-xl items-end gap-3" method="get">
-        <label className="flex-1 text-sm">Receive against PO
-          <select name="po" defaultValue={poId ?? ""} className={inputCls}>
-            <option value="">Select an open PO…</option>
-            {openPos.map((p) => <option key={p.id} value={p.id}>{p.poNumber} · {p.supplier.name} ({p.segment === "AUTOMOTIVE" ? "Auto" : "Non-auto"})</option>)}
-          </select>
-        </label>
-        <button className={btnCls}>Load</button>
-      </form>
+      <Card>
+        <form className="flex max-w-xl items-end gap-3" method="get">
+          <label className="flex-1 text-[13px]">Receive against PO
+            <select name="po" defaultValue={poId ?? ""} className={inputCls}>
+              <option value="">Select an open PO…</option>
+              {openPos.map((p) => <option key={p.id} value={p.id}>{p.poNumber} · {p.supplier.name} ({p.segment === "AUTOMOTIVE" ? "Auto" : "Non-auto"})</option>)}
+            </select>
+          </label>
+          <button className={btnCls}>Load</button>
+        </form>
+      </Card>
 
       {selected && (
-        <form action={receive} className="max-w-4xl space-y-4 rounded-lg border bg-white p-4">
+        <form action={receive} className="space-y-4">
           <input type="hidden" name="poId" value={selected.id} />
-          <div className="text-sm text-slate-600">{selected.poNumber} · {selected.supplier.name}</div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="text-sm">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
-            <label className="text-sm">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
-            <label className="text-sm">COA reference {selected.segment === "AUTOMOTIVE" && <b className="text-red-700">(mandatory)</b>}
-              <input name="coaUrl" placeholder="coa file / reference" className={inputCls} />
-            </label>
-          </div>
-          {selected.lines.map((l) => (
-            <div key={l.id} className="grid items-end gap-3 border-t pt-3 md:grid-cols-4">
-              <div className="text-sm"><div className="font-medium">{l.item.code}</div>
-                <div className="text-slate-500">{l.item.name} · open {Number(l.qty) - Number(l.receivedQty)} {l.item.uom}</div></div>
-              <label className="text-sm">Received qty<input name={`qty_${l.id}`} type="number" step="any" min="0" className={inputCls} /></label>
-              <label className="text-sm">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
-              <label className="text-sm">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
+          <Card className="space-y-3">
+            <Eyebrow>GATE</Eyebrow>
+            <div className="text-sm text-ink-2"><Mono>{selected.poNumber}</Mono> · {selected.supplier.name}</div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
+              <label className="text-[13px]">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
+              <label className="text-[13px]">COA reference {selected.segment === "AUTOMOTIVE" && <b className="text-danger">(mandatory)</b>}
+                <input name="coaUrl" placeholder="coa file / reference" className={inputCls} />
+              </label>
             </div>
-          ))}
-          <button className={btnCls}>Post GRN</button>
+          </Card>
+          <Card className="space-y-3">
+            <Eyebrow>RECEIVE</Eyebrow>
+            {selected.lines.map((l) => (
+              <div key={l.id} className="grid items-end gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0 md:grid-cols-4">
+                <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
+                  <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
+                <label className="text-[13px]">Received qty<input name={`qty_${l.id}`} type="number" step="any" min="0" className={inputCls} /></label>
+                <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
+                <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
+              </div>
+            ))}
+          </Card>
+          <button className={`${btnCls} w-full md:w-auto`}>Post GRN</button>
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">GRN</th><th className="p-2">PO</th><th className="p-2">Vehicle / Invoice</th><th className="p-2">Lots (pending QC → QC queue)</th>
-          </tr></thead>
-          <tbody>
-            {recent.map((g) => (
-              <tr key={g.id} className="border-t">
-                <td className="p-2 font-medium">{g.grnNumber}</td>
-                <td className="p-2">{g.po.poNumber}</td>
-                <td className="p-2">{g.gateEntry?.vehicleNumber} / {g.gateEntry?.invoiceNumber}</td>
-                <td className="p-2">{g.lines.map((l) => l.lot && `${l.lot.lotNumber} (${l.lot.qcStatus})`).join(", ")}</td>
-              </tr>
-            ))}
-            {recent.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={4}>No GRNs yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>RECENT GRNs</Eyebrow>
+      <DataTable>
+        <thead><tr>
+          <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>Lots (pending QC → QC queue)</th>
+        </tr></thead>
+        <tbody>
+          {recent.map((g) => (
+            <tr key={g.id}>
+              <td className="font-semibold"><Mono>{g.grnNumber}</Mono></td>
+              <td><Mono>{g.po.poNumber}</Mono></td>
+              <td>{g.gateEntry?.vehicleNumber} / {g.gateEntry?.invoiceNumber}</td>
+              <td>
+                <div className="flex flex-wrap gap-1">
+                  {g.lines.map((l) => l.lot && (
+                    <Badge key={l.id} tone={l.lot.qcStatus === "APPROVED" ? "ok" : l.lot.qcStatus === "REJECTED" ? "danger" : "warn"}>
+                      {l.lot.lotNumber} · {l.lot.qcStatus}
+                    </Badge>
+                  ))}
+                </div>
+              </td>
+            </tr>
+          ))}
+          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={4}>No GRNs yet.</td></tr>}
+        </tbody>
+      </DataTable>
     </div>
   );
 }

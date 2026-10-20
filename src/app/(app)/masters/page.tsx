@@ -1,22 +1,21 @@
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { Badge, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
 function Table({ title, head, rows }: { title: string; head: string[]; rows: (string | number)[][] }) {
   return (
     <section className="space-y-2">
-      <h2 className="text-lg font-semibold">{title} <span className="text-sm font-normal text-slate-500">({rows.length})</span></h2>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>{head.map((h) => <th key={h} className="p-2">{h}</th>)}</tr></thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-t">{r.map((c, j) => <td key={j} className="p-2">{c}</td>)}</tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>{title.toUpperCase()} · {rows.length}</Eyebrow>
+      <DataTable>
+        <thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>{r.map((c, j) => <td key={j}>{j === 0 ? <Mono className="font-semibold">{c}</Mono> : c}</td>)}</tr>
+          ))}
+        </tbody>
+      </DataTable>
     </section>
   );
 }
@@ -31,8 +30,9 @@ export default async function MastersPage() {
     db.machine.findMany({ orderBy: { code: "asc" }, include: { moulds: true } }),
   ]);
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-semibold">Masters</h1>
+    <div className="space-y-6">
+      <PageHeader eyebrow="ADMIN" title="Masters" subtitle="Read-only view of parts, suppliers, customers, bins, machines and moulds" />
+      <div className="flex"><Badge tone="info">Editing masters is not available yet</Badge></div>
       <Table title="Items" head={["Code", "Name", "Category", "UOM", "Min", "ROP", "Max", "COA"]}
         rows={items.map((i) => [i.code, i.name, i.category, i.uom, Number(i.minStock), Number(i.reorderPoint), Number(i.maxStock), i.requiresCoa ? "Yes" : "—"])} />
       <Table title="Suppliers" head={["Code", "Name", "Lead time (days)"]}

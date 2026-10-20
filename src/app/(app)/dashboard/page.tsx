@@ -1,60 +1,119 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { stockByItem } from "@/server/services/stock";
 import { requirePermission } from "@/server/auth/guard";
+import { can, type Permission } from "@/server/auth/permissions";
 import { Flash } from "@/components/flash";
+import { Card, Chip, Eyebrow, Mono, PageHeader, SectionTitle, StatTile } from "@/components/ui";
 
-const BADGE = {
-  RED: "bg-red-100 text-red-800",
-  YELLOW: "bg-yellow-100 text-yellow-800",
-  GREEN: "bg-green-100 text-green-800",
+const TONE = {
+  RED: "bg-danger text-white",
+  YELLOW: "bg-[#f5c451] text-[#3a2a00]",
+  GREEN: "bg-ok-bg text-ok-ink",
 } as const;
-const LABEL = { RED: "Below Min", YELLOW: "Near ROP", GREEN: "Optimal" } as const;
+const LABEL = { RED: "Below min", YELLOW: "Near ROP", GREEN: "Optimal" } as const;
+type Status = keyof typeof TONE;
+
+const ACTIONS: { href: string; label: string; sub: string; perm: Permission }[] = [
+  { href: "/grn", label: "Gate entry / GRN", sub: "Inward", perm: "grn.create" },
+  { href: "/issue", label: "Issue to shop floor", sub: "FIFO lot", perm: "stock.issue" },
+  { href: "/stock", label: "Bin transfer", sub: "Move between bins", perm: "stock.transfer" },
+  { href: "/purchase", label: "Supplier PO", sub: "Raise / receive", perm: "po.manage" },
+  { href: "/qc", label: "QC queue", sub: "Hold / release", perm: "qc.inspect" },
+  { href: "/requests", label: "Request material", sub: "To stores", perm: "request.create" },
+  { href: "/scan", label: "Scanner", sub: "Works offline", perm: "stock.transfer" },
+];
 
 export const instant = false;
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  await requirePermission("stock.view");
-  const { error } = await searchParams;
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; status?: string }>;
+}) {
+  const user = await requirePermission("stock.view");
+  const { error, status } = await searchParams;
+  const sel: Status = status === "YELLOW" || status === "GREEN" ? status : "RED";
   const rows = await stockByItem();
-  const count = (s: keyof typeof BADGE) => rows.filter((r) => r.status === s).length;
+  const count = (s: Status) => rows.filter((r) => r.status === s).length;
+  const shown = rows.filter((r) => r.status === sel);
+  const actions = ACTIONS.filter((a) => can(user.role, a.perm));
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Live Stock &amp; Min/Max Dashboard</h1>
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="PLANT 2 · MOULDING SHOP"
+        title={user.name ?? "Home"}
+        subtitle={user.role.replace("_", " ")}
+      />
       <Flash error={error} />
-      <div className="grid grid-cols-3 gap-3 max-w-xl">
-        {(["RED", "YELLOW", "GREEN"] as const).map((s) => (
-          <div key={s} className={`rounded-lg p-4 ${BADGE[s]}`}>
-            <div className="text-2xl font-bold">{count(s)}</div>
-            <div className="text-xs">{LABEL[s]}</div>
-          </div>
-        ))}
-      </div>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left">
-            <tr>
-              <th className="p-2">Item</th><th className="p-2">Category</th>
-              <th className="p-2 text-right">On hand</th><th className="p-2 text-right">Pending QC</th>
-              <th className="p-2 text-right">Min</th><th className="p-2 text-right">ROP</th>
-              <th className="p-2 text-right">Max</th><th className="p-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.itemId} className="border-t">
-                <td className="p-2"><div className="font-medium">{r.code}</div><div className="text-slate-500">{r.name}</div></td>
-                <td className="p-2">{r.category.replace("_", " ")}</td>
-                <td className="p-2 text-right">{r.onHand.toLocaleString()} {r.uom}</td>
-                <td className="p-2 text-right">{r.pendingQc.toLocaleString()}</td>
-                <td className="p-2 text-right">{r.minStock.toLocaleString()}</td>
-                <td className="p-2 text-right">{r.reorderPoint.toLocaleString()}</td>
-                <td className="p-2 text-right">{r.maxStock.toLocaleString()}</td>
-                <td className="p-2"><span className={`rounded px-2 py-1 text-xs font-medium ${BADGE[r.status]}`}>{LABEL[r.status]}</span></td>
-              </tr>
+      <Card className="space-y-3">
+        <div>
+          <SectionTitle>Stock health</SectionTitle>
+          <p className="text-xs text-ink-3">{rows.length} stock items</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {(["RED", "YELLOW", "GREEN"] as const).map((s) => (
+            <StatTile
+              key={s}
+              n={count(s)}
+              label={LABEL[s]}
+              className={TONE[s]}
+              href={`/dashboard?status=${s}`}
+              active={sel === s}
+            />
+          ))}
+        </div>
+        <div>
+          {shown.map((r) => (
+            <div key={r.itemId} className="flex flex-col gap-1 border-t border-line py-2.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Chip>{r.category.replace("_", " ")}</Chip>
+                  <span className="whitespace-nowrap text-sm font-semibold">{r.code}</span>
+                </span>
+                <Mono className={`flex-none text-xs ${sel === "RED" ? "text-danger" : "text-ink-2"}`}>
+                  {r.onHand.toLocaleString()} / min {r.minStock.toLocaleString()} {r.uom}
+                </Mono>
+              </div>
+              <div className="text-[13px] text-ink-2">{r.name}</div>
+              <div className="flex gap-4 text-xs text-ink-2">
+                <span>Pending QC <Mono>{r.pendingQc.toLocaleString()}</Mono></span>
+                <span>ROP <Mono>{r.reorderPoint.toLocaleString()}</Mono></span>
+                <span>Max <Mono>{r.maxStock.toLocaleString()}</Mono></span>
+              </div>
+            </div>
+          ))}
+          {shown.length === 0 && (
+            <p className="border-t border-line py-4 text-sm text-ink-3">Nothing {LABEL[sel].toLowerCase()} right now.</p>
+          )}
+          {can(user.role, "stock.view") && (
+            <Link href="/stock" className="flex min-h-11 items-center justify-center gap-1 border-t border-line text-sm font-semibold">
+              See Stores · bin map <ChevronRight size={16} aria-hidden />
+            </Link>
+          )}
+        </div>
+      </Card>
+
+      {actions.length > 0 && (
+        <section className="space-y-2">
+          <Eyebrow>Quick actions</Eyebrow>
+          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+            {actions.map((a, i) => (
+              <Link
+                key={a.href}
+                href={a.href}
+                className={`flex min-h-16 flex-col justify-between gap-1.5 rounded-xl px-3.5 py-3 ${i === 0 ? "bg-accent text-white" : "bg-white text-ink"}`}
+              >
+                <span className="text-[15px] font-semibold">{a.label}</span>
+                <span className="flex items-center justify-between text-xs opacity-85">
+                  {a.sub} <ChevronRight size={16} aria-hidden />
+                </span>
+              </Link>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

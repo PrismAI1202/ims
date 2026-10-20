@@ -32,10 +32,10 @@ export function TransferForm() {
       <ScanInput label="To bin" value={to} onChange={setTo} />
       <label className="block text-sm font-medium">Quantity
         <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal"
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-3 text-base" />
+          className="mt-1 w-full rounded-xl border border-border bg-white px-3.5 py-3 min-h-13 text-base" />
       </label>
-      {msg && <p role="status" className="text-sm text-slate-700">{msg}</p>}
-      <button className="w-full rounded bg-slate-900 py-3 text-base font-medium text-white">Move stock</button>
+      {msg && <p role="status" className="text-sm text-ink-2">{msg}</p>}
+      <button className="w-full min-h-13 cursor-pointer rounded-xl bg-accent text-base font-semibold text-white hover:bg-accent-hover">Move stock</button>
     </form>
   );
 }

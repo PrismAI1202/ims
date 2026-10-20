@@ -72,10 +72,10 @@ export function IssueForm() {
   return (
     <form onSubmit={submit} className="space-y-4">
       <QueueBar queue={queue} />
-      {stale && <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{stale}</p>}
+      {stale && <p className="rounded-xl bg-warn-bg px-3 py-2 text-sm text-warn-ink">{stale}</p>}
       <label className="block text-sm font-medium">Material request
         <select value={lineId} onChange={(e) => choose(e.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-3 text-base">
+          className="mt-1 w-full rounded-xl border border-border bg-white px-3.5 py-3 min-h-13 text-base">
           <option value="">Select…</option>
           {lines.filter((l) => l.remaining > 0).map((l) => (
             <option key={l.requestLineId} value={l.requestLineId}>
@@ -85,7 +85,7 @@ export function IssueForm() {
         </select>
       </label>
       {line && (
-        <p className="rounded bg-slate-100 px-3 py-2 text-sm">
+        <p className="rounded-xl bg-info-bg px-3 py-2 text-sm text-info-ink">
           {next ? <>Pick first: <b>{next.lotNumber}</b> from {next.locations.map((x) => `${x.code} (${x.qty})`).join(", ")}</> : "No approved stock for this item."}
         </p>
       )}
@@ -93,14 +93,14 @@ export function IssueForm() {
       <ScanInput label="Bin" value={bin} onChange={setBin} />
       <label className="block text-sm font-medium">Quantity{line && ` (${line.uom})`}
         <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal"
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-3 text-base" />
+          className="mt-1 w-full rounded-xl border border-border bg-white px-3.5 py-3 min-h-13 text-base" />
       </label>
       <label className="block text-sm font-medium">FIFO override reason (only if skipping the lot above)
         <input value={override} onChange={(e) => setOverride(e.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-3 text-base" />
+          className="mt-1 w-full rounded-xl border border-border bg-white px-3.5 py-3 min-h-13 text-base" />
       </label>
-      {msg && <p role="status" className="text-sm text-slate-700">{msg}</p>}
-      <button className="w-full rounded bg-slate-900 py-3 text-base font-medium text-white">Issue</button>
+      {msg && <p role="status" className="text-sm text-ink-2">{msg}</p>}
+      <button className="w-full min-h-13 cursor-pointer rounded-xl bg-accent text-base font-semibold text-white hover:bg-accent-hover">Issue</button>
     </form>
   );
 }

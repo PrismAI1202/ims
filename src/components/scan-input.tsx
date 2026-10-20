@@ -54,15 +54,15 @@ export function ScanInput({
             }
           }}
           autoCapitalize="characters" autoCorrect="off" spellCheck={false}
-          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-3 py-3 text-base"
+          className="min-w-0 flex-1 rounded-xl border border-border bg-white px-3.5 py-3 min-h-13 text-base"
         />
         <button type="button" onClick={() => { setCameraError(""); setCameraOn((v) => !v); }}
-          className="rounded border border-slate-300 bg-white px-3 text-sm">
+          className="rounded-xl border border-border bg-white px-4 text-sm font-semibold">
           {cameraOn ? "Stop" : "Camera"}
         </button>
       </div>
-      {cameraOn && <video ref={videoRef} className="w-full rounded bg-black" muted playsInline />}
-      {cameraError && <p className="text-sm text-red-700">{cameraError}</p>}
+      {cameraOn && <video ref={videoRef} className="w-full rounded-xl bg-black" muted playsInline />}
+      {cameraError && <p className="text-sm text-danger">{cameraError}</p>}
     </div>
   );
 }

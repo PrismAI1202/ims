@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createPurchaseOrder } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -31,52 +32,53 @@ export default async function PurchasePage({ searchParams }: { searchParams: Pro
   ]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Purchase Orders</h1>
+    <div className="space-y-4">
+      <PageHeader eyebrow="PURCHASE" title="Supplier POs" />
       <Flash error={error} ok={ok} />
-      <form action={create} className="grid max-w-3xl grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
-        <label className="text-sm">Supplier
-          <select name="supplierId" required className={inputCls}>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-        <label className="text-sm">Segment
-          <select name="segment" className={inputCls}>
-            <option value="NON_AUTOMOTIVE">Non-automotive</option>
-            <option value="AUTOMOTIVE">Automotive</option>
-          </select>
-        </label>
-        <label className="text-sm md:col-span-2">Item
-          <select name="itemId" required className={inputCls}>
-            {items.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
-          </select>
-        </label>
-        <label className="text-sm">Qty
-          <input name="qty" type="number" step="any" min="0" required className={inputCls} />
-        </label>
-        <div className="md:col-span-5"><button className={btnCls}>Create &amp; approve PO</button></div>
-      </form>
+      <Card className="space-y-3">
+        <Eyebrow>RAISE PURCHASE ORDER</Eyebrow>
+        <form action={create} className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <label className="text-[13px]">Supplier
+            <select name="supplierId" required className={inputCls}>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label className="text-[13px]">Segment
+            <select name="segment" className={inputCls}>
+              <option value="NON_AUTOMOTIVE">Non-automotive</option>
+              <option value="AUTOMOTIVE">Automotive</option>
+            </select>
+          </label>
+          <label className="text-[13px] md:col-span-2">Item
+            <select name="itemId" required className={inputCls}>
+              {items.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
+            </select>
+          </label>
+          <label className="text-[13px]">Qty
+            <input name="qty" type="number" step="any" min="0" required className={inputCls} />
+          </label>
+          <div className="md:col-span-5"><button className={`${btnCls} w-full md:w-auto`}>Create &amp; approve PO</button></div>
+        </form>
+      </Card>
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">PO</th><th className="p-2">Supplier</th><th className="p-2">Segment</th>
-            <th className="p-2">Lines</th><th className="p-2">Status</th>
-          </tr></thead>
-          <tbody>
-            {pos.map((p) => (
-              <tr key={p.id} className="border-t">
-                <td className="p-2 font-medium">{p.poNumber}</td>
-                <td className="p-2">{p.supplier.name}</td>
-                <td className="p-2">{p.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}</td>
-                <td className="p-2">{p.lines.map((l) => `${l.item.code}: ${Number(l.receivedQty)}/${Number(l.qty)} ${l.item.uom}`).join(", ")}</td>
-                <td className="p-2">{p.status}</td>
-              </tr>
-            ))}
-            {pos.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No purchase orders yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>SUPPLIER POs</Eyebrow>
+      <DataTable>
+        <thead><tr>
+          <th>PO</th><th>Supplier</th><th>Segment</th><th>Lines</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          {pos.map((p) => (
+            <tr key={p.id}>
+              <td className="font-semibold"><Mono>{p.poNumber}</Mono></td>
+              <td>{p.supplier.name}</td>
+              <td><Badge tone={p.segment === "AUTOMOTIVE" ? "info" : "neutral"}>{p.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}</Badge></td>
+              <td><Mono className="text-xs">{p.lines.map((l) => `${l.item.code}: ${Number(l.receivedQty)}/${Number(l.qty)} ${l.item.uom}`).join(", ")}</Mono></td>
+              <td><Badge tone={p.status === "APPROVED" || p.status === "PARTIAL" ? "info" : "neutral"}>{p.status}</Badge></td>
+            </tr>
+          ))}
+          {pos.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No purchase orders yet.</td></tr>}
+        </tbody>
+      </DataTable>
     </div>
   );
 }

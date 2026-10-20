@@ -3,6 +3,7 @@ import { requirePermission, runAction } from "@/server/auth/guard";
 import { issueStock, pickableLots } from "@/server/services/inventory";
 import { sortForPicking } from "@/server/services/fifo";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Card, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
 
@@ -41,31 +42,34 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
   );
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Issue to Shop Floor</h1>
-      <p className="text-sm text-slate-600">Pick in the order shown (FEFO/FIFO). Scanning a newer lot while an older one has stock is blocked unless you give a reason.</p>
+    <div className="space-y-4">
+      <PageHeader eyebrow="STORES" title="FIFO issue" subtitle="Pick in the order shown. Scanning a newer lot while an older one has stock is blocked unless you give a reason.">
+        <StoresTabs active="/issue" />
+      </PageHeader>
       <Flash error={error} ok={ok} />
-      {rows.length === 0 && <p className="text-slate-500">No open material requests.</p>}
+      {rows.length === 0 && <Card><p className="text-ink-3">No open material requests.</p></Card>}
       {rows.map(({ request, line, remaining, lots }) => (
-        <form key={line.id} action={issue} className="max-w-4xl space-y-3 rounded-lg border bg-white p-4">
-          <input type="hidden" name="requestLineId" value={line.id} />
-          <div className="text-sm"><span className="font-semibold">{request.requestNumber}</span> · {line.item.code} {line.item.name} · <b>{remaining} {line.item.uom}</b> still to issue</div>
-          <div className="text-sm text-slate-700">
-            {lots.length === 0 ? <span className="text-red-700">No approved stock available.</span> : (
-              <ol className="list-decimal pl-5">
-                {lots.map((l) => (
-                  <li key={l.lotId}>{l.lotNumber} — {l.locations.map((x) => `${x.code}: ${x.qty}`).join(", ")}{l.expiryDate && ` (exp ${l.expiryDate.toISOString().slice(0, 10)})`}</li>
-                ))}
-              </ol>
-            )}
-          </div>
-          <div className="grid gap-3 md:grid-cols-5">
-            <label className="text-sm">Lot<input name="lotNumber" required defaultValue={lots[0]?.lotNumber} className={inputCls} /></label>
-            <label className="text-sm">Bin<input name="locationCode" required defaultValue={lots[0]?.locations[0]?.code} className={inputCls} /></label>
-            <label className="text-sm">Qty<input name="qty" type="number" step="any" min="0" required defaultValue={lots[0] ? Math.min(remaining, lots[0].available) : ""} className={inputCls} /></label>
-            <label className="text-sm md:col-span-2">FIFO override reason (only if skipping)<input name="override" className={inputCls} /></label>
-          </div>
-          <button className={btnCls}>Issue</button>
+        <form key={line.id} action={issue}>
+          <Card className="space-y-3">
+            <input type="hidden" name="requestLineId" value={line.id} />
+            <div className="text-sm"><Mono className="font-semibold">{request.requestNumber}</Mono> · {line.item.code} {line.item.name} · <b>{remaining} {line.item.uom}</b> still to issue</div>
+            <div className="text-sm text-ink-2">
+              {lots.length === 0 ? <span className="font-semibold text-danger">No approved stock available.</span> : (
+                <ol className="list-decimal pl-5">
+                  {lots.map((l) => (
+                    <li key={l.lotId}><Mono className="text-xs">{l.lotNumber}</Mono> — {l.locations.map((x) => `${x.code}: ${x.qty}`).join(", ")}{l.expiryDate && ` (exp ${l.expiryDate.toISOString().slice(0, 10)})`}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-5">
+              <label className="text-[13px]">Lot<input name="lotNumber" required defaultValue={lots[0]?.lotNumber} className={inputCls} /></label>
+              <label className="text-[13px]">Bin<input name="locationCode" required defaultValue={lots[0]?.locations[0]?.code} className={inputCls} /></label>
+              <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required defaultValue={lots[0] ? Math.min(remaining, lots[0].available) : ""} className={inputCls} /></label>
+              <label className="text-[13px] md:col-span-2">FIFO override reason (only if skipping)<input name="override" className={inputCls} /></label>
+            </div>
+            <button className={`${btnCls} w-full md:w-auto`}>Issue</button>
+          </Card>
         </form>
       ))}
     </div>
