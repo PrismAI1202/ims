@@ -25,7 +25,7 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/returnables", label: "Returnable Ledger", perm: "dispatch.manage" },
   { href: "/trace", label: "Traceability", perm: "stock.view" },
   { href: "/reports/variance", label: "BOM Variance", perm: "reports.view" },
-  { href: "/scan", label: "Scanner", perm: "stock.transfer" },
+  { href: "/scan", label: "Scanner", perm: "stock.view" },
   { href: "/users", label: "Users", perm: "users.manage" },
 ];
 

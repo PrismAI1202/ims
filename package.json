@@ -13,7 +13,8 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "token:create": "tsx scripts/create-api-token.ts"
+    "token:create": "tsx scripts/create-api-token.ts",
+    "admin:create": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

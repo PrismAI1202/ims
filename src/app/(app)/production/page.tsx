@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { WeightInput } from "@/components/weight-input";
 
 export const instant = false;
 
@@ -71,7 +72,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
           <label className="text-sm">Good parts<input name="goodParts" type="number" min="0" step="1" required className={inputCls} /></label>
           <label className="text-sm">Rejected parts<input name="rejectParts" type="number" min="0" step="1" defaultValue={0} className={inputCls} /></label>
           <label className="text-sm">Runner/sprue weighed (kg)
-            <input name="runnerKg" type="number" min="0" step="any" placeholder="auto from mould" className={inputCls} />
+            <WeightInput name="runnerKg" placeholder="auto from mould" className={inputCls} />
           </label>
           <label className="text-sm">Regrind bin
             <select name="regrindBin" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>

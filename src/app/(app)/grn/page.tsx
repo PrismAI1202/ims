@@ -3,6 +3,7 @@ import { requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn, DomainError } from "@/server/services/inventory";
 import { saveUpload } from "@/server/services/storage";
 import { CoaRef } from "@/components/coa-ref";
+import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 
 export const instant = false;
@@ -90,7 +91,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
             <div key={l.id} className="grid items-end gap-3 border-t pt-3 md:grid-cols-4">
               <div className="text-sm"><div className="font-medium">{l.item.code}</div>
                 <div className="text-slate-500">{l.item.name} · open {Number(l.qty) - Number(l.receivedQty)} {l.item.uom}</div></div>
-              <label className="text-sm">Received qty<input name={`qty_${l.id}`} type="number" step="any" min="0" className={inputCls} /></label>
+              <div className="text-sm"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
               <label className="text-sm">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
               <label className="text-sm">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
             </div>

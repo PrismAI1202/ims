@@ -186,6 +186,7 @@ async function Bins() {
           <div className="md:col-span-5"><button className={btnCls}>Create bin</button></div>
         </form>
       </Panel>
+      <p className="text-sm"><Link className="underline" href="/masters/bin-labels">Print bin labels (Code 128 barcodes)</Link></p>
       <Table head={["Code", "Rack", "Shelf", "Bin", "Type"]}>
         {locations.map((l) => (
           <tr key={l.id} className="border-t">

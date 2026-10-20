@@ -5,7 +5,9 @@ import { DomainError } from "./inventory";
 
 // Uploaded certificates live outside the web root and are only served through an authenticated route.
 // For cloud deployment, point UPLOAD_DIR at a mounted persistent volume (or swap this module for object storage).
-export const uploadDir = () => path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
+// The paths below are decided at runtime from UPLOAD_DIR, so the bundler is told not to try tracing them (otherwise it
+// would pull the whole project into the deployment output).
+export const uploadDir = () => path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR ?? "./uploads");
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|png|jpg)$/;
@@ -32,7 +34,7 @@ export async function saveUpload(file: { name: string; bytes: Uint8Array }): Pro
   const t = detectType(file.name, file.bytes);
   const name = `${randomUUID()}.${t.ext}`;
   await mkdir(uploadDir(), { recursive: true });
-  await writeFile(path.join(uploadDir(), name), file.bytes, { flag: "wx" });
+  await writeFile(path.join(/*turbopackIgnore: true*/ uploadDir(), name), file.bytes, { flag: "wx" });
   return `file:${name}`;
 }
 
@@ -43,7 +45,7 @@ export const fileUrl = (ref: string) => `/api/v1/files/${ref.slice(5)}`;
 export async function readUpload(name: string): Promise<{ bytes: Buffer; mime: string } | null> {
   if (!NAME.test(name)) return null;
   try {
-    const bytes = await readFile(path.join(uploadDir(), name));
+    const bytes = await readFile(path.join(/*turbopackIgnore: true*/ uploadDir(), name));
     return { bytes, mime: Object.values(TYPES).find((t) => t.ext === name.split(".").pop())!.mime };
   } catch {
     return null;

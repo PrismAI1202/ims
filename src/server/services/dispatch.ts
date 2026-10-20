@@ -8,6 +8,9 @@ import { parseBoxCode } from "./label";
 
 type Db = PrismaClient;
 
+// Scanning a box that is already on this very dispatch: harmless if an offline scan is sent twice, an error for a person to see.
+export class DuplicateScanError extends DomainError {}
+
 export interface CreateDispatchInput {
   customerId: string;
   vehicleNumber: string;
@@ -78,7 +81,7 @@ export async function scanBox(input: { dispatchId: string; scan: string }, db: D
     const box = await tx.fgBox.findUnique({ where: { boxCode: code }, include: { lot: true } });
     if (!box) throw new DomainError(`Unknown box ${code}.`);
     if (box.status === "DISPATCHED") throw new DomainError(`${code} has already been dispatched.`);
-    if (box.dispatchId === d.id) throw new DomainError(`${code} is already scanned on this dispatch.`);
+    if (box.dispatchId === d.id) throw new DuplicateScanError(`${code} is already scanned on this dispatch.`);
     if (box.dispatchId) throw new DomainError(`${code} is already loaded on another dispatch.`);
     if (box.customerId !== d.customerId) throw new DomainError(`${code} is labelled for a different customer.`);
 

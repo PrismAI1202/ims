@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { DownloadLink } from "@/components/download-link";
 
 export const instant = false;
 
@@ -25,7 +26,7 @@ export default async function LotTag({ params }: { params: Promise<{ lotId: stri
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`/api/v1/barcode?type=qr&text=${encodeURIComponent(lot.lotNumber)}`} alt={`QR ${lot.lotNumber}`} width={110} height={110} />
       </div>
-      <p className="mt-2 text-xs text-slate-500 print:hidden">Use your browser&apos;s Print to send to the label printer.</p>
+      <p className="mt-2 flex gap-3 text-xs text-slate-500 print:hidden">Use your browser&apos;s Print, or <DownloadLink href={`/api/v1/zpl?lot=${encodeURIComponent(lot.lotNumber)}`}>download ZPL</DownloadLink> for a thermal printer.</p>
     </div>
   );
 }

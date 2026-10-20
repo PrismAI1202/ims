@@ -1,0 +1,62 @@
+# Self-hosted production example: Postgres + one-shot migrations + the app.
+#   cp .env.example .env     (set AUTH_SECRET, POSTGRES_PASSWORD, COMPANY_*, and change AUTH_URL if needed)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm -e ADMIN_PASSWORD='…' app-tools \
+#       npm run admin:create -- you@yourplant.com "Your Name"
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front: the camera scanner and the
+# weighing-scale connection only work over HTTPS.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ims
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ims
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ims -d ims"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgresql://ims:${POSTGRES_PASSWORD}@db:5432/ims?schema=public
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: { context: ., target: runner }
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://ims:${POSTGRES_PASSWORD}@db:5432/ims?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (openssl rand -base64 32)}
+      AUTH_TRUST_HOST: "true"
+      COMPANY_NAME: ${COMPANY_NAME:-Your Company Name}
+      COMPANY_GSTIN: ${COMPANY_GSTIN:-}
+      COMPANY_ADDRESS: ${COMPANY_ADDRESS:-}
+      PRINTER_HOST: ${PRINTER_HOST:-}
+      PRINTER_PORT: ${PRINTER_PORT:-9100}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Admin tasks (create the first admin, issue scanner tokens). Same code and database, with the full toolchain.
+  app-tools:
+    profiles: ["tools"]
+    build: { context: ., target: build }
+    environment:
+      DATABASE_URL: postgresql://ims:${POSTGRES_PASSWORD}@db:5432/ims?schema=public
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  uploads:
