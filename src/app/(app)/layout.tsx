@@ -15,6 +15,12 @@ const NAV: { href: string; label: string; perm: Permission }[] = [
   { href: "/stock", label: "Stock & Bins", perm: "stock.view" },
   { href: "/requests", label: "Material Requests", perm: "request.create" },
   { href: "/issue", label: "Issue to Shop Floor", perm: "stock.issue" },
+  { href: "/bom", label: "Moulding BOM", perm: "bom.manage" },
+  { href: "/production", label: "Production Booking", perm: "production.book" },
+  { href: "/fg", label: "FG & Box Labels", perm: "fg.pack" },
+  { href: "/dispatch", label: "Dispatch", perm: "dispatch.manage" },
+  { href: "/returnables", label: "Returnable Ledger", perm: "dispatch.manage" },
+  { href: "/reports/variance", label: "BOM Variance", perm: "reports.view" },
   { href: "/scan", label: "Scanner", perm: "stock.transfer" },
 ];
 
