@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { DownloadLink } from "@/components/download-link";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordReturnable, returnableBalances } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -13,6 +14,7 @@ async function record(formData: FormData) {
     await recordReturnable({
       customerId: String(formData.get("customerId")), itemId: String(formData.get("itemId")), move,
       qty: Number(formData.get("qty")), note: String(formData.get("note") || "") || undefined, userId: user.id,
+      binCode: String(formData.get("binCode") || "") || undefined,
     });
   });
 }
@@ -20,11 +22,12 @@ async function record(formData: FormData) {
 export default async function ReturnablesPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   await requirePermission("dispatch.manage");
   const { error, ok } = await searchParams;
-  const [balances, customers, items, recent] = await Promise.all([
+  const [balances, customers, items, recent, bins] = await Promise.all([
     returnableBalances(),
     db.customer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.item.findMany({ where: { category: "RETURNABLE", active: true }, orderBy: { code: "asc" } }),
     db.returnableLedger.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { customer: true, item: true, dispatch: true } }),
+    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
   ]);
 
   return (
@@ -35,8 +38,13 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
         Crates sent on a dispatch are added automatically; record returns here, or add an opening balance for crates already at a customer.
       </p>
       <Flash error={error} ok={ok} />
+      <p className="flex gap-4 text-sm print:hidden">
+        <DownloadLink href={"/api/v1/export/returnables?format=xlsx"}>Download Excel</DownloadLink>
+        <DownloadLink href={"/api/v1/export/returnables?format=csv"}>Download CSV</DownloadLink>
+        <span className="text-slate-500">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+      </p>
 
-      <form action={record} className="grid max-w-4xl gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
+      <form action={record} className="grid max-w-5xl gap-3 rounded-lg border bg-white p-4 md:grid-cols-6">
         <label className="text-sm">Customer
           <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         </label>
@@ -48,7 +56,10 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
         </label>
         <label className="text-sm">Quantity<input name="qty" type="number" min="1" step="1" required className={inputCls} /></label>
         <label className="text-sm">Note<input name="note" className={inputCls} /></label>
-        <div className="md:col-span-5"><button className={btnCls}>Record</button></div>
+        <label className="text-sm">Bin (returns of crates we own)
+          <select name="binCode" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>
+        </label>
+        <div className="md:col-span-6"><button className={btnCls}>Record</button></div>
       </form>
 
       <h2 className="text-lg font-semibold">Customer balances</h2>

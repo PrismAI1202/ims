@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { db as defaultDb } from "@/server/db";
-import { DomainError, nextNumber } from "./inventory";
+import { suggestPicks } from "./fifo";
+import { DomainError, nextNumber, pickableLots } from "./inventory";
 import { company } from "@/lib/company";
 import { buildEwayData } from "./eway";
 import { parseBoxCode } from "./label";
@@ -149,6 +150,25 @@ export async function completeDispatch(input: CompleteInput, db: Db = defaultDb)
       await tx.fgBox.update({ where: { id: b.id }, data: { status: "DISPATCHED" } });
     }
     for (const c of crates) {
+      const crateItem = crateItems.find((i) => i.id === c.itemId)!;
+      // Crates we own come out of stock (oldest first); customer-owned crates are tracked in the ledger only.
+      if (crateItem.stockTracked) {
+        const { picks, shortfall } = suggestPicks(await pickableLots(c.itemId, tx), c.qty);
+        if (shortfall > 0) throw new DomainError(`Only ${c.qty - shortfall} ${crateItem.code} in stock; you're sending ${c.qty}.`);
+        for (const pick of picks) {
+          let left = pick.qty;
+          const balances = await tx.stockBalance.findMany({ where: { lotId: pick.lotId, qty: { gt: 0 }, location: { type: "STORAGE" } } });
+          for (const b of balances) {
+            if (left <= 0) break;
+            const take = Math.min(Number(b.qty), left);
+            await tx.stockBalance.update({ where: { id: b.id }, data: { qty: { decrement: take } } });
+            await tx.stockTransaction.create({
+              data: { type: "DISPATCH", lotId: pick.lotId, locationId: b.locationId, qty: -take, refType: "DISPATCH", refId: d.dcNumber, userId: input.userId },
+            });
+            left -= take;
+          }
+        }
+      }
       await tx.returnableLedger.create({
         data: { customerId: d.customerId, itemId: c.itemId, move: "ISSUED", qty: c.qty, dispatchId: d.id, userId: input.userId },
       });
@@ -187,7 +207,7 @@ export async function returnableBalances(db: Db = defaultDb): Promise<Returnable
 }
 
 export async function recordReturnable(
-  input: { customerId: string; itemId: string; move: "ISSUED" | "RETURNED"; qty: number; note?: string; userId?: string },
+  input: { customerId: string; itemId: string; move: "ISSUED" | "RETURNED"; qty: number; note?: string; binCode?: string; userId?: string },
   db: Db = defaultDb,
 ) {
   if (!Number.isInteger(input.qty) || input.qty <= 0) throw new DomainError("Quantity must be a whole number above 0.");
@@ -205,8 +225,27 @@ export async function recordReturnable(
       throw new DomainError(`${customer.name} only has ${outstanding} ${item.code} outstanding. Record an opening balance first if they held some before the system started.`);
     }
   }
-  return db.returnableLedger.create({
-    data: { customerId: customer.id, itemId: item.id, move: input.move, qty: input.qty, note: input.note, userId: input.userId },
+  // A return of a container we own puts it back in stock. (An "issued" entry is an opening balance: already at the customer.)
+  const bin = input.move === "RETURNED" && item.stockTracked
+    ? input.binCode
+      ? await db.location.findUnique({ where: { code: input.binCode } })
+      : await db.location.findFirst({ where: { type: "STORAGE" }, orderBy: { code: "asc" } })
+    : null;
+  if (input.move === "RETURNED" && item.stockTracked && (!bin || bin.type !== "STORAGE")) throw new DomainError("Choose a storage bin for the returned containers.");
+
+  return db.$transaction(async (tx) => {
+    if (bin) {
+      const lot = await tx.lot.create({
+        data: { lotNumber: await nextNumber(tx, "LOT", "lot"), itemId: item.id, supplierLotNo: `RETURN-${customer.code}`, receivedQty: input.qty, qcStatus: "APPROVED" },
+      });
+      await tx.stockBalance.create({ data: { lotId: lot.id, locationId: bin.id, qty: input.qty } });
+      await tx.stockTransaction.create({
+        data: { type: "RETURN", lotId: lot.id, locationId: bin.id, qty: input.qty, refType: "RETURNABLE", refId: customer.code, userId: input.userId },
+      });
+    }
+    return tx.returnableLedger.create({
+      data: { customerId: customer.id, itemId: item.id, move: input.move, qty: input.qty, note: input.note, userId: input.userId },
+    });
   });
 }
 

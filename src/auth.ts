@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/server/db";
 import type { Role } from "@/server/auth/permissions";
+import { refreshToken, type SessionToken } from "@/server/auth/session-refresh";
 
 declare module "next-auth" {
   interface User {
@@ -36,12 +37,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        return token;
       }
-      return token;
+      // Every later read re-checks the user, so deactivation and role changes apply immediately.
+      const fresh = await refreshToken(token as SessionToken, async (id) => {
+        const u = await db.user.findUnique({ where: { id }, select: { active: true, role: true } });
+        return u ? { active: u.active, role: u.role as Role } : null;
+      });
+      return fresh as typeof token | null;
     },
     session({ session, token }) {
       session.user.id = token.id as string;

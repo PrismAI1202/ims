@@ -132,6 +132,9 @@ async function main() {
     data: { gstin: "27BBBBB1111B1Z6", address: "Industrial Estate, Nashik, Maharashtra" },
   });
 
+  // The seeded crate belongs to the customer, so it is tracked in the returnable ledger only.
+  await prisma.item.update({ where: { code: "PK-CRATE-A" }, data: { stockTracked: false } });
+
   // Demo BOM: 4-cavity clip, 70% PP + 5% black masterbatch + 25% PP regrind, two brass inserts per part.
   const fg = await prisma.item.findUniqueOrThrow({ where: { code: "FG-CLIP-001" } });
   if (!(await prisma.bom.findUnique({ where: { fgItemId: fg.id } }))) {

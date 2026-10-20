@@ -5,6 +5,7 @@ import { btnCls, Flash, inputCls } from "@/components/flash";
 
 export const instant = false;
 
+const LOT_ROWS = 4;
 const optNum = (v: FormDataEntryValue | null) => (v === null || v === "" ? undefined : Number(v));
 
 async function book(formData: FormData) {
@@ -24,6 +25,11 @@ async function book(formData: FormData) {
       runnerKgActual: optNum(formData.get("runnerKg")),
       regrindLocationCode: String(formData.get("regrindBin") || "") || undefined,
       note: String(formData.get("note") || "") || undefined, userId: user.id,
+      // Lots that went into the machine: the link that makes a finished box traceable back to the supplier.
+      materialLots: Array.from({ length: LOT_ROWS }, (_, i) => ({
+        lotNumber: String(formData.get(`lot_${i}`) || "").trim(), qty: Number(formData.get(`lotqty_${i}`) || 0),
+      })).filter((l) => l.lotNumber),
+      requireMaterialLots: true,
     });
     regrindSkipped = r.regrindSkipped;
   });
@@ -70,6 +76,15 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
           <label className="text-sm">Regrind bin
             <select name="regrindBin" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>
           </label>
+          <div className="space-y-2 md:col-span-4">
+            <div className="text-sm font-medium">Material lots used <span className="font-normal text-slate-500">(scan the lot tag of every resin and masterbatch fed to the machine; add regrind lots if used)</span></div>
+            {Array.from({ length: LOT_ROWS }, (_, i) => (
+              <div key={i} className="grid gap-2 md:grid-cols-4">
+                <input name={`lot_${i}`} placeholder="Lot tag, e.g. LOT-261014-0001" autoComplete="off" className={`${inputCls} md:col-span-3`} aria-label={`Material lot ${i + 1}`} />
+                <input name={`lotqty_${i}`} type="number" min="0" step="any" placeholder="Quantity used" className={inputCls} aria-label={`Quantity used ${i + 1}`} />
+              </div>
+            ))}
+          </div>
           <label className="text-sm md:col-span-3">Note<input name="note" className={inputCls} /></label>
           <div className="md:col-span-4"><button className={btnCls}>Book production</button></div>
         </form>

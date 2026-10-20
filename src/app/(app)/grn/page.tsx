@@ -1,6 +1,8 @@
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
-import { createGrn } from "@/server/services/inventory";
+import { createGrn, DomainError } from "@/server/services/inventory";
+import { saveUpload } from "@/server/services/storage";
+import { CoaRef } from "@/components/coa-ref";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 
 export const instant = false;
@@ -19,11 +21,21 @@ async function receive(formData: FormData) {
         bags: formData.get(`bags_${l.id}`) ? Number(formData.get(`bags_${l.id}`)) : undefined,
       }))
       .filter((l) => l.qty > 0);
+    // An uploaded certificate wins over a typed reference.
+    let coaUrl = String(formData.get("coaUrl") || "").trim() || undefined;
+    const file = formData.get("coaFile");
+    if (file instanceof File && file.size > 0) {
+      try {
+        coaUrl = await saveUpload({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+      } catch (e) {
+        throw e instanceof DomainError ? e : new DomainError("The certificate could not be saved.");
+      }
+    }
     await createGrn({
       poId,
       vehicleNumber: String(formData.get("vehicleNumber")),
       invoiceNumber: String(formData.get("invoiceNumber")),
-      coaUrl: String(formData.get("coaUrl") || "") || undefined,
+      coaUrl,
       lines,
       userId: user.id,
     });
@@ -68,9 +80,11 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
           <div className="grid gap-3 md:grid-cols-3">
             <label className="text-sm">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
             <label className="text-sm">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
-            <label className="text-sm">COA reference {selected.segment === "AUTOMOTIVE" && <b className="text-red-700">(mandatory)</b>}
-              <input name="coaUrl" placeholder="coa file / reference" className={inputCls} />
-            </label>
+            <div className="space-y-1 text-sm">
+              <div>COA {selected.segment === "AUTOMOTIVE" && <b className="text-red-700">(mandatory)</b>}</div>
+              <input name="coaFile" type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="COA file" className={`${inputCls} text-xs`} />
+              <input name="coaUrl" placeholder="or type a certificate reference" aria-label="COA reference" className={inputCls} />
+            </div>
           </div>
           {selected.lines.map((l) => (
             <div key={l.id} className="grid items-end gap-3 border-t pt-3 md:grid-cols-4">
@@ -88,7 +102,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
       <div className="overflow-x-auto rounded-lg border bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">GRN</th><th className="p-2">PO</th><th className="p-2">Vehicle / Invoice</th><th className="p-2">Lots (pending QC → QC queue)</th>
+            <th className="p-2">GRN</th><th className="p-2">PO</th><th className="p-2">Vehicle / Invoice</th><th className="p-2">COA</th><th className="p-2">Lots (pending QC → QC queue)</th>
           </tr></thead>
           <tbody>
             {recent.map((g) => (
@@ -96,10 +110,11 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
                 <td className="p-2 font-medium">{g.grnNumber}</td>
                 <td className="p-2">{g.po.poNumber}</td>
                 <td className="p-2">{g.gateEntry?.vehicleNumber} / {g.gateEntry?.invoiceNumber}</td>
+                <td className="p-2"><CoaRef value={g.coaUrl} /></td>
                 <td className="p-2">{g.lines.map((l) => l.lot && `${l.lot.lotNumber} (${l.lot.qcStatus})`).join(", ")}</td>
               </tr>
             ))}
-            {recent.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={4}>No GRNs yet.</td></tr>}
+            {recent.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No GRNs yet.</td></tr>}
           </tbody>
         </table>
       </div>

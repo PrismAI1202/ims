@@ -111,6 +111,7 @@ model Customer {
   boxes       FgBox[]
   dispatches  Dispatch[]
   returnables ReturnableLedger[]
+  demandLines DemandLine[]
 }
 
 model Supplier {
@@ -142,6 +143,8 @@ model Item {
   active           Boolean               @default(true)
   dispatchLines    DispatchLine[]
   returnableLedger ReturnableLedger[]
+  demandLines      DemandLine[]
+  stockTracked     Boolean               @default(false) // returnable containers only: true = we own them and track their stock
   prices           PriceMaster[]
   poLines          PurchaseOrderLine[]
   lots             Lot[]
@@ -265,6 +268,8 @@ model ProductionBooking {
   userId        String?
   note          String?
   consumption   BookingConsumption[]
+  lotUses       ProductionLotUse[]
+  scrap         ScrapDisposition[]
 
   @@index([producedAt])
 }
@@ -361,6 +366,7 @@ model Lot {
   txns          StockTransaction[]
   issueLines    IssueLine[]
   boxes         FgBox[]
+  lotUses       ProductionLotUse[]
 
   @@index([itemId, qcStatus, receivedAt])
 }
@@ -531,4 +537,75 @@ model ReturnableLedger {
   createdAt  DateTime       @default(now())
 
   @@index([customerId, itemId])
+}
+
+// ───────── Phase 4: demand and MRP ─────────
+
+enum DemandType {
+  FORECAST
+  FIRM
+  SPOT
+}
+
+model DemandImport {
+  id        String       @id @default(cuid())
+  fileName  String
+  rowCount  Int
+  replaced  Int          @default(0) // forecast rows superseded by this upload
+  userId    String?
+  createdAt DateTime     @default(now())
+  lines     DemandLine[]
+}
+
+model DemandLine {
+  id         String        @id @default(cuid())
+  importId   String?
+  import     DemandImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  customerId String
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  fgItemId   String
+  fgItem     Item          @relation(fields: [fgItemId], references: [id])
+  dueDate    DateTime      @db.Date
+  qty        Int
+  type       DemandType
+  createdAt  DateTime      @default(now())
+
+  @@index([dueDate])
+  @@index([customerId, fgItemId, type])
+}
+
+// ───────── Phase 5: traceability and scrap ─────────
+
+// Which material lots a production run actually consumed (stock was already issued; this is the trace link).
+model ProductionLotUse {
+  id        String            @id @default(cuid())
+  bookingId String
+  booking   ProductionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  lotId     String
+  lot       Lot               @relation(fields: [lotId], references: [id])
+  qty       Decimal           @db.Decimal(14, 3)
+
+  @@index([lotId])
+  @@index([bookingId])
+}
+
+enum ScrapKind {
+  REGRIND
+  WASTE
+}
+
+// QA's decision on rejected parts from a booking: crush into regrind, or scrap as waste.
+model ScrapDisposition {
+  id           String            @id @default(cuid())
+  bookingId    String
+  booking      ProductionBooking @relation(fields: [bookingId], references: [id])
+  parts        Int
+  weightKg     Decimal           @db.Decimal(12, 3)
+  kind         ScrapKind
+  regrindLotId String?
+  note         String?
+  approvedById String?
+  createdAt    DateTime          @default(now())
+
+  @@index([bookingId])
 }

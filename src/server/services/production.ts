@@ -80,6 +80,17 @@ export async function saveBom(input: SaveBomInput, db: Db = defaultDb) {
   });
 }
 
+// Which stock item receives runners and crushed rejects: the BOM's own regrind item, else a REGRIND item of the resin's grade.
+export async function findRegrindItemId(
+  db: Db, lines: { kind: string; itemId: string; item: { polymerGrade: string | null } }[],
+): Promise<string | undefined> {
+  const own = lines.find((l) => l.kind === "REGRIND")?.itemId;
+  if (own) return own;
+  const grade = lines.find((l) => l.kind === "RESIN")?.item.polymerGrade;
+  if (!grade) return undefined;
+  return (await db.item.findFirst({ where: { category: "REGRIND", polymerGrade: grade, active: true } }))?.id;
+}
+
 // ───────── Production booking ─────────
 
 export interface BookProductionInput {
@@ -92,6 +103,8 @@ export interface BookProductionInput {
   runnerKgActual?: number; // weighed runner/sprue; defaults to mould runner weight × shots
   regrindLocationCode?: string; // bin for the regrind lot; defaults to the first storage bin
   fgLocationCode?: string; // bin for the finished-goods lot; defaults to the first storage bin
+  materialLots?: { lotNumber: string; qty: number }[]; // lots actually fed to the machine (the traceability link)
+  requireMaterialLots?: boolean; // when true, every resin and masterbatch in the BOM must be covered by a cited lot
   note?: string;
   userId?: string;
 }
@@ -111,6 +124,27 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
     throw new DomainError("Runner weight can't be negative.");
   }
 
+  // Traceability: validate the lots the operator says went into the machine.
+  const cited = input.materialLots ?? [];
+  const citedLots = cited.length
+    ? await db.lot.findMany({ where: { lotNumber: { in: cited.map((c) => c.lotNumber.trim()) } }, include: { item: true } })
+    : [];
+  const lotByNumber = new Map(citedLots.map((l) => [l.lotNumber, l]));
+  const bomItemIds = new Set(bom.lines.map((l) => l.itemId));
+  for (const c of cited) {
+    const lot = lotByNumber.get(c.lotNumber.trim());
+    if (!lot) throw new DomainError(`Unknown material lot ${c.lotNumber}.`);
+    if (!(c.qty > 0)) throw new DomainError(`Enter the quantity used from ${lot.lotNumber}.`);
+    if (lot.qcStatus !== "APPROVED" && lot.qcStatus !== "DEVIATED") throw new DomainError(`Lot ${lot.lotNumber} is ${lot.qcStatus} and can't be used in production.`);
+    if (!bomItemIds.has(lot.itemId)) throw new DomainError(`${lot.item.code} (lot ${lot.lotNumber}) is not part of this part's BOM.`);
+  }
+  if (input.requireMaterialLots) {
+    const covered = new Set(cited.map((c) => lotByNumber.get(c.lotNumber.trim())!.itemId));
+    for (const l of bom.lines.filter((x) => x.kind === "RESIN" || x.kind === "MASTERBATCH")) {
+      if (!covered.has(l.itemId)) throw new DomainError(`Scan the lot of ${l.item.code} used for this run. Traceability needs it.`);
+    }
+  }
+
   const runnerWeightG = Number(bom.mould.runnerWeightG ?? 0);
   const runner = input.runnerKgActual ?? runnerKg(input.shots, runnerWeightG);
 
@@ -123,14 +157,7 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
     shots: input.shots, goodParts: input.goodParts, rejectParts: input.rejectParts,
   });
 
-  // Which stock item receives the runner: the BOM's own regrind item, else a REGRIND item of the resin's grade.
-  let regrindItemId = bom.lines.find((l) => l.kind === "REGRIND")?.itemId;
-  if (!regrindItemId) {
-    const grade = bom.lines.find((l) => l.kind === "RESIN")?.item.polymerGrade;
-    if (grade) {
-      regrindItemId = (await db.item.findFirst({ where: { category: "REGRIND", polymerGrade: grade, active: true } }))?.id;
-    }
-  }
+  const regrindItemId = await findRegrindItemId(db, bom.lines);
   const bin = runner > 0 && regrindItemId
     ? input.regrindLocationCode
       ? await db.location.findUnique({ where: { code: input.regrindLocationCode } })
@@ -189,6 +216,7 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
         shots: input.shots, goodParts: input.goodParts, rejectParts: input.rejectParts,
         runnerKg: runner, regrindLotId, fgLotId, note: input.note, userId: input.userId,
         consumption: { create: expected.map((e) => ({ itemId: e.itemId, expectedQty: e.expectedQty })) },
+        lotUses: { create: cited.map((c) => ({ lotId: lotByNumber.get(c.lotNumber.trim())!.id, qty: c.qty })) },
       },
       include: { consumption: true },
     });

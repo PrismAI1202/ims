@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DownloadLink } from "@/components/download-link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
@@ -132,7 +133,7 @@ export default async function DispatchDetail({
       {d.status !== "CANCELLED" && (
         <p className="flex gap-4 text-sm">
           <Link className="underline" target="_blank" href={`/dispatch/${d.id}/dc`}>Delivery challan &amp; packing list</Link>
-          <a className="underline" href={`/api/v1/dispatch/${d.id}/eway`}>Download e-way bill data (JSON)</a>
+          <DownloadLink href={`/api/v1/dispatch/${d.id}/eway`}>Download e-way bill data (JSON)</DownloadLink>
         </p>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { requirePermission } from "@/server/auth/guard";
+import { DownloadLink } from "@/components/download-link";
 import { varianceReport } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 
@@ -33,6 +34,13 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
         <button className={btnCls}>Show</button>
       </form>
       {bad && <Flash error="The start date must be before the end date." />}
+      {!bad && (
+        <p className="flex gap-4 text-sm print:hidden">
+        <DownloadLink href={`/api/v1/export/variance?format=xlsx&from=${iso(from)}&to=${iso(toDay)}`}>Download Excel</DownloadLink>
+        <DownloadLink href={`/api/v1/export/variance?format=csv&from=${iso(from)}&to=${iso(toDay)}`}>Download CSV</DownloadLink>
+        <span className="text-slate-500">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+      </p>
+      )}
       {report && (
         <>
           <div className="grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-5">

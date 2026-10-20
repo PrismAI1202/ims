@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordQc } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { CoaRef } from "@/components/coa-ref";
 
 export const instant = false;
 
@@ -50,7 +51,7 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
           <div className="flex flex-wrap justify-between gap-2 text-sm">
             <div><span className="font-semibold">{l.lotNumber}</span> · {l.item.code} {l.item.name}</div>
             <div className="text-slate-600">
-              {Number(l.receivedQty)} {l.item.uom} · heat/lot {l.supplierLotNo} · {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}
+              {Number(l.receivedQty)} {l.item.uom} · heat/lot {l.supplierLotNo} · {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"} · COA: <CoaRef value={l.grnLine?.grn.coaUrl} />
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-4">

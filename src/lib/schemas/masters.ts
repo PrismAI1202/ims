@@ -26,6 +26,7 @@ export const itemSchema = z
     maxRegrindPct: optionalNumber(z.coerce.number().min(0).max(100)),
     hsnCode: z.string().trim().max(10).regex(/^\d*$/, "HSN code is digits only").optional().transform((s) => s || undefined),
     unitPrice: optionalNumber(z.coerce.number().min(0)),
+    stockTracked: z.coerce.boolean().default(false), // returnable containers only: we own them, so track their stock
   })
   .refine((v) => v.minStock <= v.reorderPoint, { path: ["reorderPoint"], message: "Reorder point must be at least the minimum." })
   .refine((v) => v.maxStock === 0 || v.reorderPoint <= v.maxStock, { path: ["maxStock"], message: "Maximum must be at least the reorder point." });

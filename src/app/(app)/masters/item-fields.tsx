@@ -5,7 +5,7 @@ type Defaults = {
   code?: string; name?: string; category?: string; uom?: string; polymerGrade?: string | null;
   minStock?: number; reorderPoint?: number; maxStock?: number; safetyStock?: number;
   shelfLifeDays?: number | null; requiresCoa?: boolean; maxRegrindPct?: number | null;
-  hsnCode?: string | null; unitPrice?: number | null;
+  hsnCode?: string | null; unitPrice?: number | null; stockTracked?: boolean;
 };
 
 // Shared by the create form and the edit page so both validate the same fields.
@@ -32,6 +32,9 @@ export function ItemFields({ d = {} }: { d?: Defaults }) {
       <label className={f}>Unit price (selling)<input name="unitPrice" type="number" step="any" min="0" defaultValue={d.unitPrice ?? ""} className={inputCls} /></label>
       <label className={`${f} flex items-end gap-2 pb-2`}>
         <input name="requiresCoa" type="checkbox" defaultChecked={d.requiresCoa} className="h-4 w-4" /> COA required at GRN
+      </label>
+      <label className={`${f} flex items-end gap-2 pb-2 md:col-span-2`}>
+        <input name="stockTracked" type="checkbox" defaultChecked={d.stockTracked} className="h-4 w-4" /> Returnable containers we own: track their stock (leave off for customer-owned)
       </label>
     </div>
   );

@@ -1,4 +1,5 @@
 import { stockByItem } from "@/server/services/stock";
+import { DownloadLink } from "@/components/download-link";
 import { requirePermission } from "@/server/auth/guard";
 import { Flash } from "@/components/flash";
 
@@ -21,6 +22,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Live Stock &amp; Min/Max Dashboard</h1>
       <Flash error={error} />
+      <p className="flex gap-4 text-sm print:hidden">
+        <DownloadLink href={"/api/v1/export/stock?format=xlsx"}>Download Excel</DownloadLink>
+        <DownloadLink href={"/api/v1/export/stock?format=csv"}>Download CSV</DownloadLink>
+        <span className="text-slate-500">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+      </p>
       <div className="grid grid-cols-3 gap-3 max-w-xl">
         {(["RED", "YELLOW", "GREEN"] as const).map((s) => (
           <div key={s} className={`rounded-lg p-4 ${BADGE[s]}`}>

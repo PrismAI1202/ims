@@ -28,7 +28,7 @@ export default async function EditItem({
           minStock: Number(item.minStock), reorderPoint: Number(item.reorderPoint), maxStock: Number(item.maxStock),
           safetyStock: Number(item.safetyStock), shelfLifeDays: item.shelfLifeDays, requiresCoa: item.requiresCoa,
           maxRegrindPct: item.maxRegrindPct === null ? null : Number(item.maxRegrindPct),
-          hsnCode: item.hsnCode, unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
+          stockTracked: item.stockTracked, hsnCode: item.hsnCode, unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
         }} />
         <button className={btnCls}>Save changes</button>
       </form>

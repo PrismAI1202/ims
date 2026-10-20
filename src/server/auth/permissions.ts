@@ -18,6 +18,9 @@ export type Permission =
   | "production.book"
   | "bom.manage"
   | "fg.pack"
+  | "mrp.plan"
+  | "users.manage"
+  | "scrap.approve"
   | "reports.view"
   | "dispatch.manage";
 
@@ -26,13 +29,13 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ADMIN: [
     "masters.manage", "po.manage", "grn.create", "qc.inspect", "stock.view",
     "stock.transfer", "stock.issue", "reorder.view", "request.create",
-    "production.book", "bom.manage", "fg.pack", "reports.view", "dispatch.manage",
+    "production.book", "bom.manage", "fg.pack", "mrp.plan", "users.manage", "scrap.approve", "reports.view", "dispatch.manage",
   ],
   STORE_INCHARGE: [
     "po.manage", "grn.create", "stock.view", "stock.transfer", "stock.issue", "reorder.view",
-    "reports.view",
+    "mrp.plan", "reports.view",
   ],
-  QA_INSPECTOR: ["qc.inspect", "stock.view", "reports.view"],
+  QA_INSPECTOR: ["qc.inspect", "scrap.approve", "stock.view", "reports.view"],
   PRODUCTION_LEAD: ["request.create", "production.book", "fg.pack", "stock.view", "reports.view"],
   DISPATCH_OFFICER: ["dispatch.manage", "fg.pack", "stock.view"],
 };
