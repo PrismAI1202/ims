@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
 import { btnCls, Flash } from "@/components/flash";
+import { Card, PageHeader } from "@/components/ui";
 import { saveItem } from "../../actions";
 import { ItemFields } from "../../item-fields";
 
@@ -18,20 +19,23 @@ export default async function EditItem({
 
   return (
     <div className="space-y-4">
-      <Link href="/masters?tab=items" className="text-sm underline">← Items</Link>
-      <h1 className="text-2xl font-semibold">Edit {item.code}</h1>
+      <PageHeader eyebrow="ADMIN · MASTERS" title={`Edit ${item.code}`} subtitle={item.name}>
+        <Link href="/masters?tab=items" className="text-sm font-semibold">← Items</Link>
+      </PageHeader>
       <Flash error={error} />
-      <form action={saveItem} className="max-w-4xl space-y-4 rounded-lg border bg-white p-4">
-        <input type="hidden" name="id" value={item.id} />
-        <ItemFields d={{
-          code: item.code, name: item.name, category: item.category, uom: item.uom, polymerGrade: item.polymerGrade,
-          minStock: Number(item.minStock), reorderPoint: Number(item.reorderPoint), maxStock: Number(item.maxStock),
-          safetyStock: Number(item.safetyStock), shelfLifeDays: item.shelfLifeDays, requiresCoa: item.requiresCoa,
-          maxRegrindPct: item.maxRegrindPct === null ? null : Number(item.maxRegrindPct),
-          stockTracked: item.stockTracked, hsnCode: item.hsnCode, unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
-        }} />
-        <button className={btnCls}>Save changes</button>
-      </form>
+      <Card>
+        <form action={saveItem} className="space-y-4">
+          <input type="hidden" name="id" value={item.id} />
+          <ItemFields d={{
+            code: item.code, name: item.name, category: item.category, uom: item.uom, polymerGrade: item.polymerGrade,
+            minStock: Number(item.minStock), reorderPoint: Number(item.reorderPoint), maxStock: Number(item.maxStock),
+            safetyStock: Number(item.safetyStock), shelfLifeDays: item.shelfLifeDays, requiresCoa: item.requiresCoa,
+            maxRegrindPct: item.maxRegrindPct === null ? null : Number(item.maxRegrindPct),
+            stockTracked: item.stockTracked, hsnCode: item.hsnCode, unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
+          }} />
+          <button className={`${btnCls} w-full md:w-auto`}>Save changes</button>
+        </form>
+      </Card>
     </div>
   );
 }

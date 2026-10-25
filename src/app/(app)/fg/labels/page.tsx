@@ -38,7 +38,7 @@ export default async function LabelsPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-4">
       <Flash error={error} ok={ok} />
-      <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 print:hidden">
+      <div className="flex flex-wrap items-center gap-4 text-sm text-ink-2 print:hidden">
         <span>{labels.length} label{labels.length > 1 ? "s" : ""}. Use your browser&apos;s Print for a normal printer.</span>
         <DownloadLink href={`/api/v1/zpl?boxes=${encodeURIComponent(codes.join(","))}`}>Download ZPL for a thermal printer</DownloadLink>
         {printerFromEnv() && (

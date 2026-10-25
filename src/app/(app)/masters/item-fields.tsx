@@ -10,7 +10,7 @@ type Defaults = {
 
 // Shared by the create form and the edit page so both validate the same fields.
 export function ItemFields({ d = {} }: { d?: Defaults }) {
-  const f = "text-sm";
+  const f = "text-[13px]";
   return (
     <div className="grid gap-3 md:grid-cols-4">
       <label className={f}>Code<input name="code" required defaultValue={d.code} className={inputCls} /></label>
@@ -31,10 +31,10 @@ export function ItemFields({ d = {} }: { d?: Defaults }) {
       <label className={f}>HSN code<input name="hsnCode" inputMode="numeric" defaultValue={d.hsnCode ?? ""} placeholder="for challan / e-way bill" className={inputCls} /></label>
       <label className={f}>Unit price (selling)<input name="unitPrice" type="number" step="any" min="0" defaultValue={d.unitPrice ?? ""} className={inputCls} /></label>
       <label className={`${f} flex items-end gap-2 pb-2`}>
-        <input name="requiresCoa" type="checkbox" defaultChecked={d.requiresCoa} className="h-4 w-4" /> COA required at GRN
+        <input name="requiresCoa" type="checkbox" defaultChecked={d.requiresCoa} className="size-5 accent-[#c2410c]" /> COA required at GRN
       </label>
       <label className={`${f} flex items-end gap-2 pb-2 md:col-span-2`}>
-        <input name="stockTracked" type="checkbox" defaultChecked={d.stockTracked} className="h-4 w-4" /> Returnable containers we own: track their stock (leave off for customer-owned)
+        <input name="stockTracked" type="checkbox" defaultChecked={d.stockTracked} className="size-5 accent-[#c2410c]" /> Returnable containers we own: track their stock (leave off for customer-owned)
       </label>
     </div>
   );

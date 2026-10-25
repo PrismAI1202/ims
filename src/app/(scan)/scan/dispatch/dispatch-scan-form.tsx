@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ScanInput } from "@/components/scan-input";
 import { cacheGet, cachePut, enqueue, newUuid } from "@/lib/offline-queue";
 import { QueueBar, useQueue } from "@/lib/use-queue";
+import { ProgressBar } from "@/components/ui";
 
 type Open = { id: string; dcNumber: string; customer: string; vehicle: string; lines: { code: string; ordered: number; scanned: number }[] };
 
@@ -49,21 +50,28 @@ export function DispatchScanForm() {
   return (
     <div className="space-y-4">
       <QueueBar queue={queue} />
-      {note && <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{note}</p>}
-      <label className="block text-sm font-medium">Dispatch
-        <select value={id} onChange={(e) => { setId(e.target.value); setTally([]); }} className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-3 text-base">
+      {note && <p className="rounded-xl bg-warn-bg px-3 py-2 text-sm text-warn-ink">{note}</p>}
+      <label className="block text-[13px] font-semibold">Dispatch
+        <select value={id} onChange={(e) => { setId(e.target.value); setTally([]); }} className="mt-1 min-h-13 w-full rounded-xl border border-border bg-white px-3.5 text-base">
           <option value="">Select…</option>
           {list.map((d) => <option key={d.id} value={d.id}>{d.dcNumber} · {d.customer} · {d.vehicle}</option>)}
         </select>
       </label>
       {dispatch && (
         <>
-          <ul className="rounded bg-slate-100 px-3 py-2 text-sm">
-            {dispatch.lines.map((l) => <li key={l.code}>{l.code}: {l.scanned.toLocaleString()} of {l.ordered.toLocaleString()} loaded</li>)}
-          </ul>
+          <div className="space-y-3 rounded-[14px] bg-white p-3.5">
+            <div className="flex items-baseline justify-between"><span className="font-display text-base font-bold">Pick-list scan</span>
+              <span className="font-mono text-[15px]">{dispatch.lines.reduce((a, l) => a + Math.min(l.scanned, l.ordered), 0).toLocaleString()} / {dispatch.lines.reduce((a, l) => a + l.ordered, 0).toLocaleString()}</span></div>
+            {dispatch.lines.map((l) => (
+              <div key={l.code} className="space-y-1">
+                <div className="flex justify-between text-[13px]"><strong>{l.code}</strong><span className="font-mono text-xs">{l.scanned.toLocaleString()} of {l.ordered.toLocaleString()} loaded</span></div>
+                <ProgressBar value={Math.min(l.scanned, l.ordered)} max={l.ordered} color={l.scanned >= l.ordered ? "#1E7A46" : "#1D4ED8"} />
+              </div>
+            ))}
+          </div>
           <ScanInput label="Scan box label (press Enter after each box)" value={scan} onChange={setScan} onScan={submit} autoFocus />
-          {tally.length > 0 && <p className="text-sm text-slate-700">Scanned on this device: {tally.join(", ")}</p>}
-          <p className="text-xs text-slate-500">Finish and post the dispatch from the desktop; it needs the full pick list scanned.</p>
+          {tally.length > 0 && <p className="text-sm text-ink-2">Scanned on this device: {tally.join(", ")}</p>}
+          <p className="text-xs text-ink-3">Finish and post the dispatch from the desktop; it needs the full pick list scanned.</p>
         </>
       )}
     </div>

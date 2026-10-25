@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createUser, resetPassword, ROLES, updateUser } from "@/server/services/users";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, Eyebrow, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -44,40 +45,46 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const users = await db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] });
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Users</h1>
-      <p className="max-w-3xl text-sm text-slate-600">Create logins for plant staff and set their role. Users are deactivated, never deleted, so history keeps its names. There must always be one active admin.</p>
+    <div className="space-y-4">
+      <PageHeader eyebrow="ADMIN" title="Users & roles" subtitle={`${users.filter((u) => u.active).length} active · ${users.filter((u) => !u.active).length} inactive`} />
+      <p className="max-w-3xl text-sm text-ink-2">Create logins for plant staff and set their role. Users are deactivated, never deleted, so history keeps its names. There must always be one active admin.</p>
       <Flash error={error} ok={ok} />
 
-      <form action={create} className="grid max-w-4xl gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
-        <label className="text-sm">Name<input name="name" required className={inputCls} /></label>
-        <label className="text-sm">Email<input name="email" type="email" required autoComplete="off" className={inputCls} /></label>
-        <label className="text-sm">Role
-          <select name="role" className={inputCls}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
-        </label>
-        <label className="text-sm">Initial password<input name="password" type="text" required minLength={8} autoComplete="off" className={inputCls} /></label>
-        <div className="flex items-end"><button className={btnCls}>Add user</button></div>
-      </form>
+      <Card className="space-y-3">
+        <Eyebrow>NEW USER</Eyebrow>
+        <form action={create} className="grid gap-3 md:grid-cols-5">
+          <label className="text-[13px]">Name<input name="name" required className={inputCls} /></label>
+          <label className="text-[13px]">Email<input name="email" type="email" required autoComplete="off" className={inputCls} /></label>
+          <label className="text-[13px]">Role
+            <select name="role" className={inputCls}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+          </label>
+          <label className="text-[13px]">Initial password<input name="password" type="text" required minLength={8} autoComplete="off" className={inputCls} /></label>
+          <div className="flex items-end"><button className={`${btnCls} w-full`}>Add user</button></div>
+        </form>
+      </Card>
 
-      <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         {users.map((u) => (
-          <div key={u.id} className={`max-w-4xl rounded-lg border bg-white p-4 ${u.active ? "" : "opacity-60"}`}>
-            <form action={save} className="grid items-end gap-3 md:grid-cols-5">
+          <article key={u.id} className={`rounded-[14px] bg-white p-4 ${u.active ? "" : "opacity-60"}`}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="flex min-w-0 flex-col"><span className="font-semibold">{u.name}</span><span className="truncate text-xs text-ink-3">{u.email}</span></span>
+              <Badge tone={u.active ? "ok" : "neutral"}>{u.active ? ROLE_LABEL[u.role] : "Inactive"}</Badge>
+            </div>
+            <form action={save} className="grid items-end gap-3 sm:grid-cols-2">
               <input type="hidden" name="id" value={u.id} />
-              <label className="text-sm">Name<input name="name" defaultValue={u.name} className={inputCls} /></label>
-              <div className="text-sm"><div className="text-xs text-slate-500">Email</div><div className="py-2">{u.email}</div></div>
-              <label className="text-sm">Role
+              <label className="text-[13px]">Name<input name="name" defaultValue={u.name} className={inputCls} /></label>
+              <label className="text-[13px]">Role
                 <select name="role" defaultValue={u.role} className={inputCls}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
               </label>
-              <label className="flex items-center gap-2 pb-2 text-sm"><input name="active" type="checkbox" defaultChecked={u.active} className="h-4 w-4" /> Active{u.id === me.id && " (you)"}</label>
-              <div><button className={btnCls}>Save</button></div>
+              <label className="flex min-h-11 items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={u.active} className="size-5 accent-[#c2410c]" /> Active{u.id === me.id && " (you)"}</label>
+              <div><button className={`${btnCls} w-full`}>Save</button></div>
             </form>
-            <form action={reset} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+            <form action={reset} className="mt-3 flex flex-wrap items-end gap-2 border-t border-line pt-3">
               <input type="hidden" name="id" value={u.id} />
-              <label className="text-xs text-slate-600">Reset password<input name="password" type="text" minLength={8} autoComplete="off" placeholder="new password" className="ml-2 rounded border border-slate-300 px-2 py-1 text-sm" /></label>
-              <button className="text-xs underline">Reset</button>
+              <label className="text-xs text-ink-2">Reset password<input name="password" type="text" minLength={8} autoComplete="off" placeholder="new password" className="ml-2 min-h-10 rounded-lg border border-border px-2 text-sm" /></label>
+              <button className="min-h-10 cursor-pointer text-xs font-semibold text-accent">Reset</button>
             </form>
-          </div>
+          </article>
         ))}
       </div>
     </div>

@@ -5,6 +5,7 @@ import { importDemand, undoImport } from "@/server/services/demand";
 import { MAX_UPLOAD_BYTES, parseDemandRows, readSpreadsheet } from "@/server/services/demand-import";
 import { DomainError } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -49,69 +50,69 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
   const totals = new Map<string, number>();
   for (const l of lines) totals.set(l.type, (totals.get(l.type) ?? 0) + l.qty);
 
+  const TYPE_TONE = { FIRM: "info", FORECAST: "neutral", SPOT: "warn" } as const;
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Customer Demand</h1>
-      <p className="max-w-3xl text-sm text-slate-600">
+    <div className="space-y-4">
+      <PageHeader eyebrow="SET UP" title="Customer demand" subtitle={`${lines.length} demand line${lines.length === 1 ? "" : "s"} loaded`} />
+      <p className="max-w-3xl text-sm text-ink-2">
         Upload rolling forecasts, firm weekly schedules and spot orders from Excel or CSV. The MRP plan uses these to work out what to make and buy.
         Dates are read day-first (05/11/2026 is 5 November). A file with any bad row is rejected as a whole, so nothing half-loads.
       </p>
       <Flash error={error} ok={ok} />
-      <p className="flex gap-4 text-sm print:hidden">
+      <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
         <DownloadLink href={"/api/v1/export/demand?format=xlsx"}>Download Excel</DownloadLink>
         <DownloadLink href={"/api/v1/export/demand?format=csv"}>Download CSV</DownloadLink>
-        <span className="text-slate-500">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+        <span className="font-normal text-ink-3">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
       </p>
 
-      <form action={upload} className="max-w-3xl space-y-3 rounded-lg border bg-white p-4">
-        <label className="block text-sm font-medium">Schedule file (.csv or .xlsx, up to 5 MB)
-          <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} file:mr-3`} />
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input name="replaceForecast" type="checkbox" defaultChecked className="h-4 w-4" />
-          New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
-        </label>
-        <p className="text-xs text-slate-500">Columns: customer_code, part_code, due_date, qty, type (FORECAST, FIRM or SPOT; blank means FIRM). <DownloadLink href={"/api/v1/demand-template"}>Download a template</DownloadLink>.</p>
-        <button className={btnCls}>Upload &amp; import</button>
-      </form>
-
-      <div className="flex flex-wrap gap-3 text-sm">
+      <div className="grid grid-cols-3 gap-2">
         {["FIRM", "FORECAST", "SPOT"].map((t) => (
-          <div key={t} className="rounded-lg border bg-white px-4 py-2"><div className="text-lg font-semibold">{(totals.get(t) ?? 0).toLocaleString()}</div><div className="text-xs text-slate-500">{t} parts</div></div>
+          <div key={t} className="rounded-[10px] bg-white px-3.5 py-2.5"><div className="font-display text-2xl font-extrabold">{(totals.get(t) ?? 0).toLocaleString()}</div><div className="text-xs text-ink-3">{t} parts</div></div>
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr><th className="p-2">Due</th><th className="p-2">Customer</th><th className="p-2">Part</th><th className="p-2 text-right">Qty</th><th className="p-2">Type</th></tr></thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.id} className="border-t">
-                <td className="p-2">{l.dueDate.toISOString().slice(0, 10)}</td><td className="p-2">{l.customer.name}</td><td className="p-2">{l.fgItem.code}</td>
-                <td className="p-2 text-right">{l.qty.toLocaleString()}</td><td className="p-2">{l.type}</td>
-              </tr>
-            ))}
-            {lines.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No demand loaded yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Card>
+        <form action={upload} className="space-y-3">
+          <label className="block text-[13px] font-semibold">Schedule file (.csv or .xlsx, up to 5 MB)
+            <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} py-2.5 file:mr-3`} />
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input name="replaceForecast" type="checkbox" defaultChecked className="mt-0.5 size-5 accent-[#c2410c]" />
+            New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
+          </label>
+          <p className="text-xs text-ink-3">Columns: customer_code, part_code, due_date, qty, type (FORECAST, FIRM or SPOT; blank means FIRM). <DownloadLink href={"/api/v1/demand-template"}>Download a template</DownloadLink>.</p>
+          <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
+        </form>
+      </Card>
 
-      <h2 className="text-lg font-semibold">Recent uploads</h2>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr><th className="p-2">When</th><th className="p-2">File</th><th className="p-2 text-right">Rows</th><th className="p-2 text-right">Replaced</th><th className="p-2"></th></tr></thead>
-          <tbody>
-            {imports.map((i) => (
-              <tr key={i.id} className="border-t">
-                <td className="p-2">{i.createdAt.toISOString().slice(0, 16).replace("T", " ")}</td><td className="p-2">{i.fileName}</td>
-                <td className="p-2 text-right">{i.rowCount}</td><td className="p-2 text-right">{i.replaced}</td>
-                <td className="p-2"><form action={undo}><input type="hidden" name="importId" value={i.id} /><button className="text-xs text-red-700 underline">Remove this upload</button></form></td>
-              </tr>
-            ))}
-            {imports.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No uploads yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>DEMAND LINES</Eyebrow>
+      <DataTable>
+        <thead><tr><th>Due</th><th>Customer</th><th>Part</th><th className="text-right!">Qty</th><th>Type</th></tr></thead>
+        <tbody>
+          {lines.map((l) => (
+            <tr key={l.id}>
+              <td><Mono className="text-xs">{l.dueDate.toISOString().slice(0, 10)}</Mono></td><td>{l.customer.name}</td><td><Mono className="font-semibold">{l.fgItem.code}</Mono></td>
+              <td className="text-right"><Mono>{l.qty.toLocaleString()}</Mono></td><td><Badge tone={TYPE_TONE[l.type as keyof typeof TYPE_TONE] ?? "neutral"}>{l.type}</Badge></td>
+            </tr>
+          ))}
+          {lines.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No demand loaded yet.</td></tr>}
+        </tbody>
+      </DataTable>
+
+      <Eyebrow>RECENT UPLOADS</Eyebrow>
+      <DataTable>
+        <thead><tr><th>When</th><th>File</th><th className="text-right!">Rows</th><th className="text-right!">Replaced</th><th></th></tr></thead>
+        <tbody>
+          {imports.map((i) => (
+            <tr key={i.id}>
+              <td><Mono className="text-xs">{i.createdAt.toISOString().slice(0, 16).replace("T", " ")}</Mono></td><td>{i.fileName}</td>
+              <td className="text-right"><Mono>{i.rowCount}</Mono></td><td className="text-right"><Mono>{i.replaced}</Mono></td>
+              <td><form action={undo}><input type="hidden" name="importId" value={i.id} /><button className="min-h-9 cursor-pointer text-xs font-semibold text-danger">Remove this upload</button></form></td>
+            </tr>
+          ))}
+          {imports.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No uploads yet.</td></tr>}
+        </tbody>
+      </DataTable>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
-import { createDispatch } from "@/server/services/dispatch";
+import { createDispatch, dispatchProgress } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
 const LINES = 4;
@@ -32,47 +33,60 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
     db.dispatch.findMany({ orderBy: { createdAt: "desc" }, take: 25, include: { customer: true, lines: { include: { item: true } } } }),
   ]);
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Dispatch</h1>
-      <Flash error={error} ok={ok} />
-      <form action={create} className="max-w-4xl space-y-3 rounded-lg border bg-white p-4">
-        <h2 className="font-medium">New pick list</h2>
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm">Customer
-            <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          </label>
-          <label className="text-sm">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
-          <label className="text-sm">Driver<input name="driverName" className={inputCls} /></label>
-        </div>
-        {Array.from({ length: LINES }, (_, i) => (
-          <div key={i} className="grid gap-2 md:grid-cols-4">
-            <select name={`item_${i}`} className={`${inputCls} md:col-span-3`} aria-label={`Part ${i + 1}`}>
-              <option value="">— part {i + 1} —</option>
-              {fgItems.map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
-            </select>
-            <input name={`qty_${i}`} type="number" min="1" step="1" placeholder="Qty" className={inputCls} aria-label={`Quantity ${i + 1}`} />
-          </div>
-        ))}
-        <button className={btnCls}>Create &amp; start loading</button>
-      </form>
+  const progress = new Map(
+    await Promise.all(dispatches.filter((d) => d.status === "LOADING").map(async (d) => [d.id, await dispatchProgress(d.id)] as const)),
+  );
+  const tone = (s: string) => (s === "DISPATCHED" ? "ok" : s === "CANCELLED" ? "danger" : "warn") as "ok" | "danger" | "warn";
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">DC</th><th className="p-2">Customer</th><th className="p-2">Vehicle</th><th className="p-2">Pick list</th><th className="p-2">Status</th>
-          </tr></thead>
-          <tbody>
-            {dispatches.map((d) => (
-              <tr key={d.id} className="border-t">
-                <td className="p-2 font-medium"><Link className="underline" href={`/dispatch/${d.id}`}>{d.dcNumber}</Link></td>
-                <td className="p-2">{d.customer.name}</td><td className="p-2">{d.vehicleNumber}</td>
-                <td className="p-2">{d.lines.map((l) => `${l.item.code} × ${l.qty.toLocaleString()}`).join(", ")}</td><td className="p-2">{d.status}</td>
-              </tr>
-            ))}
-            {dispatches.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No dispatches yet.</td></tr>}
-          </tbody>
-        </table>
+  return (
+    <div className="space-y-4">
+      <PageHeader eyebrow="SHIP" title="Dispatch" subtitle={`${dispatches.filter((d) => d.status === "LOADING").length} loading now`} />
+      <Flash error={error} ok={ok} />
+      <Card className="space-y-3">
+        <Eyebrow>NEW PICK LIST</Eyebrow>
+        <form action={create} className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-[13px]">Customer
+              <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            </label>
+            <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
+            <label className="text-[13px]">Driver<input name="driverName" className={inputCls} /></label>
+          </div>
+          {Array.from({ length: LINES }, (_, i) => (
+            <div key={i} className="grid gap-2 md:grid-cols-4">
+              <select name={`item_${i}`} className={`${inputCls} md:col-span-3`} aria-label={`Part ${i + 1}`}>
+                <option value="">— part {i + 1} —</option>
+                {fgItems.map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
+              </select>
+              <input name={`qty_${i}`} type="number" min="1" step="1" placeholder="Qty" className={inputCls} aria-label={`Quantity ${i + 1}`} />
+            </div>
+          ))}
+          <button className={`${btnCls} w-full md:w-auto`}>Create &amp; start loading</button>
+        </form>
+      </Card>
+
+      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+        {dispatches.map((d) => {
+          const pr = progress.get(d.id);
+          const ordered = pr ? pr.lines.reduce((a, l) => a + l.ordered, 0) : 0;
+          const scanned = pr ? pr.lines.reduce((a, l) => a + Math.min(l.scanned, l.ordered), 0) : 0;
+          return (
+            <Link key={d.id} href={`/dispatch/${d.id}`} className="flex flex-col gap-2 rounded-[14px] bg-white p-3.5">
+              <span className="flex items-start justify-between gap-2">
+                <span className="flex flex-col"><Mono className="text-[15px] font-semibold">{d.dcNumber}</Mono><span className="text-[13px] text-ink-2">{d.customer.name} · {d.vehicleNumber}</span></span>
+                <Badge tone={tone(d.status)}>{d.status}</Badge>
+              </span>
+              <span className="text-xs text-ink-3">{d.lines.map((l) => `${l.item.code} × ${l.qty.toLocaleString()}`).join(", ")}</span>
+              {pr && (
+                <span className="flex flex-col gap-1">
+                  <span className="flex justify-between text-xs"><span className="text-ink-3">Scanned</span><Mono>{scanned.toLocaleString()} / {ordered.toLocaleString()}</Mono></span>
+                  <ProgressBar value={scanned} max={ordered} color={scanned >= ordered ? "#1E7A46" : "#1D4ED8"} />
+                </span>
+              )}
+            </Link>
+          );
+        })}
+        {dispatches.length === 0 && <Card><p className="text-sm text-ink-3">No dispatches yet.</p></Card>}
       </div>
     </div>
   );

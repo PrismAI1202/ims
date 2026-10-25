@@ -88,16 +88,16 @@ export function WeightInput({
             </>
           ) : (
             <>
-              <span className={reading ? (reading.stable ? "font-medium text-green-700" : "text-amber-700") : "text-slate-500"}>
+              <span className={reading ? (reading.stable ? "font-semibold text-ok" : "text-warn-ink") : "text-ink-3"}>
                 {reading ? `${reading.kg} kg${reading.stable ? "" : " (settling…)"}` : "Waiting for the scale…"}
               </span>
-              <button type="button" onClick={useWeight} disabled={!reading?.stable} className="rounded border px-2 py-1 disabled:opacity-40">Use this weight</button>
-              <button type="button" onClick={() => void stop.current?.()} className="underline">Disconnect</button>
+              <button type="button" onClick={useWeight} disabled={!reading?.stable} className="min-h-9 cursor-pointer rounded-lg border border-border bg-white px-3 text-xs font-semibold disabled:opacity-40">Use this weight</button>
+              <button type="button" onClick={() => void stop.current?.()} className="min-h-9 cursor-pointer text-xs font-semibold text-ink-2">Disconnect</button>
             </>
           )}
         </div>
       )}
-      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

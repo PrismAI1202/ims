@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { packBoxes, unboxedQty } from "@/server/services/fg";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -39,53 +40,54 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
   })))).filter((s) => s.free > 0);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Finished Goods &amp; Box Labels</h1>
-      <p className="max-w-3xl text-sm text-slate-600">
-        Pack finished-goods lots into labelled boxes for a customer. The label follows the customer&apos;s format (OEM labels carry part, batch, shift, machine, quantity and date).
+    <div className="space-y-4">
+      <PageHeader eyebrow="STORE & SHOP FLOOR" title="FG & box labels" subtitle="Pack finished goods into labelled boxes for a customer" />
+      <p className="max-w-3xl text-sm text-ink-2">
+        The label follows the customer&apos;s format (OEM labels carry part, batch, shift, machine, quantity and date).
         Boxes reserve stock; it leaves the bin when the box is scanned onto a completed dispatch.
       </p>
       <Flash error={error} ok={ok} />
       {sources.length === 0 ? (
-        <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">No unboxed finished goods. Book production first.</p>
+        <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No unboxed finished goods. Book production first.</p>
       ) : (
-        <form action={pack} className="grid max-w-4xl gap-3 rounded-lg border bg-white p-4 md:grid-cols-4">
-          <label className="text-sm md:col-span-2">Lot / bin
-            <select name="source" required className={inputCls}>
-              {sources.map((s) => <option key={s.key} value={s.key}>{s.lot} · {s.part} · {s.bin} · {s.free.toLocaleString()} unboxed</option>)}
-            </select>
-          </label>
-          <label className="text-sm md:col-span-2">Customer
-            <select name="customerId" required className={inputCls}>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.labelFormat})</option>)}
-            </select>
-          </label>
-          <label className="text-sm">Parts per box<input name="qtyPerBox" type="number" min="1" step="1" required className={inputCls} /></label>
-          <label className="text-sm">Number of boxes<input name="boxCount" type="number" min="1" max="200" step="1" defaultValue={1} required className={inputCls} /></label>
-          <div className="flex items-end md:col-span-2"><button className={btnCls}>Create boxes</button></div>
-        </form>
+        <Card>
+          <form action={pack} className="grid gap-3 md:grid-cols-4">
+            <label className="text-[13px] md:col-span-2">Lot / bin
+              <select name="source" required className={inputCls}>
+                {sources.map((s) => <option key={s.key} value={s.key}>{s.lot} · {s.part} · {s.bin} · {s.free.toLocaleString()} unboxed</option>)}
+              </select>
+            </label>
+            <label className="text-[13px] md:col-span-2">Customer
+              <select name="customerId" required className={inputCls}>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.labelFormat})</option>)}
+              </select>
+            </label>
+            <label className="text-[13px]">Parts per box<input name="qtyPerBox" type="number" min="1" step="1" required className={inputCls} /></label>
+            <label className="text-[13px]">Number of boxes<input name="boxCount" type="number" min="1" max="200" step="1" defaultValue={1} required className={inputCls} /></label>
+            <div className="flex items-end md:col-span-2"><button className={`${btnCls} w-full md:w-auto`}>Create boxes</button></div>
+          </form>
+        </Card>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left"><tr>
-            <th className="p-2">Box</th><th className="p-2">Part</th><th className="p-2">Customer</th><th className="p-2 text-right">Qty</th>
-            <th className="p-2">Batch</th><th className="p-2">Status</th><th className="p-2">Label</th>
-          </tr></thead>
-          <tbody>
-            {boxes.map((b) => (
-              <tr key={b.id} className="border-t">
-                <td className="p-2 font-medium">{b.boxCode}</td><td className="p-2">{b.lot.item.code}</td><td className="p-2">{b.customer.name}</td>
-                <td className="p-2 text-right">{b.qty.toLocaleString()}</td><td className="p-2">{b.batchCode ?? "—"}</td><td className="p-2">{b.status}</td>
-                <td className="p-2"><Link className="underline" target="_blank" href={`/fg/labels?boxes=${b.boxCode}`}>Print</Link></td>
-              </tr>
-            ))}
-            {boxes.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={7}>No boxes yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>BOXES</Eyebrow>
+      <DataTable>
+        <thead><tr>
+          <th>Box</th><th>Part</th><th>Customer</th><th className="text-right!">Qty</th><th>Batch</th><th>Status</th><th>Label</th>
+        </tr></thead>
+        <tbody>
+          {boxes.map((b) => (
+            <tr key={b.id}>
+              <td><Mono className="text-xs font-semibold">{b.boxCode}</Mono></td><td>{b.lot.item.code}</td><td>{b.customer.name}</td>
+              <td className="text-right"><Mono>{b.qty.toLocaleString()}</Mono></td><td><Mono className="text-xs">{b.batchCode ?? "—"}</Mono></td>
+              <td><Badge tone={b.status === "IN_STOCK" ? "info" : "ok"}>{b.status}</Badge></td>
+              <td><Link className="font-semibold text-accent" target="_blank" href={`/fg/labels?boxes=${b.boxCode}`}>Print</Link></td>
+            </tr>
+          ))}
+          {boxes.length === 0 && <tr><td className="text-ink-3" colSpan={7}>No boxes yet.</td></tr>}
+        </tbody>
+      </DataTable>
       {boxes.filter((b) => b.status === "IN_STOCK").length > 1 && (
-        <Link className="text-sm underline" target="_blank"
+        <Link className="inline-block text-sm font-semibold text-accent" target="_blank"
           href={`/fg/labels?boxes=${boxes.filter((b) => b.status === "IN_STOCK").map((b) => b.boxCode).join(",")}`}>
           Print all labels for boxes in stock
         </Link>

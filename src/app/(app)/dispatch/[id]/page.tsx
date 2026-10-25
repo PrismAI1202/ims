@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { cancelDispatch, completeDispatch, dispatchProgress, scanBox, unscanBox } from "@/server/services/dispatch";
-import { btnCls, Flash, inputCls } from "@/components/flash";
+import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
 
@@ -58,83 +59,91 @@ export default async function DispatchDetail({
   ]);
   const loading = d.status === "LOADING";
 
+  const totalOrdered = progress.lines.reduce((a, l) => a + l.ordered, 0);
+  const totalScanned = progress.lines.reduce((a, l) => a + Math.min(l.scanned, l.ordered), 0);
+  const tone = d.status === "DISPATCHED" ? "ok" : d.status === "CANCELLED" ? "danger" : "warn";
+
   return (
-    <div className="space-y-6">
-      <Link href="/dispatch" className="text-sm underline">← Dispatches</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">{d.dcNumber} <span className="text-base font-normal text-slate-500">· {d.status}</span></h1>
-        <p className="text-sm text-slate-600">{d.customer.name} · vehicle {d.vehicleNumber}{d.driverName ? ` · driver ${d.driverName}` : ""}</p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader eyebrow={`DISPATCH · ${d.customer.name.toUpperCase()}`} title={d.dcNumber}
+        subtitle={`Vehicle ${d.vehicleNumber}${d.driverName ? ` · driver ${d.driverName}` : ""}`} right={<Badge tone={tone}>{d.status}</Badge>}>
+        <Link href="/dispatch" className="text-sm font-semibold">← All dispatches</Link>
+      </PageHeader>
       <Flash error={error} ok={ok} />
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full max-w-3xl text-sm">
-          <thead className="bg-slate-100 text-left"><tr><th className="p-2">Part</th><th className="p-2 text-right">Pick list</th><th className="p-2 text-right">Scanned</th><th className="p-2">Progress</th></tr></thead>
-          <tbody>
-            {progress.lines.map((l) => (
-              <tr key={l.itemId} className="border-t">
-                <td className="p-2"><div className="font-medium">{l.code}</div><div className="text-slate-500">{l.name}</div></td>
-                <td className="p-2 text-right">{l.ordered.toLocaleString()}</td><td className="p-2 text-right">{l.scanned.toLocaleString()}</td>
-                <td className={`p-2 ${l.scanned === l.ordered ? "text-green-700" : l.scanned > l.ordered ? "text-red-700" : "text-amber-700"}`}>
-                  {l.scanned === l.ordered ? "Complete" : `${(l.ordered - l.scanned).toLocaleString()} to go`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Card className="space-y-2.5">
+        <div className="flex items-baseline justify-between"><span className="font-display text-base font-bold">Pick-list scan</span><Mono className="text-[15px]">{totalScanned.toLocaleString()} / {totalOrdered.toLocaleString()}</Mono></div>
+        <ProgressBar value={totalScanned} max={totalOrdered} color={totalScanned >= totalOrdered ? "#1E7A46" : "#1D4ED8"} />
+        <div className="grid gap-2.5 pt-1 md:grid-cols-2">
+          {progress.lines.map((l) => (
+            <div key={l.itemId} className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2 text-sm"><span><strong>{l.code}</strong> <span className="text-ink-3">{l.name}</span></span>
+                <span className={`text-xs font-semibold ${l.scanned === l.ordered ? "text-ok" : l.scanned > l.ordered ? "text-danger" : "text-warn-ink"}`}>
+                  {l.scanned === l.ordered ? "Complete" : l.scanned > l.ordered ? "Over" : `${(l.ordered - l.scanned).toLocaleString()} to go`}</span></div>
+              <ProgressBar value={Math.min(l.scanned, l.ordered)} max={l.ordered} color={l.scanned === l.ordered ? "#1E7A46" : "#1D4ED8"} />
+              <div className="text-[11px] text-ink-3"><Mono>{l.scanned.toLocaleString()}</Mono> of <Mono>{l.ordered.toLocaleString()}</Mono></div>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       {loading && (
-        <form action={scan} className="flex max-w-xl items-end gap-3 rounded-lg border bg-white p-4">
-          <input type="hidden" name="dispatchId" value={d.id} />
-          <label className="flex-1 text-sm font-medium">Scan box label
-            <input name="scan" autoFocus required autoComplete="off" autoCapitalize="characters" spellCheck={false} className={`${inputCls} text-base`} />
-          </label>
-          <button className={btnCls}>Load box</button>
-        </form>
+        <Card>
+          <form action={scan} className="flex items-end gap-3">
+            <input type="hidden" name="dispatchId" value={d.id} />
+            <label className="flex-1 text-[13px] font-semibold">Scan box label
+              <input name="scan" autoFocus required autoComplete="off" autoCapitalize="characters" spellCheck={false} className={inputCls} />
+            </label>
+            <button className={btnCls}>Load box</button>
+          </form>
+        </Card>
       )}
 
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full max-w-3xl text-sm">
-          <thead className="bg-slate-100 text-left"><tr><th className="p-2">Box</th><th className="p-2">Part</th><th className="p-2">Batch</th><th className="p-2 text-right">Qty</th><th className="p-2"></th></tr></thead>
-          <tbody>
-            {progress.boxes.map((b) => (
-              <tr key={b.boxCode} className="border-t">
-                <td className="p-2 font-medium">{b.boxCode}</td><td className="p-2">{b.itemCode}</td><td className="p-2">{b.batchCode ?? "—"}</td>
-                <td className="p-2 text-right">{b.qty.toLocaleString()}</td>
-                <td className="p-2">{loading && (
-                  <form action={remove}><input type="hidden" name="dispatchId" value={d.id} /><input type="hidden" name="boxCode" value={b.boxCode} /><button className="text-xs underline">Remove</button></form>
-                )}</td>
-              </tr>
-            ))}
-            {progress.boxes.length === 0 && <tr><td className="p-4 text-slate-500" colSpan={5}>No boxes scanned yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <Eyebrow>BOXES ON THIS LOAD · {progress.boxes.length}</Eyebrow>
+      <DataTable>
+        <thead><tr><th>Box</th><th>Part</th><th>Batch</th><th className="text-right!">Qty</th><th></th></tr></thead>
+        <tbody>
+          {progress.boxes.map((b) => (
+            <tr key={b.boxCode}>
+              <td className="font-semibold"><Mono className="text-xs">{b.boxCode}</Mono></td><td>{b.itemCode}</td><td><Mono className="text-xs">{b.batchCode ?? "—"}</Mono></td>
+              <td className="text-right"><Mono>{b.qty.toLocaleString()}</Mono></td>
+              <td>{loading && (
+                <form action={remove}><input type="hidden" name="dispatchId" value={d.id} /><input type="hidden" name="boxCode" value={b.boxCode} /><button className="cursor-pointer text-xs font-semibold text-danger">Remove</button></form>
+              )}</td>
+            </tr>
+          ))}
+          {progress.boxes.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No boxes scanned yet.</td></tr>}
+        </tbody>
+      </DataTable>
 
       {loading && (
-        <div className="max-w-3xl space-y-3">
-          <form action={complete} className="space-y-3 rounded-lg border bg-white p-4">
-            <input type="hidden" name="dispatchId" value={d.id} />
-            <h2 className="font-medium">Complete dispatch</h2>
-            <p className="text-sm text-slate-600">Stock is deducted only when you complete. Add the returnable crates going out with this load, if any.</p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-sm md:col-span-2">Crates / trolleys / pallets
-                <select name="crateItemId" className={inputCls}><option value="">None</option>{crates.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select>
-              </label>
-              <label className="text-sm">Quantity<input name="crateQty" type="number" min="0" step="1" className={inputCls} /></label>
-            </div>
-            <button className={btnCls} disabled={!progress.complete}>{progress.complete ? "Complete & dispatch" : "Scan the full pick list first"}</button>
-          </form>
-          <form action={cancel}><input type="hidden" name="dispatchId" value={d.id} /><button className="text-sm text-red-700 underline">Cancel this dispatch</button></form>
+        <div className="space-y-3">
+          <Card>
+            <form action={complete} className="space-y-3">
+              <input type="hidden" name="dispatchId" value={d.id} />
+              <span className="font-display text-base font-bold">Complete dispatch</span>
+              <p className="text-sm text-ink-2">Stock is deducted only when you complete. Add the returnable crates going out with this load, if any.</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="text-[13px] md:col-span-2">Crates / trolleys / pallets
+                  <select name="crateItemId" className={inputCls}><option value="">None</option>{crates.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}</select>
+                </label>
+                <label className="text-[13px]">Quantity<input name="crateQty" type="number" min="0" step="1" className={inputCls} /></label>
+              </div>
+              <button className={`${btnCls} w-full disabled:cursor-not-allowed disabled:opacity-50 md:w-auto`} disabled={!progress.complete}>{progress.complete ? "Complete & dispatch" : "Scan the full pick list first"}</button>
+            </form>
+          </Card>
+          <form action={cancel}><input type="hidden" name="dispatchId" value={d.id} /><button className="min-h-10 cursor-pointer text-sm font-semibold text-danger">Cancel this dispatch</button></form>
         </div>
       )}
 
       {d.status !== "CANCELLED" && (
-        <p className="flex gap-4 text-sm">
-          <Link className="underline" target="_blank" href={`/dispatch/${d.id}/dc`}>Delivery challan &amp; packing list</Link>
-          <DownloadLink href={`/api/v1/dispatch/${d.id}/eway`}>Download e-way bill data (JSON)</DownloadLink>
-        </p>
+        <Card className="space-y-2">
+          <Eyebrow>DOCUMENTS</Eyebrow>
+          <div className="flex flex-wrap gap-2">
+            <Link className={btnSecondaryCls} target="_blank" href={`/dispatch/${d.id}/dc`}>Delivery challan &amp; packing list</Link>
+            <DownloadLink href={`/api/v1/dispatch/${d.id}/eway`}>Download e-way bill data (JSON)</DownloadLink>
+          </div>
+        </Card>
       )}
     </div>
   );
