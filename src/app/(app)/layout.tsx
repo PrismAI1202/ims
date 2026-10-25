@@ -5,6 +5,7 @@ import { can } from "@/server/auth/permissions";
 import { BottomNav } from "@/components/bottom-nav";
 import { SideNav } from "@/components/side-nav";
 import { NAV_GROUPS } from "@/components/nav-data";
+import { roleLabel } from "@/components/ui";
 
 export const instant = false;
 
@@ -33,26 +34,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           }}
         >
           <div className="text-sm text-on-shell">{session.user.name}</div>
-          <div className="mb-2">{role.replace("_", " ")}</div>
+          <div className="mb-2">{roleLabel(role)}</div>
           <button className="min-h-9 rounded-lg bg-on-shell px-3 font-semibold text-ink">Sign out</button>
         </form>
       </aside>
       <main className="min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8">
-        <div className="mb-3 flex items-center justify-between gap-3 md:hidden">
-          <span className="text-sm text-ink-3">
-            {session.user.name} · {role.replace("_", " ")}
-          </span>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/login" });
-            }}
-          >
-            <button className="min-h-9 rounded-lg border border-border bg-white px-3 text-[13px] font-semibold">
-              Sign out
-            </button>
-          </form>
-        </div>
         {children}
       </main>
       <BottomNav />

@@ -16,24 +16,40 @@ export function PageHeader({
   eyebrow,
   title,
   subtitle,
+  right,
   children,
 }: {
   eyebrow?: string;
   title: string;
   subtitle?: string;
+  right?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   return (
-    <header className="-mx-4 -mt-4 mb-4 bg-shell px-5 pb-4 pt-8 text-on-shell md:-mx-8 md:-mt-8 md:mb-6 md:px-8 md:pt-8">
-      {eyebrow && (
-        <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">{eyebrow}</div>
-      )}
-      <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight">{title}</h1>
-      {subtitle && <p className="mt-0.5 text-[13px] text-on-shell-2">{subtitle}</p>}
+    <header className="-mx-4 -mt-4 mb-4 bg-shell px-5 pb-4 pt-10 text-on-shell md:-mx-8 md:-mt-8 md:mb-6 md:px-8 md:pt-8">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {eyebrow && (
+            <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">{eyebrow}</div>
+          )}
+          <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight">{title}</h1>
+          {subtitle && <p className="mt-0.5 text-[13px] text-on-shell-2">{subtitle}</p>}
+        </div>
+        {right && <div className="flex-none">{right}</div>}
+      </div>
       {children && <div className="mt-3">{children}</div>}
     </header>
   );
 }
+
+/** "STORE_INCHARGE" -> "Store Incharge". */
+export function roleLabel(role: string) {
+  return role.toLowerCase().split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
+/** Light pill button for use on the dark header (Sign out, Scan…). */
+export const headerBtnCls =
+  "flex min-h-11 items-center gap-2 rounded-[10px] bg-on-shell px-3.5 text-sm font-semibold text-ink";
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <section className={`rounded-[14px] bg-white p-4 ${className}`}>{children}</section>;

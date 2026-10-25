@@ -3,7 +3,9 @@ import { can } from "@/server/auth/permissions";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { Badge, Card, DataTable, Mono, PageHeader, StoresTabs } from "@/components/ui";
+import Link from "next/link";
+import { ScanLine } from "lucide-react";
+import { Badge, Card, DataTable, headerBtnCls, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
 
@@ -32,7 +34,13 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="STORES" title="Stock & bins">
+      <PageHeader
+        eyebrow="STORES"
+        title="Stock & bins"
+        right={can(user.role, "stock.transfer") ? (
+          <Link href="/scan" className={headerBtnCls}><ScanLine size={16} aria-hidden /> Scan</Link>
+        ) : undefined}
+      >
         <StoresTabs active="/stock" />
       </PageHeader>
       <Flash error={error} ok={ok} />

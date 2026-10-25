@@ -4,7 +4,8 @@ import { stockByItem } from "@/server/services/stock";
 import { requirePermission } from "@/server/auth/guard";
 import { can, type Permission } from "@/server/auth/permissions";
 import { Flash } from "@/components/flash";
-import { Card, Chip, Eyebrow, Mono, PageHeader, SectionTitle, StatTile } from "@/components/ui";
+import { Card, Chip, Eyebrow, Mono, PageHeader, roleLabel, SectionTitle, StatTile } from "@/components/ui";
+import { SignOutButton } from "@/components/sign-out";
 
 const TONE = {
   RED: "bg-danger text-white",
@@ -44,14 +45,20 @@ export default async function Dashboard({
       <PageHeader
         eyebrow="PLANT 2 · MOULDING SHOP"
         title={user.name ?? "Home"}
-        subtitle={user.role.replace("_", " ")}
+        subtitle={roleLabel(user.role)}
+        right={<SignOutButton />}
       />
       <Flash error={error} />
       <Card className="space-y-3">
-        <div>
-          <SectionTitle>Stock health</SectionTitle>
-          <p className="text-xs text-ink-3">{rows.length} stock items</p>
-        </div>
+        <Link href="/stock" className="flex min-h-8 items-center justify-between gap-2">
+          <span>
+            <SectionTitle>Stock health</SectionTitle>
+            <span className="block text-xs text-ink-3">{rows.length} stock items</span>
+          </span>
+          <span className="flex items-center gap-1 text-[13px] font-semibold text-accent">
+            Stores <ChevronRight size={18} aria-hidden />
+          </span>
+        </Link>
         <div className="grid grid-cols-3 gap-2">
           {(["RED", "YELLOW", "GREEN"] as const).map((s) => (
             <StatTile
