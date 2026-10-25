@@ -133,3 +133,31 @@ export async function machineReliability(days = 30, db: Db = defaultDb, now = ne
     return { machineId: m.id, code: m.code, breakdowns: breakdowns.length, ...r, nextPm: next ? next.day.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—" };
   });
 }
+
+export interface MouldSettingsInput {
+  mouldId: string; idealCycleSec?: number | null; minTonnage?: number | null;
+  pmIntervalShots: number; lifeShots: number; openingShots: number;
+}
+
+export function validateMouldSettings(i: Omit<MouldSettingsInput, "mouldId">): string | null {
+  if (i.idealCycleSec != null && !(i.idealCycleSec > 0 && i.idealCycleSec <= 3600)) return "Standard cycle time must be between 0 and 3600 seconds.";
+  if (i.minTonnage != null && !(Number.isInteger(i.minTonnage) && i.minTonnage > 0)) return "Minimum tonnage must be a whole number above 0.";
+  if (!Number.isInteger(i.pmIntervalShots) || i.pmIntervalShots < 1000) return "The PM interval must be at least 1,000 shots.";
+  if (!Number.isInteger(i.lifeShots) || i.lifeShots < i.pmIntervalShots) return "Mould life can't be shorter than one PM interval.";
+  if (!Number.isInteger(i.openingShots) || i.openingShots < 0) return "The opening shot count can't be negative.";
+  return null;
+}
+
+/** Standard cycle time, press size and PM plan for a mould. Cycle time is what makes OEE performance measurable. */
+export async function updateMouldSettings(input: MouldSettingsInput, db: Db = defaultDb) {
+  const err = validateMouldSettings(input);
+  if (err) throw new DomainError(err);
+  if (!(await db.mould.findUnique({ where: { id: input.mouldId } }))) throw new DomainError("Unknown mould.");
+  return db.mould.update({
+    where: { id: input.mouldId },
+    data: {
+      idealCycleSec: input.idealCycleSec ?? null, minTonnage: input.minTonnage ?? null,
+      pmIntervalShots: input.pmIntervalShots, lifeShots: input.lifeShots, openingShots: input.openingShots,
+    },
+  });
+}

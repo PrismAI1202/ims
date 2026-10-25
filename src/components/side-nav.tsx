@@ -26,7 +26,6 @@ export function SideNav({ groups }: { groups: NavGroup[] }) {
             className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pathname.startsWith(n.href) ? "bg-shell-2 font-semibold text-accent" : "text-on-shell hover:bg-shell-2"}`}>
             <span className="h-4 w-1 flex-none rounded-sm" style={{ background: n.bar }} />
             <span className="flex-1">{n.name}</span>
-            {n.href !== "/trace" && <span className="text-[10px] text-on-shell-2">Sample</span>}
           </Link>
         ))}
       </div>
@@ -44,7 +43,6 @@ export function SideNav({ groups }: { groups: NavGroup[] }) {
                 <span className="h-4 w-1 flex-none rounded-sm" style={{ background: n.bar }} />
                 <span className="flex-1">{n.name}</span>
                 {n.stub && <span className="text-[10px] text-on-shell-2">Soon</span>}
-                {n.sample && <span className="text-[10px] text-on-shell-2">Sample</span>}
               </Link>
             );
           })}

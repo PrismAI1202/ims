@@ -54,11 +54,10 @@ export async function computeMetrics(db: Db = defaultDb, now = new Date()): Prom
   const shiftMinutes = await getShiftMinutes(db);
   const earliest = bucketKeys("monthly", now).from;
   const since = new Date(`${earliest}T00:00:00.000Z`);
-  const [bookings, downs, machines, moulds, stock, returnables, maint] = await Promise.all([
+  const [bookings, downs, machines, stock, returnables, maint] = await Promise.all([
     db.productionBooking.findMany({ where: { producedAt: { gte: since } }, include: { bom: { include: { mould: true } } } }),
     db.downtime.findMany({ where: { day: { gte: since } } }),
     db.machine.findMany({ orderBy: { code: "asc" } }),
-    db.mould.findMany(),
     stockByItem(db),
     returnableBalances(db),
     mouldRows(db),

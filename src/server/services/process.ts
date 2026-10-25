@@ -4,18 +4,7 @@ import { fileUrl, isFileRef } from "./storage";
 
 type Db = PrismaClient;
 
-export interface ProcessPhoto { name: string; href?: string }
-export interface ProcessEntry {
-  id: string; by: string; init: string; avBg: string; time: string; status: string;
-  photos: ProcessPhoto[]; fields: [string, string][];
-}
-export interface ProcessStage {
-  key: string; name: string; role: string; owners: string[]; color: string; rule: string;
-  proofs: string[]; link: string; linkLabel: string; desc: string; entries: ProcessEntry[];
-}
-
-/** Statuses that mean someone still has to act. */
-export const PENDING_STATUSES = ["Pending QC", "Draft", "Picking", "Review", "Waiting", "Pending", "Hold", "Open", "In progress", "Due", "Planned", "To put away"];
+import type { ProcessEntry, ProcessPhoto, ProcessStage } from "@/lib/process-types";
 
 type Seg = "auto" | "non";
 const AUTO = "AUTOMOTIVE";

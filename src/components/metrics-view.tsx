@@ -4,10 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, HelpCircle, TriangleAlert } from "lucide-react";
 import { Badge, Card, LegendDot, Mono, PageHeader } from "@/components/ui";
-import { METRICS, METRIC_DEFS, type KpiTile } from "@/lib/demo/metrics";
+import { METRIC_DEFS } from "@/lib/metric-defs";
+import type { KpiTile, MetricsData } from "@/server/services/metrics";
 
-const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
-const pct0 = (x: number) => `${(x * 100).toFixed(0)}%`;
+const pct = (x: number | null) => (x === null ? "—" : `${(x * 100).toFixed(1)}%`);
+const pct0 = (x: number | null) => (x === null ? "—" : `${(x * 100).toFixed(0)}%`);
 const TONE_FG: Record<KpiTile["tone"], string> = { ok: "text-ok", warn: "text-warn-ink", danger: "text-danger", neutral: "text-ink-2" };
 
 const canHover = () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches;
@@ -34,44 +35,56 @@ function Tip({ k, openKey, setOpen, align = "right" }: { k: string; openKey: str
   );
 }
 
-export function MetricsView({ belowMin }: { belowMin: number }) {
+export function MetricsView({ data, footer }: { data: MetricsData; footer?: React.ReactNode }) {
   const [mode, setMode] = useState(0);
   const [selIdx, setSel] = useState<number | null>(null);
   const [tip, setTip] = useState<string | null>(null);
 
-  const D = METRICS[mode];
+  const D = data.periods[mode];
   const n = D.labels.length;
-  const sel = selIdx === null || selIdx >= n ? n - 1 : selIdx;
-  const oeeAt = (i: number) => D.A[i] * D.P[i] * D.Q[i];
+  const oeeAt = (i: number): number | null => (D.A[i] === null || D.P[i] === null || D.Q[i] === null ? null : D.A[i]! * D.P[i]! * D.Q[i]!);
+  // Start on the latest period that has data (today may be a day off), unless the viewer tapped a bar.
+  const latest = Math.max(0, D.labels.map((_, i) => i).filter((i) => oeeAt(i) !== null).pop() ?? n - 1);
+  const sel = selIdx === null || selIdx >= n ? latest : selIdx;
   const o = oeeAt(sel);
-  const dpp = sel > 0 ? (o - oeeAt(sel - 1)) * 100 : null;
-  const band = o >= 0.85 ? { t: "World-class", cls: "bg-ok-bg text-ok-ink", Icon: Check } : o >= 0.65 ? { t: "Above typical", cls: "bg-info-bg text-info-ink", Icon: ArrowRight } : { t: "Below target", cls: "bg-danger-bg text-danger", Icon: TriangleAlert };
+  const before = sel > 0 ? oeeAt(sel - 1) : null;
+  const dpp = o !== null && before !== null ? (o - before) * 100 : null;
+  const band = o === null ? { t: "No data", cls: "bg-canvas text-ink-2", Icon: ArrowRight } : o >= 0.85 ? { t: "World-class", cls: "bg-ok-bg text-ok-ink", Icon: Check } : o >= 0.65 ? { t: "Above typical", cls: "bg-info-bg text-info-ink", Icon: ArrowRight } : { t: "Below target", cls: "bg-danger-bg text-danger", Icon: TriangleAlert };
   const total = D.pareto.reduce((a, x) => a + x[1], 0);
-  const maxDown = D.pareto[0][1];
-  const top2 = D.pareto[0][1] + D.pareto[1][1];
-  const kpis = D.kpis.map((k) => (k.label === "Items below min" ? { ...k, value: String(belowMin), note: belowMin ? "Raise POs · live count" : "All above min · live count", tone: belowMin ? "danger" as const : "ok" as const } : k));
+  const maxDown = D.pareto[0]?.[1] ?? 1;
+  const top2 = (D.pareto[0]?.[1] ?? 0) + (D.pareto[1]?.[1] ?? 0);
+  const kpis = D.kpis;
 
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="PLANT 2 · ALL MACHINES" title="Performance">
         <div role="tablist" aria-label="Period" className="grid grid-cols-3 gap-1 rounded-xl bg-shell-2 p-1">
-          {METRICS.map((d, i) => (
+          {data.periods.map((d, i) => (
             <button key={d.name} role="tab" aria-selected={i === mode} onClick={() => { setMode(i); setSel(null); }}
               className={`min-h-10 cursor-pointer rounded-[9px] text-[13px] font-semibold ${i === mode ? "bg-on-shell text-ink" : "text-[#d5d7db]"}`}>{d.name}</button>
           ))}
         </div>
       </PageHeader>
 
-      <div className="flex items-center gap-2 text-[13px] text-ink-3"><Badge tone="info">Sample data</Badge>OEE needs machine run-time data, which isn&apos;t captured yet. Figures are examples from the design.</div>
+      {!data.hasData && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-ink">
+          <Badge tone="info">No data yet</Badge>Book production and log downtime on the Production screen. OEE, downtime and machine charts fill in from those records.
+        </div>
+      )}
+      {data.missingCycle.length > 0 && (
+        <div className="rounded-xl bg-warn-bg px-3.5 py-2.5 text-[13px] text-warn-ink">
+          Performance can&apos;t be measured for {data.missingCycle.join(", ")} because the standard cycle time isn&apos;t set. Add it under Maintenance → mould settings.
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex flex-col gap-0.5">
-              <span className="flex items-center gap-1 text-xs font-semibold text-ink-3">OEE · {D.labels[sel]}{sel === n - 1 ? ` (latest ${D.unit})` : ""} <Tip k="oee" openKey={tip} setOpen={setTip} align="left" /></span>
+              <span className="flex items-center gap-1 text-xs font-semibold text-ink-3">OEE · {D.labels[sel]}{sel === latest ? ` (latest ${D.unit} with data)` : ""} <Tip k="oee" openKey={tip} setOpen={setTip} align="left" /></span>
               <span className="font-display text-[44px] font-extrabold leading-none">{pct(o)}</span>
               <span className={`text-[13px] font-semibold ${dpp === null ? "text-ink-3" : dpp >= 0 ? "text-ok" : "text-danger"}`}>
-                {dpp === null ? `First ${D.unit} in view` : `${dpp >= 0 ? "▲" : "▼"} ${Math.abs(dpp).toFixed(1)} pts vs previous ${D.unit}`}
+                {dpp === null ? (o === null ? `Nothing booked this ${D.unit}` : before === null ? `Nothing to compare with` : `First ${D.unit} in view`) : `${dpp >= 0 ? "▲" : "▼"} ${Math.abs(dpp).toFixed(1)} pts vs previous ${D.unit}`}
               </span>
             </div>
             <span className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold ${band.cls}`}><band.Icon size={14} aria-hidden />{band.t}</span>
@@ -106,11 +119,12 @@ export function MetricsView({ belowMin }: { belowMin: number }) {
                 <div className="absolute inset-0 flex items-end gap-1.5">
                   {D.labels.map((l, i) => {
                     const v = oeeAt(i);
+                    const h = v === null ? 0 : v;
                     const on = i === sel;
                     return (
                       <button key={l} onClick={() => setSel(i)} aria-label={`${l}: OEE ${pct(v)}`} aria-pressed={on} className="relative h-full min-w-0 flex-1 cursor-pointer">
-                        <span className={`absolute left-1/2 -translate-x-1/2 font-mono text-[10px] ${on ? "visible font-bold text-ink" : "invisible"}`} style={{ bottom: `calc(${(v * 100).toFixed(1)}% + 3px)` }}>{pct0(v)}</span>
-                        <span className="absolute inset-x-0 bottom-0 rounded-t" style={{ height: `${(v * 100).toFixed(1)}%`, background: on ? "#1D4ED8" : "#A9C0F2" }} />
+                        <span className={`absolute left-1/2 -translate-x-1/2 font-mono text-[10px] ${on ? "visible font-bold text-ink" : "invisible"}`} style={{ bottom: `calc(${(h * 100).toFixed(1)}% + 3px)` }}>{pct0(v)}</span>
+                        <span className="absolute inset-x-0 bottom-0 rounded-t" style={{ height: `${Math.max(h * 100, v === null ? 1 : 0).toFixed(1)}%`, background: v === null ? "#E7E4DD" : on ? "#1D4ED8" : "#A9C0F2" }} />
                       </button>
                     );
                   })}
@@ -133,18 +147,19 @@ export function MetricsView({ belowMin }: { belowMin: number }) {
               <Mono className="text-right">{m.toLocaleString("en-US")}</Mono>
             </div>
           ))}
-          <span className="text-xs text-ink-3">Top two reasons are {Math.round((top2 / total) * 100)}% of lost time — {D.pareto[0][0].toLowerCase()} and {D.pareto[1][0].toLowerCase()}.</span>
+          {D.pareto.length === 0 && <span className="text-sm text-ink-3">No downtime logged in this period.</span>}
+          {D.pareto.length > 1 && <span className="text-xs text-ink-3">Top two reasons are {Math.round((top2 / total) * 100)}% of lost time — {D.pareto[0][0].toLowerCase()} and {D.pareto[1][0].toLowerCase()}.</span>}
         </Card>
 
         <Card className="space-y-2">
           <span className="flex items-center gap-1"><h2 className="font-display text-base font-bold">OEE by machine</h2><Tip k="mach" openKey={tip} setOpen={setTip} align="left" /></span>
           <div className="grid grid-cols-[3rem_1fr_3rem_3rem_3rem] gap-2 text-[11px] font-semibold text-ink-3"><span>Mach.</span><span>OEE</span><span>Avail.</span><span>Perf.</span><span>Qual.</span></div>
           {D.machines.map((m) => {
-            const v = m[1] * m[2] * m[3];
+            const v = m[1] === null || m[2] === null || m[3] === null ? null : m[1] * m[2] * m[3];
             return (
               <div key={m[0]} className="grid grid-cols-[3rem_1fr_3rem_3rem_3rem] items-center gap-2 border-t border-line pt-2 text-xs">
                 <Mono>{m[0]}</Mono>
-                <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full" style={{ background: v >= 0.75 ? "#1E7A46" : v >= 0.6 ? "#E0A526" : "#B42318" }} /><strong>{pct0(v)}</strong></span>
+                <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-full" style={{ background: v === null ? "#C9C5BC" : v >= 0.75 ? "#1E7A46" : v >= 0.6 ? "#E0A526" : "#B42318" }} /><strong>{pct0(v)}</strong></span>
                 <Mono>{pct0(m[1])}</Mono><Mono>{pct0(m[2])}</Mono><Mono>{pct0(m[3])}</Mono>
               </div>
             );
@@ -157,7 +172,7 @@ export function MetricsView({ belowMin }: { belowMin: number }) {
           {D.shifts.map(([nm, v]) => (
             <div key={nm} className="grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-2 text-xs">
               <span>{nm}</span>
-              <span aria-hidden className="h-2.5 rounded-[5px] bg-canvas"><span className="block h-2.5 rounded-[5px]" style={{ width: pct0(v), background: v >= 0.65 ? "#1D4ED8" : "#E98A3E" }} /></span>
+              <span aria-hidden className="h-2.5 rounded-[5px] bg-canvas"><span className="block h-2.5 rounded-[5px]" style={{ width: v === null ? "0%" : pct0(v), background: v !== null && v >= 0.65 ? "#1D4ED8" : "#E98A3E" }} /></span>
               <Mono className="text-right">{pct0(v)}</Mono>
             </div>
           ))}
@@ -179,6 +194,7 @@ export function MetricsView({ belowMin }: { belowMin: number }) {
           <Link href="/reports/variance" className="mt-3 flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border text-sm font-semibold">BOM variance report (live) <ArrowRight size={15} aria-hidden /></Link>
         </Card>
       </div>
+      {footer}
     </div>
   );
 }

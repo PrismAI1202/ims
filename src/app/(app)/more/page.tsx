@@ -26,7 +26,7 @@ export default async function MorePage() {
                 bar={n.bar}
                 title={n.name}
                 sub={n.what}
-                right={n.stub ? <Badge tone="info">Soon</Badge> : n.sample ? <Badge tone="neutral">Sample</Badge> : undefined}
+                right={n.stub ? <Badge tone="info">Soon</Badge> : undefined}
               />
             ))}
           </div>

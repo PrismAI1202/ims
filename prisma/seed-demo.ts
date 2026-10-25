@@ -10,6 +10,8 @@ import { saveBom, bookProduction } from "../src/server/services/production";
 import { packBoxes } from "../src/server/services/fg";
 import { createDispatch, scanBox, completeDispatch, recordReturnable } from "../src/server/services/dispatch";
 import { importDemand } from "../src/server/services/demand";
+import { addGrade, createGroup, decideGrade } from "../src/server/services/equivalents";
+import { blockSlot, mondayOf, placeJob } from "../src/server/services/planning";
 
 const prisma = new PrismaClient();
 
@@ -85,7 +87,7 @@ const LOTS: LotSpec[] = [
   { item: "RM-PP-012", sup: "SUP-007", bin: null, qty: 1000, heat: "PH12N-55821" },
 ];
 
-async function main() {
+async function baseDemo() {
   const user = async (email: string) => (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
   const [admin, store, qa, prod, disp] = await Promise.all([
     user("admin@ims.local"), user("store@ims.local"), user("qa@ims.local"), user("production@ims.local"), user("dispatch@ims.local"),
@@ -241,6 +243,120 @@ async function main() {
   });
 
   console.log("Demo data loaded: design examples for stock, bins, BOMs, production, dispatch, returnables and demand.");
+}
+
+// Equivalent groups, maintenance history, downtime and a planned week: the data behind Equivalents, Maintenance,
+// Planning and Metrics. Safe to re-run; it does nothing once the groups exist.
+async function phase6() {
+  if (await prisma.equivalentGroup.count()) { console.log("Phase 6 demo data already loaded; nothing to do."); return; }
+  const item = async (code: string) => (await prisma.item.findUniqueOrThrow({ where: { code } })).id;
+  const sup = async (code: string) => (await prisma.supplier.findUniqueOrThrow({ where: { code } })).id;
+  const admin = (await prisma.user.findUniqueOrThrow({ where: { email: "admin@ims.local" } })).id;
+  const qa = (await prisma.user.findUniqueOrThrow({ where: { email: "qa@ims.local" } })).id;
+  const lead = (await prisma.user.findUniqueOrThrow({ where: { email: "production@ims.local" } })).id;
+
+  // Equivalent groups (design: one spec, many vendor grades). [item, name, spec, [grade, supplier, approval]]
+  type Appr = "ALL" | "NON_AUTO" | "PENDING";
+  const groups: [string, string, string, [string, string, Appr][]][] = [
+    ["RM-PP-012", "PP Homopolymer MFI 12", "MFI 11–13 g/10min, ρ 0.900–0.910, H₂O ≤ 0.05%", [["Grade H110", "SUP-003", "ALL"], ["Grade PH-12N", "SUP-007", "ALL"], ["Grade 1200MC", "SUP-011", "NON_AUTO"]]],
+    ["RM-ABS-NAT", "ABS natural", "MFI 18–24 g/10min, Izod ≥ 20 kJ/m², H₂O ≤ 0.1%", [["AB-NT-20", "SUP-003", "ALL"], ["ABS-750", "SUP-007", "ALL"]]],
+    ["RM-PA66-G30", "PA66 GF30", "30% glass, Tensile ≥ 170 MPa, dry to ≤ 0.2%", [["PA-G30", "SUP-003", "ALL"], ["A3-GF30", "SUP-007", "ALL"]]],
+    ["RM-POM-C", "POM copolymer", "MFI 8–10 g/10min, ρ 1.41, H₂O ≤ 0.2%", [["POM-C27", "SUP-003", "PENDING"]]],
+    ["MB-BLK-40", "Black masterbatch 40%", "Carbon 40%, carrier PP, ΔE ≤ 1.0 vs master", [["BK-4021", "SUP-004", "ALL"], ["CB-40", "SUP-015", "ALL"]]],
+    ["BOP-INS-M4K", "Brass insert M4 knurled", "M4 × 6 mm, CuZn39Pb3, pull-out ≥ 900 N", [["INS-M4-K", "SUP-009", "ALL"], ["M4-BR-06", "SUP-018", "PENDING"]]],
+  ];
+  for (const [code, name, spec, grades] of groups) {
+    const g = await createGroup({ name, itemId: await item(code), spec });
+    for (const [grade, s, appr] of grades) {
+      const gr = await addGrade({ groupId: g.id, gradeName: grade, supplierId: await sup(s), datasheetRef: "demo-datasheet", trialRef: appr === "ALL" ? "demo-trial" : undefined, userId: lead });
+      if (appr !== "PENDING") await decideGrade({ gradeId: gr.id, decision: appr === "ALL" ? "APPROVE_ALL" : "APPROVE_NON_AUTO", userId: qa });
+    }
+  }
+
+  // The first demo production runs are single large bookings; date them a week or so back so they don't make "today" look unrealistic.
+  const first = await prisma.productionBooking.findMany({ where: { bookingNumber: { not: { startsWith: "PB-H-" } } }, orderBy: { producedAt: "asc" } });
+  for (const [i, b] of first.entries()) {
+    await prisma.productionBooking.update({ where: { id: b.id }, data: { producedAt: new Date(Date.now() - (8 + i) * 86_400_000) } });
+  }
+
+  // Mould settings: standard cycle time (needed for OEE performance), smallest press, and where each mould is in its PM cycle.
+  const mouldSetup: [string, number, number, number, number][] = [ // code, cycle s, min tonnage, shot counter now, shots left to next PM
+    ["MD-118", 20, 150, 412880, 37120], ["MD-090", 28, 120, 188400, 11600], ["MD-131", 32, 150, 351200, -1200],
+    ["MD-052", 12, 80, 92000, 8000], ["MD-201", 45, 250, 24500, 25500],
+  ];
+
+  // History: backdated production bookings and stops over the last 45 days so Metrics has something to show.
+  const bomOf = async (fg: string) => prisma.bom.findUniqueOrThrow({ where: { fgItemId: await item(fg) }, include: { mould: true } });
+  const runs: [string, string][] = [["M-07", "FG-DT220"], ["M-03", "FG-HX14"], ["M-05", "FG-BZ31"], ["M-01", "FG-CP08"], ["M-09", "FG-HS40"], ["M-11", "FG-DT220"]];
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const reasons = ["MOULD_CHANGE", "MOULD_CHANGE", "COLOUR_CHANGE", "MOULD_REPAIR", "NO_MATERIAL", "MACHINE_BREAKDOWN", "QC_HOLD", "NO_OPERATOR", "POWER_CUT"] as const;
+  const today = new Date(); today.setUTCHours(12, 0, 0, 0);
+  let n = 0;
+  for (let back = 45; back >= 1; back--) {
+    const day = new Date(today.getTime() - back * 86_400_000);
+    if (day.getUTCDay() === 0) continue;
+    for (const [mc, fg] of runs) {
+      const m = await prisma.machine.findUniqueOrThrow({ where: { code: mc } });
+      const bom = await bomOf(fg);
+      const cycle = Number(bom.mould.idealCycleSec ?? mouldSetup.find((x) => x[0] === bom.mould.code)![1]);
+      for (const shift of ["A", "B", ...(rnd() < 0.35 ? ["C"] : [])] as ("A" | "B" | "C")[]) {
+        const stop = rnd() < 0.55 ? Math.round(15 + rnd() * 90) : 0;
+        const wasted = rnd() < 0.1 ? Math.round(30 + rnd() * 120) : 0;
+        const runMin = 480 - stop - wasted;
+        const eff = 0.72 + rnd() * 0.2; // speed vs standard
+        const shots = Math.max(0, Math.round((runMin * 60 * eff) / cycle));
+        const parts = shots * bom.mould.cavities;
+        const rej = Math.round(parts * (0.01 + rnd() * 0.035));
+        await prisma.productionBooking.create({
+          data: { bookingNumber: `PB-H-${String(++n).padStart(5, "0")}`, bomId: bom.id, machineId: m.id, shift, shots, goodParts: parts - rej, rejectParts: rej,
+            runnerKg: (shots * Number(bom.mould.runnerWeightG ?? 0)) / 1000, producedAt: new Date(day.getTime() + (shift === "A" ? 0 : shift === "B" ? 8 : 16) * 3600_000 - 6 * 3600_000), userId: lead },
+        });
+        if (stop) await prisma.downtime.create({ data: { machineId: m.id, mouldId: bom.mouldId, day: new Date(day.toISOString().slice(0, 10) + "T00:00:00.000Z"), shift, reason: reasons[Math.floor(rnd() * reasons.length)], minutes: stop, userId: lead } });
+        if (wasted) await prisma.downtime.create({ data: { machineId: m.id, mouldId: bom.mouldId, day: new Date(day.toISOString().slice(0, 10) + "T00:00:00.000Z"), shift, reason: rnd() < 0.4 ? "MACHINE_BREAKDOWN" : "MOULD_REPAIR", minutes: wasted, userId: lead } });
+      }
+    }
+  }
+  // Shot counters: each mould's counter at go-live is whatever makes today's total match the design.
+  const booked = await prisma.productionBooking.groupBy({ by: ["bomId"], _sum: { shots: true } });
+  for (const [code, cycle, tonnage, now, left] of mouldSetup) {
+    const mould = await prisma.mould.findUniqueOrThrow({ where: { code }, include: { boms: true } });
+    const shots = booked.filter((b) => mould.boms.some((x) => x.id === b.bomId)).reduce((a, b) => a + (b._sum.shots ?? 0), 0);
+    const opening = Math.max(0, now - shots);
+    // PM counter is set so each mould sits at the PM state shown in the design.
+    await prisma.mould.update({ where: { id: mould.id }, data: { idealCycleSec: cycle, minTonnage: tonnage, openingShots: opening, lastPmShots: opening + shots + left - mould.pmIntervalShots } });
+  }
+
+  // PM and repair history (from the design)
+  const hist = async (code: string, entries: [number, "PM" | "REPAIR" | "TRIAL", string, number, number?][]) => {
+    const mould = await prisma.mould.findUniqueOrThrow({ where: { code } });
+    for (const [daysAgo, kind, what, shots, min] of entries) {
+      const createdAt = new Date(Date.now() - daysAgo * 86_400_000);
+      if (kind === "PM") await prisma.pmRecord.create({ data: { mouldId: mould.id, shotsAtPm: shots, checks: "Clean vents and parting line\nCheck ejector pins and return springs\nFlush cooling lines, check leaks\nInspect gate and runner wear\nGrease guide pillars and bushes", photoRef: "demo-photo", note: what, userId: lead, createdAt } });
+      else await prisma.repairTicket.create({ data: { mouldId: mould.id, kind, summary: what, downtimeMin: min ?? 0, photoRef: "demo-photo", userId: lead, createdAt } });
+    }
+  };
+  await hist("MD-131", [[41, "PM", "PM at 300,000 shots", 300000], [84, "REPAIR", "Cracked ejector pin #3 replaced", 0, 95]]);
+  await hist("MD-052", [[65, "PM", "PM at 50,000 shots", 50000]]);
+  await hist("MD-090", [[56, "PM", "PM at 150,000 shots", 150000], [105, "REPAIR", "Hot sprue heater replaced", 0, 140]]);
+  await hist("MD-118", [[7, "REPAIR", "Cavity 3 flash — parting line polished", 0, 25], [23, "PM", "PM at 400,000 shots", 400000]]);
+  await hist("MD-201", [[50, "TRIAL", "New tool approved (PPAP samples)", 0]]);
+
+  // A planned week: jobs, a trial and a PM block, relative to the current Monday.
+  const monday = mondayOf(new Date());
+  const dayOf = (i: number) => new Date(monday.getTime() + i * 86_400_000).toISOString().slice(0, 10);
+  const mid = async (code: string) => (await prisma.machine.findUniqueOrThrow({ where: { code } })).id;
+  for (const [m, d, fg] of [["M-07", 0, "FG-DT220"], ["M-07", 1, "FG-DT220"], ["M-03", 0, "FG-HX14"], ["M-03", 1, "FG-HX14"], ["M-03", 2, "FG-HX14"], ["M-05", 3, "FG-BZ31"], ["M-05", 4, "FG-BZ31"]] as const) {
+    await placeJob({ machineId: await mid(m), day: dayOf(d), fgItemId: await item(fg), userId: admin });
+  }
+  await blockSlot({ machineId: await mid("M-09"), day: dayOf(1), kind: "TRIAL", note: "MD-212 trial", userId: admin });
+  await blockSlot({ machineId: await mid("M-11"), day: dayOf(2), kind: "PM", note: "Machine PM", userId: admin });
+  console.log("Phase 6 demo data loaded: equivalent groups, mould settings, 45 days of production and downtime, PM history and a planned week.");
+}
+
+async function main() {
+  await baseDemo();
+  await phase6();
 }
 
 main()

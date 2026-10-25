@@ -2,24 +2,22 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Camera, Eye, X } from "lucide-react";
-import { Badge, Card, Chip, Mono, PageHeader } from "@/components/ui";
-import { PENDING_STATUSES, PROCESS_VERSION, processStages, type ProcessEntry } from "@/lib/demo/process";
+import { ChevronLeft, ChevronRight, Camera, Eye } from "lucide-react";
+import { Badge, Card, Mono, PageHeader } from "@/components/ui";
+import { PENDING_STATUSES, type ProcessStage } from "@/lib/process-types";
 
 const OWNER_OF_ROLE: Record<string, string> = {
   STORE_INCHARGE: "Store Incharge", QA_INSPECTOR: "QA Inspector", PRODUCTION_LEAD: "Production Lead",
   DISPATCH_OFFICER: "Dispatch Officer", ADMIN: "Admin",
 };
 
-export function ProcessView({ role }: { role: string }) {
+export function ProcessView({ role, stagesBySegment }: { role: string; stagesBySegment: { auto: ProcessStage[]; non: ProcessStage[] } }) {
   const [seg, setSeg] = useState<"auto" | "non">("auto");
   const [open, setOpen] = useState(-1);
   const [entry, setEntry] = useState(0);
-  const [photo, setPhoto] = useState<{ name: string; e: ProcessEntry } | null>(null);
 
   const me = OWNER_OF_ROLE[role] ?? "Store Incharge";
-  const stages = processStages(seg);
-  const v = PROCESS_VERSION[seg];
+  const stages = stagesBySegment[seg];
   const openOf = (i: number) => stages[i].entries.filter((e) => PENDING_STATUSES.includes(e.status)).length;
   const mine = (i: number) => stages[i].owners.includes(me);
   const myOpen = stages.reduce((a, _, i) => a + (mine(i) ? openOf(i) : 0), 0);
@@ -53,7 +51,7 @@ export function ProcessView({ role }: { role: string }) {
           )}
         </Card>
         <div className="flex items-baseline justify-between">
-          <h2 className="font-display text-[15px] font-bold text-ink-3">Today&apos;s entries</h2>
+          <h2 className="font-display text-[15px] font-bold text-ink-3">Latest entries</h2>
           <span className="text-xs text-ink-3">{st.entries.length} entr{st.entries.length === 1 ? "y" : "ies"}</span>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
@@ -83,10 +81,10 @@ export function ProcessView({ role }: { role: string }) {
                     {e.photos.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {e.photos.map((ph) => (
-                          <button key={ph} onClick={() => setPhoto({ name: ph, e })} aria-label={`View photo: ${ph}`}
-                            className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-[10px] border border-border bg-canvas px-3 text-xs font-semibold">
-                            <Eye size={14} aria-hidden />{ph}
-                          </button>
+                          <a key={ph.name} href={ph.href} target="_blank" rel="noreferrer" aria-label={`Open ${ph.name}`}
+                            className="flex min-h-10 items-center gap-1.5 rounded-[10px] border border-border bg-canvas px-3 text-xs font-semibold">
+                            <Eye size={14} aria-hidden />{ph.name}
+                          </a>
                         ))}
                       </div>
                     )}
@@ -96,14 +94,13 @@ export function ProcessView({ role }: { role: string }) {
             );
           })}
         </div>
-        {photo && <PhotoDialog photo={photo} onClose={() => setPhoto(null)} />}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow={`${seg === "auto" ? "AUTO" : "NON-AUTO"} · v${v.ver} · BY ${v.by}`} title="Factory process">
+      <PageHeader eyebrow={`${seg === "auto" ? "AUTOMOTIVE" : "NON-AUTOMOTIVE"} · LIVE FROM PLANT ACTIVITY`} title="Factory process">
         <div role="group" aria-label="Customer segment" className="grid grid-cols-2 gap-1 rounded-xl bg-shell-2 p-1">
           {(["auto", "non"] as const).map((k) => (
             <button key={k} onClick={() => { setSeg(k); setOpen(-1); }} aria-pressed={seg === k}
@@ -115,8 +112,8 @@ export function ProcessView({ role }: { role: string }) {
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-ink">
-        <Badge tone="info">Sample data</Badge>
-        View only. Set up by the Store Incharge; editing and publishing process versions is not available yet.
+        <Badge tone="ok">Live</Badge>
+        Built from real receipts, QC decisions, issues, production and dispatches. Steps and rules are fixed for now.
       </div>
 
       <div className="flex items-baseline gap-2.5 rounded-[14px] bg-white px-4 py-3">
@@ -156,25 +153,7 @@ export function ProcessView({ role }: { role: string }) {
           );
         })}
       </ol>
-      <p className="text-center text-xs text-ink-3"><Chip>DEMO</Chip> entries are examples from the design; live data will appear here once process steps are wired up.</p>
-    </div>
-  );
-}
-
-function PhotoDialog({ photo, onClose }: { photo: { name: string; e: ProcessEntry }; onClose: () => void }) {
-  return (
-    <div role="dialog" aria-label="Photo proof" className="fixed inset-0 z-30 flex flex-col gap-3 overflow-auto bg-shell/95 p-5 text-on-shell md:m-auto md:max-h-[34rem] md:max-w-md md:rounded-2xl">
-      <div className="flex items-center justify-between">
-        <span className="font-display text-base font-bold">{photo.name}</span>
-        <button onClick={onClose} aria-label="Close photo" className="flex size-11 cursor-pointer items-center justify-center rounded-full bg-shell-2"><X size={18} aria-hidden /></button>
-      </div>
-      <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-shell-line bg-shell-2 text-sm text-on-shell-2">[Captured photo]</div>
-      <dl className="grid gap-1.5 text-[13px]">
-        <div className="flex justify-between"><dt className="text-on-shell-2">Entry</dt><dd className="font-mono">{photo.e.id}</dd></div>
-        <div className="flex justify-between"><dt className="text-on-shell-2">Captured by</dt><dd>{photo.e.by}</dd></div>
-        <div className="flex justify-between"><dt className="text-on-shell-2">Time · location</dt><dd>{photo.e.time} · GPS in plant fence</dd></div>
-        <div className="flex justify-between"><dt className="text-on-shell-2">Integrity</dt><dd>SHA-256 verified</dd></div>
-      </dl>
+      <p className="text-center text-xs text-ink-3">Showing the latest entries for each step. Open a step to see them and jump to the screen where the work is done.</p>
     </div>
   );
 }

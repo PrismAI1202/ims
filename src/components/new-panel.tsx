@@ -17,34 +17,36 @@ function Slide({ id, open, children }: { id?: string; open: boolean; children: R
 // ── Header button + panel below ──────────────────────────────────────────────────────────────────────
 // <CreateProvider> wraps a page; <CreateButton> goes in the page header (top right); <CreatePanel> holds the form
 // in the content area. Clicking the button slides the panel open and pushes the list down.
-const Ctx = createContext<{ open: boolean; toggle: () => void; id: string } | null>(null);
+const Ctx = createContext<{ open: string | null; toggle: (k: string) => void; base: string } | null>(null);
 
-export function CreateProvider({ defaultOpen = false, children }: { defaultOpen?: boolean; children: React.ReactNode }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const id = useId();
-  return <Ctx.Provider value={{ open, toggle: () => setOpen((o) => !o), id }}>{children}</Ctx.Provider>;
+/** `defaultOpen`: true opens the main panel; a string opens the panel with that id. */
+export function CreateProvider({ defaultOpen = false, children }: { defaultOpen?: boolean | string; children: React.ReactNode }) {
+  const [open, setOpen] = useState<string | null>(defaultOpen === true ? "main" : defaultOpen || null);
+  const base = useId();
+  return <Ctx.Provider value={{ open, toggle: (k) => setOpen((o) => (o === k ? null : k)), base }}>{children}</Ctx.Provider>;
 }
 
-export function CreateButton({ label }: { label: string }) {
+export function CreateButton({ label, id = "main" }: { label: string; id?: string }) {
   const c = useContext(Ctx);
   if (!c) return null;
+  const open = c.open === id;
   return (
     <button
-      type="button" onClick={c.toggle} aria-expanded={c.open} aria-controls={c.id}
+      type="button" onClick={() => c.toggle(id)} aria-expanded={open} aria-controls={`${c.base}-${id}`}
       className={`flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3.5 text-[13px] font-semibold ${
-        c.open ? "bg-shell-2 text-on-shell" : "bg-accent text-white hover:bg-accent-hover"
+        open ? "bg-shell-2 text-on-shell" : "bg-accent text-white hover:bg-accent-hover"
       }`}
     >
-      {c.open ? <ChevronUp size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
-      {c.open ? "Close" : label}
+      {open ? <ChevronUp size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
+      {open ? "Close" : label}
     </button>
   );
 }
 
-export function CreatePanel({ children }: { children: React.ReactNode }) {
+export function CreatePanel({ id = "main", children }: { id?: string; children: React.ReactNode }) {
   const c = useContext(Ctx);
   if (!c) return null;
-  return <div className="print:hidden"><Slide id={c.id} open={c.open}>{children}</Slide></div>;
+  return <div className="print:hidden"><Slide id={`${c.base}-${id}`} open={c.open === id}>{children}</Slide></div>;
 }
 
 // ── Stand-alone button + panel (used where the page header has no room) ──────────────────────────────

@@ -7,7 +7,6 @@ export type NavItem = {
   bar: string;
   perm?: Permission;
   stub?: boolean; // not built yet
-  sample?: boolean; // built, but showing sample data from the design
 };
 
 export type NavGroup = { name: string; items: NavItem[] };
@@ -21,7 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/users", name: "Users & roles", what: "Add, edit and deactivate users; assign roles", bar: "#0F5C5C", perm: "users.manage" },
       { href: "/partners", name: "Customers & suppliers", what: "Every customer and vendor with their open and past orders", bar: "#1D4ED8", perm: "stock.view" },
       { href: "/bom", name: "BOMs", what: "Blend ratios, inserts, and approved alternate grades by vendor", bar: "#C2410C", perm: "bom.manage" },
-      { href: "/equivalents", name: "Equivalent materials", what: "Approved alternate grades grouped by vendor", bar: "#C2410C", sample: true },
+      { href: "/equivalents", name: "Equivalent materials", what: "Approved alternate grades grouped by vendor", bar: "#C2410C" },
       { href: "/demand", name: "Customer demand", what: "Import customer POs and call-off schedules", bar: "#4B5563", perm: "mrp.plan" },
     ],
   },
@@ -44,8 +43,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/scan", name: "Scanner", what: "Scan to issue, transfer or load, works offline", bar: "#15171A", perm: "stock.view" },
       { href: "/production", name: "Production", what: "Hourly booking, downtime with reason codes, runner and regrind", bar: "#6B4FB0", perm: "production.book" },
       { href: "/fg", name: "FG & box labels", what: "Pack finished goods and print box labels", bar: "#6B4FB0", perm: "fg.pack" },
-      { href: "/planning", name: "Planning", what: "Which mould runs on which machine, by day", bar: "#4B5563", sample: true },
-      { href: "/maintenance", name: "Maintenance", what: "Mould shot life, PM checklists, repairs; machine MTBF / MTTR", bar: "#7A4E14", sample: true },
+      { href: "/planning", name: "Planning", what: "Which mould runs on which machine, by day", bar: "#4B5563" },
+      { href: "/maintenance", name: "Maintenance", what: "Mould shot life, PM checklists, repairs; machine MTBF / MTTR", bar: "#7A4E14" },
     ],
   },
   {

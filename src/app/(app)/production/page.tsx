@@ -1,6 +1,10 @@
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
+import type { DowntimeReason } from "@prisma/client";
+import { logDowntime } from "@/server/services/downtime";
+import { DOWNTIME_LABEL } from "@/server/services/oee";
+import { can } from "@/server/auth/permissions";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
@@ -40,11 +44,24 @@ async function book(formData: FormData) {
   });
 }
 
+async function logStop(formData: FormData) {
+  "use server";
+  const user = await requirePermission("downtime.log");
+  await runAction("/production", "Stop logged. It counts toward availability on Metrics.", async () => {
+    await logDowntime({
+      machineId: String(formData.get("machineId")), mouldId: String(formData.get("mouldId") || "") || undefined,
+      day: String(formData.get("day")), shift: String(formData.get("shift")) as "A" | "B" | "C",
+      reason: String(formData.get("reason")) as DowntimeReason, minutes: Number(formData.get("minutes")),
+      note: String(formData.get("note") || "") || undefined, userId: user.id,
+    });
+  });
+}
+
 export default async function ProductionPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requirePermission("production.book");
+  const user = await requirePermission("production.book");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
-  const [boms, machines, bins, recent] = await Promise.all([
+  const [boms, machines, bins, recent, stops, moulds] = await Promise.all([
     db.bom.findMany({ include: { fgItem: true, mould: true }, orderBy: { fgItem: { code: "asc" } } }),
     db.machine.findMany({ orderBy: { code: "asc" } }),
     db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
@@ -52,12 +69,15 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
       orderBy: { producedAt: "desc" }, take: 100,
       include: { bom: { include: { fgItem: true } }, machine: true },
     }),
+    db.downtime.findMany({ orderBy: { createdAt: "desc" }, take: 8, include: { machine: true } }),
+    db.mould.findMany({ orderBy: { code: "asc" } }),
   ]);
+  const canLog = can(user.role, "downtime.log");
 
   return (
     <CreateProvider>
     <div className="space-y-4">
-      <PageHeader right={boms.length > 0 ? <CreateButton label="Book production" /> : undefined} eyebrow="STORE & SHOP FLOOR" title="Production" subtitle="Book output per shift, with the material lots that went into the machine" />
+      <PageHeader right={<div className="flex flex-col items-end gap-2">{boms.length > 0 && <CreateButton label="Book production" />}{canLog && <CreateButton id="downtime" label="Log downtime" />}</div>} eyebrow="STORE & SHOP FLOOR" title="Production" subtitle="Book output per shift, with the material lots that went into the machine" />
       <Flash error={error} ok={ok} />
       {boms.length === 0 ? (
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No BOMs defined yet. Ask an admin to add one under BOMs.</p>
@@ -97,6 +117,39 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
             <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Book production</button></div>
           </form>
         </Card></CreatePanel>
+      )}
+
+      {canLog && (
+        <CreatePanel id="downtime">
+          <Card className="space-y-3">
+            <Eyebrow>LOG A MACHINE STOP</Eyebrow>
+            <form action={logStop} className="grid gap-3 md:grid-cols-4">
+              <label className="text-[13px]">Machine<select name="machineId" required className={inputCls}>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
+              <label className="text-[13px]">Mould (optional)<select name="mouldId" className={inputCls}><option value="">—</option>{moulds.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
+              <label className="text-[13px]">Date<input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} max={new Date().toISOString().slice(0, 10)} className={inputCls} /></label>
+              <label className="text-[13px]">Shift<select name="shift" className={inputCls}><option>A</option><option>B</option><option>C</option></select></label>
+              <label className="text-[13px] md:col-span-2">Reason
+                <select name="reason" required className={inputCls}>{Object.entries(DOWNTIME_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              </label>
+              <label className="text-[13px]">Stopped for (min)<input name="minutes" type="number" min="1" step="1" required className={inputCls} /></label>
+              <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
+              <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Log stop</button></div>
+            </form>
+          </Card>
+        </CreatePanel>
+      )}
+
+      {stops.length > 0 && (
+        <>
+          <Eyebrow>RECENT STOPS</Eyebrow>
+          <div className="flex flex-wrap gap-2">
+            {stops.map((d) => (
+              <span key={d.id} className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs">
+                <Mono className="font-semibold">{d.machine.code}</Mono>{DOWNTIME_LABEL[d.reason]}<Mono className="text-ink-3">{d.minutes} min</Mono>
+              </span>
+            ))}
+          </div>
+        </>
       )}
 
       <Eyebrow>RECENT BOOKINGS</Eyebrow>

@@ -64,6 +64,14 @@ Service functions take an optional trailing `db: PrismaClient` argument (default
 
 Replaying the whole queue is therefore safe, and replayed ops come back as `"replayed"`. Ops the server rejects stay in the queue with the server's message so the operator can discard them. Server and network errors leave ops queued for retry. To add a new offline op type, update the Zod union in `sync/route.ts`, the `QueuedOp` type, and give the service function a `clientUuid` idempotency check. The unit test for the queue uses `fake-indexeddb`.
 
+## Phase 6: equivalents, maintenance, planning, downtime, OEE
+
+- **Tables** (one additive migration): `EquivalentGroup/Grade`, `Downtime`, `PmRecord`, `RepairTicket`, `PlanSlot`, `AppSetting`, plus cycle time / min tonnage / PM fields on `Mould`.
+- **Services** (`src/server/services/`): `equivalents.ts`, `maintenance.ts`, `planning.ts`, `downtime.ts`, `settings.ts`, `metrics.ts`, `process.ts`, and the pure maths in `oee.ts`. Grade stock is derived from lots received on a PO from the grade's supplier; mould shots = go-live counter + shots booked in production.
+- **OEE** = Availability × Performance × Quality. Planned time is `shiftMinutes` (AppSetting, default 480) per machine-shift that ran or stopped; performance needs `Mould.idealCycleSec`, and a bucket without it shows "—" instead of an invented number.
+- **Process** is a live read-only view built from real GRNs, QC, issues, production and dispatches; the stage list is fixed in `process.ts`.
+- New permissions: `equivalents.manage`, `plan.manage`, `maintenance.manage`, `downtime.log` (grade approval uses `qc.inspect`).
+
 ## Conventions
 
 - Imports use the `@/` alias for `src/`. It is also configured in `vitest.config.mts`.
