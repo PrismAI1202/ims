@@ -10,17 +10,23 @@ const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const pct0 = (x: number) => `${(x * 100).toFixed(0)}%`;
 const TONE_FG: Record<KpiTile["tone"], string> = { ok: "text-ok", warn: "text-warn-ink", danger: "text-danger", neutral: "text-ink-2" };
 
+const canHover = () => typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches;
+
+/** Info tip: opens on hover (and keyboard focus) on desktop; on touch screens it opens on tap. */
 function Tip({ k, openKey, setOpen, align = "right" }: { k: string; openKey: string | null; setOpen: (v: string | null) => void; align?: "left" | "right" }) {
   const [name, text] = METRIC_DEFS[k];
   const open = openKey === k;
   return (
-    <span className="relative inline-flex flex-none">
-      <button onClick={() => setOpen(open ? null : k)} aria-label={`What is ${name}?`} aria-expanded={open}
-        className="-m-1.5 flex size-8 cursor-pointer items-center justify-center rounded-full text-ink-3">
+    <span className="relative inline-flex flex-none"
+      onMouseEnter={() => canHover() && setOpen(k)} onMouseLeave={() => canHover() && setOpen(null)}>
+      <button onClick={() => { if (!canHover()) setOpen(open ? null : k); }}
+        onFocus={() => canHover() && setOpen(k)} onBlur={() => canHover() && setOpen(null)}
+        aria-label={`What is ${name}?`} aria-expanded={open}
+        className="-m-1.5 flex size-8 cursor-help items-center justify-center rounded-full text-ink-3 hover:text-ink">
         <HelpCircle size={15} aria-hidden />
       </button>
       {open && (
-        <span role="tooltip" className={`absolute top-full z-10 mt-1.5 w-56 rounded-[10px] bg-shell p-3 text-left text-xs font-normal leading-snug text-on-shell shadow-lg ${align === "right" ? "right-0" : "left-0"}`}>
+        <span role="tooltip" className={`absolute top-full z-10 mt-1 w-56 rounded-[10px] bg-shell p-3 text-left text-xs font-normal leading-snug text-on-shell shadow-lg ${align === "right" ? "right-0" : "left-0"}`}>
           <strong className="mb-0.5 block">{name}</strong>{text}
         </span>
       )}

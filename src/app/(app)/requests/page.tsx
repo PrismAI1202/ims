@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createMaterialRequest } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, DataTable, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
@@ -33,7 +34,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         <StoresTabs active="requests" />
       </PageHeader>
       <Flash error={error} ok={ok} />
-      <Card>
+      <NewPanel label="New requisition"><Card>
         <form action={create} className="grid gap-3 md:grid-cols-4">
           <label className="text-[13px] md:col-span-2">Item
             <select name="itemId" required className={inputCls}>
@@ -49,7 +50,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
           </label>
           <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Raise request</button></div>
         </form>
-      </Card>
+      </Card></NewPanel>
 
       <DataTable>
         <thead><tr><th>Request</th><th>Lines (issued / requested)</th><th>Status</th></tr></thead>

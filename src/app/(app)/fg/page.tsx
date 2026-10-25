@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { packBoxes, unboxedQty } from "@/server/services/fg";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -50,7 +51,7 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
       {sources.length === 0 ? (
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No unboxed finished goods. Book production first.</p>
       ) : (
-        <Card>
+        <NewPanel label="Create boxes"><Card>
           <form action={pack} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Lot / bin
               <select name="source" required className={inputCls}>
@@ -66,7 +67,7 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
             <label className="text-[13px]">Number of boxes<input name="boxCount" type="number" min="1" max="200" step="1" defaultValue={1} required className={inputCls} /></label>
             <div className="flex items-end md:col-span-2"><button className={`${btnCls} w-full md:w-auto`}>Create boxes</button></div>
           </form>
-        </Card>
+        </Card></NewPanel>
       )}
 
       <Eyebrow>BOXES</Eyebrow>

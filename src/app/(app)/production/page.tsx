@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Card, Eyebrow, Mono, PageHeader } from "@/components/ui";
 import { WeightInput } from "@/components/weight-input";
 
@@ -57,7 +58,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
       {boms.length === 0 ? (
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No BOMs defined yet. Ask an admin to add one under BOMs.</p>
       ) : (
-        <Card>
+        <NewPanel label="Book production"><Card>
           <form action={book} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Part / BOM
               <select name="bomId" required className={inputCls}>
@@ -91,7 +92,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
             <label className="text-[13px] md:col-span-3">Note<input name="note" className={inputCls} /></label>
             <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Book production</button></div>
           </form>
-        </Card>
+        </Card></NewPanel>
       )}
 
       <Eyebrow>RECENT BOOKINGS</Eyebrow>

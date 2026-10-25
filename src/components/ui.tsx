@@ -26,7 +26,7 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <header className="-mx-4 -mt-4 mb-4 bg-shell px-5 pb-4 pt-10 text-on-shell md:-mx-8 md:-mt-8 md:mb-6 md:px-8 md:pt-8">
+    <header className="-mx-4 -mt-4 mb-4 bg-shell px-5 pb-4 pt-12 text-on-shell md:-mx-8 md:-mt-8 md:mb-6 md:px-8 md:pt-12">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {eyebrow && (
@@ -35,7 +35,7 @@ export function PageHeader({
           <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight">{title}</h1>
           {subtitle && <p className="mt-0.5 text-[13px] text-on-shell-2">{subtitle}</p>}
         </div>
-        {right && <div className="flex-none">{right}</div>}
+        {right && <div className="flex-none pt-2">{right}</div>}
       </div>
       {children && <div className="mt-3">{children}</div>}
     </header>

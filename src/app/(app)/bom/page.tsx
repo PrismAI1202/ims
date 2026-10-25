@@ -5,6 +5,7 @@ import { isBlend, kindForCategory, type BomLineInput } from "@/server/services/b
 import { saveBom } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import Link from "next/link";
+import { NewPanel } from "@/components/new-panel";
 import { BLEND_COLORS, Badge, Card, Chip, Eyebrow, LegendDot, Mono, PageHeader, StackedBar } from "@/components/ui";
 
 export const instant = false;
@@ -59,6 +60,49 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
         <Link href="/equivalents" className="text-sm font-semibold">Equivalent groups →</Link>
       </PageHeader>
       <Flash error={error} ok={ok} />
+      <NewPanel label="New BOM" defaultOpen={!!editing}>
+        <Card className="space-y-3">
+          <Eyebrow>{editing ? `EDIT BOM · ${editing.fgItem.code}` : "NEW BOM"}</Eyebrow>
+          <form key={editing?.id ?? "new"} action={save} className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-[13px]">Finished part
+                <select name="fgItemId" required defaultValue={editing?.fgItemId} className={inputCls}>
+                  {fgItems.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
+                </select>
+              </label>
+              <label className="text-[13px]">Mould
+                <select name="mouldId" required defaultValue={editing?.mouldId} className={inputCls}>
+                  {moulds.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.cavities}-cavity</option>)}
+                </select>
+              </label>
+              <label className="text-[13px]">Net part weight (g)
+                <input name="partWeightG" type="number" step="any" min="0" required defaultValue={editing ? Number(editing.partWeightG) : undefined} className={inputCls} />
+              </label>
+            </div>
+            <div className="space-y-2">
+              <div className="text-[13px] font-semibold">Materials <span className="font-normal text-ink-3">(% for resin, masterbatch and regrind; quantity per part for inserts and packaging)</span></div>
+              {Array.from({ length: ROWS }, (_, i) => {
+                const l = editing?.lines[i];
+                const v = l ? Number(l.pct ?? l.qtyPerPart) : undefined;
+                return (
+                  <div key={i} className="grid gap-2 md:grid-cols-4">
+                    <select name={`item_${i}`} defaultValue={l?.itemId ?? ""} className={`${inputCls} md:col-span-3`} aria-label={`Material ${i + 1}`}>
+                      <option value="">— none —</option>
+                      {BOM_CATEGORIES.map((c) => (
+                        <optgroup key={c} label={GROUP_LABEL[c]}>
+                          {byCat(c).map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <input name={`value_${i}`} type="number" step="any" min="0" defaultValue={v} placeholder="% or qty" className={inputCls} aria-label={`Value ${i + 1}`} />
+                  </div>
+                );
+              })}
+            </div>
+            <button className={`${btnCls} w-full disabled:opacity-50 md:w-auto`} disabled={fgItems.length === 0}>Save BOM</button>
+          </form>
+        </Card>
+      </NewPanel>
       <p className="max-w-3xl text-sm text-ink-2">
         Resin + masterbatch + regrind must add up to 100% by weight, and regrind can&apos;t exceed the resin&apos;s max-regrind limit.
         Saving a part that already has a BOM replaces it.
@@ -105,47 +149,6 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
         {boms.length === 0 && <Card><p className="text-sm text-ink-3">No BOMs yet.</p></Card>}
       </div>
 
-      <Card className="space-y-3">
-        <Eyebrow>{editing ? `EDIT BOM · ${editing.fgItem.code}` : "NEW BOM"}</Eyebrow>
-        <form key={editing?.id ?? "new"} action={save} className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="text-[13px]">Finished part
-              <select name="fgItemId" required defaultValue={editing?.fgItemId} className={inputCls}>
-                {fgItems.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}
-              </select>
-            </label>
-            <label className="text-[13px]">Mould
-              <select name="mouldId" required defaultValue={editing?.mouldId} className={inputCls}>
-                {moulds.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.cavities}-cavity</option>)}
-              </select>
-            </label>
-            <label className="text-[13px]">Net part weight (g)
-              <input name="partWeightG" type="number" step="any" min="0" required defaultValue={editing ? Number(editing.partWeightG) : undefined} className={inputCls} />
-            </label>
-          </div>
-          <div className="space-y-2">
-            <div className="text-[13px] font-semibold">Materials <span className="font-normal text-ink-3">(% for resin, masterbatch and regrind; quantity per part for inserts and packaging)</span></div>
-            {Array.from({ length: ROWS }, (_, i) => {
-              const l = editing?.lines[i];
-              const v = l ? Number(l.pct ?? l.qtyPerPart) : undefined;
-              return (
-                <div key={i} className="grid gap-2 md:grid-cols-4">
-                  <select name={`item_${i}`} defaultValue={l?.itemId ?? ""} className={`${inputCls} md:col-span-3`} aria-label={`Material ${i + 1}`}>
-                    <option value="">— none —</option>
-                    {BOM_CATEGORIES.map((c) => (
-                      <optgroup key={c} label={GROUP_LABEL[c]}>
-                        {byCat(c).map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <input name={`value_${i}`} type="number" step="any" min="0" defaultValue={v} placeholder="% or qty" className={inputCls} aria-label={`Value ${i + 1}`} />
-                </div>
-              );
-            })}
-          </div>
-          <button className={`${btnCls} w-full disabled:opacity-50 md:w-auto`} disabled={fgItems.length === 0}>Save BOM</button>
-        </form>
-      </Card>
     </div>
   );
 }

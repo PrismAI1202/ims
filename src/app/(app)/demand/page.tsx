@@ -5,6 +5,7 @@ import { importDemand, undoImport } from "@/server/services/demand";
 import { MAX_UPLOAD_BYTES, parseDemandRows, readSpreadsheet } from "@/server/services/demand-import";
 import { DomainError } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -59,6 +60,21 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
         Dates are read day-first (05/11/2026 is 5 November). A file with any bad row is rejected as a whole, so nothing half-loads.
       </p>
       <Flash error={error} ok={ok} />
+      <NewPanel label="Upload schedule">
+        <Card>
+          <form action={upload} className="space-y-3">
+            <label className="block text-[13px] font-semibold">Schedule file (.csv or .xlsx, up to 5 MB)
+              <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} py-2.5 file:mr-3`} />
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input name="replaceForecast" type="checkbox" defaultChecked className="mt-0.5 size-5 accent-[#c2410c]" />
+              New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
+            </label>
+            <p className="text-xs text-ink-3">Columns: customer_code, part_code, due_date, qty, type (FORECAST, FIRM or SPOT; blank means FIRM). <DownloadLink href={"/api/v1/demand-template"}>Download a template</DownloadLink>.</p>
+            <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
+          </form>
+        </Card>
+      </NewPanel>
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
         <DownloadLink href={"/api/v1/export/demand?format=xlsx"}>Download Excel</DownloadLink>
         <DownloadLink href={"/api/v1/export/demand?format=csv"}>Download CSV</DownloadLink>
@@ -71,19 +87,6 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
         ))}
       </div>
 
-      <Card>
-        <form action={upload} className="space-y-3">
-          <label className="block text-[13px] font-semibold">Schedule file (.csv or .xlsx, up to 5 MB)
-            <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} py-2.5 file:mr-3`} />
-          </label>
-          <label className="flex items-start gap-2 text-sm">
-            <input name="replaceForecast" type="checkbox" defaultChecked className="mt-0.5 size-5 accent-[#c2410c]" />
-            New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
-          </label>
-          <p className="text-xs text-ink-3">Columns: customer_code, part_code, due_date, qty, type (FORECAST, FIRM or SPOT; blank means FIRM). <DownloadLink href={"/api/v1/demand-template"}>Download a template</DownloadLink>.</p>
-          <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
-        </form>
-      </Card>
 
       <Eyebrow>DEMAND LINES</Eyebrow>
       <DataTable>

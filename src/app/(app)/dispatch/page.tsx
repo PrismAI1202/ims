@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createDispatch, dispatchProgress } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
@@ -42,6 +43,30 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
     <div className="space-y-4">
       <PageHeader eyebrow="SHIP" title="Dispatch" subtitle={`${dispatches.filter((d) => d.status === "LOADING").length} loading now`} />
       <Flash error={error} ok={ok} />
+      <NewPanel label="New pick list">
+        <Card className="space-y-3">
+          <Eyebrow>NEW PICK LIST</Eyebrow>
+          <form action={create} className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-[13px]">Customer
+                <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+              </label>
+              <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
+              <label className="text-[13px]">Driver<input name="driverName" className={inputCls} /></label>
+            </div>
+            {Array.from({ length: LINES }, (_, i) => (
+              <div key={i} className="grid gap-2 md:grid-cols-4">
+                <select name={`item_${i}`} className={`${inputCls} md:col-span-3`} aria-label={`Part ${i + 1}`}>
+                  <option value="">— part {i + 1} —</option>
+                  {fgItems.map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
+                </select>
+                <input name={`qty_${i}`} type="number" min="1" step="1" placeholder="Qty" className={inputCls} aria-label={`Quantity ${i + 1}`} />
+              </div>
+            ))}
+            <button className={`${btnCls} w-full md:w-auto`}>Create &amp; start loading</button>
+          </form>
+        </Card>
+      </NewPanel>
 
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {dispatches.map((d) => {
@@ -66,28 +91,6 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
         })}
         {dispatches.length === 0 && <Card><p className="text-sm text-ink-3">No dispatches yet.</p></Card>}
       </div>
-      <Card className="space-y-3">
-        <Eyebrow>NEW PICK LIST</Eyebrow>
-        <form action={create} className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="text-[13px]">Customer
-              <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-            </label>
-            <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
-            <label className="text-[13px]">Driver<input name="driverName" className={inputCls} /></label>
-          </div>
-          {Array.from({ length: LINES }, (_, i) => (
-            <div key={i} className="grid gap-2 md:grid-cols-4">
-              <select name={`item_${i}`} className={`${inputCls} md:col-span-3`} aria-label={`Part ${i + 1}`}>
-                <option value="">— part {i + 1} —</option>
-                {fgItems.map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
-              </select>
-              <input name={`qty_${i}`} type="number" min="1" step="1" placeholder="Qty" className={inputCls} aria-label={`Quantity ${i + 1}`} />
-            </div>
-          ))}
-          <button className={`${btnCls} w-full md:w-auto`}>Create &amp; start loading</button>
-        </form>
-      </Card>
     </div>
   );
 }

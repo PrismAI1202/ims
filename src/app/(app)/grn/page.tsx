@@ -5,6 +5,7 @@ import { saveUpload } from "@/server/services/storage";
 import { CoaRef } from "@/components/coa-ref";
 import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -65,49 +66,53 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
       <PageHeader eyebrow="INWARD" title="Gate entry & GRN" />
       <Flash error={error} ok={ok} />
 
-      <Card>
-        <form className="flex max-w-xl items-end gap-3" method="get">
-          <label className="flex-1 text-[13px]">Receive against PO
-            <select name="po" defaultValue={poId ?? ""} className={inputCls}>
-              <option value="">Select an open PO…</option>
-              {openPos.map((p) => <option key={p.id} value={p.id}>{p.poNumber} · {p.supplier.name} ({p.segment === "AUTOMOTIVE" ? "Auto" : "Non-auto"})</option>)}
-            </select>
-          </label>
-          <button className={btnCls}>Load</button>
-        </form>
-      </Card>
+      <NewPanel label="New gate entry / GRN" defaultOpen={!!selected}>
+      <div className="space-y-4">
+        <Card>
+          <form className="flex max-w-xl items-end gap-3" method="get">
+            <label className="flex-1 text-[13px]">Receive against PO
+              <select name="po" defaultValue={poId ?? ""} className={inputCls}>
+                <option value="">Select an open PO…</option>
+                {openPos.map((p) => <option key={p.id} value={p.id}>{p.poNumber} · {p.supplier.name} ({p.segment === "AUTOMOTIVE" ? "Auto" : "Non-auto"})</option>)}
+              </select>
+            </label>
+            <button className={btnCls}>Load</button>
+          </form>
+        </Card>
 
-      {selected && (
-        <form action={receive} className="space-y-4">
-          <input type="hidden" name="poId" value={selected.id} />
-          <Card className="space-y-3">
-            <Eyebrow>GATE</Eyebrow>
-            <div className="text-sm text-ink-2"><Mono>{selected.poNumber}</Mono> · {selected.supplier.name}</div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
-              <label className="text-[13px]">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
-              <div className="space-y-1 text-[13px]">
-                <div>COA {selected.segment === "AUTOMOTIVE" && <b className="text-danger">(mandatory)</b>}</div>
-                <input name="coaFile" type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="COA file" className={`${inputCls} py-2.5 text-xs`} />
-                <input name="coaUrl" placeholder="or type a certificate reference" aria-label="COA reference" className={inputCls} />
+        {selected && (
+          <form action={receive} className="space-y-4">
+            <input type="hidden" name="poId" value={selected.id} />
+            <Card className="space-y-3">
+              <Eyebrow>GATE</Eyebrow>
+              <div className="text-sm text-ink-2"><Mono>{selected.poNumber}</Mono> · {selected.supplier.name}</div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
+                <label className="text-[13px]">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
+                <div className="space-y-1 text-[13px]">
+                  <div>COA {selected.segment === "AUTOMOTIVE" && <b className="text-danger">(mandatory)</b>}</div>
+                  <input name="coaFile" type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="COA file" className={`${inputCls} py-2.5 text-xs`} />
+                  <input name="coaUrl" placeholder="or type a certificate reference" aria-label="COA reference" className={inputCls} />
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card className="space-y-3">
-            <Eyebrow>RECEIVE</Eyebrow>
-            {selected.lines.map((l) => (
-              <div key={l.id} className="grid items-end gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0 md:grid-cols-4">
-                <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
-                  <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
-                <div className="text-[13px]"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
-                <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
-                <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
-              </div>
-            ))}
-          </Card>
-          <button className={`${btnCls} w-full md:w-auto`}>Post GRN</button>
-        </form>
-      )}
+            </Card>
+            <Card className="space-y-3">
+              <Eyebrow>RECEIVE</Eyebrow>
+              {selected.lines.map((l) => (
+                <div key={l.id} className="grid items-end gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0 md:grid-cols-4">
+                  <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
+                    <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
+                  <div className="text-[13px]"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
+                  <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
+                  <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
+                </div>
+              ))}
+            </Card>
+            <button className={`${btnCls} w-full md:w-auto`}>Post GRN</button>
+          </form>
+        )}
+      </div>
+      </NewPanel>
 
       <Eyebrow>RECENT GRNs</Eyebrow>
       <DataTable>

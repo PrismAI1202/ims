@@ -6,7 +6,6 @@ import { can, type Permission } from "@/server/auth/permissions";
 import { Flash } from "@/components/flash";
 import { DownloadLink } from "@/components/download-link";
 import { Card, Chip, Eyebrow, Mono, PageHeader, roleLabel, SectionTitle, StatTile } from "@/components/ui";
-import { SignOutButton } from "@/components/sign-out";
 
 const TONE = {
   RED: "bg-danger text-white",
@@ -47,7 +46,6 @@ export default async function Dashboard({
         eyebrow="PLANT 2 · MOULDING SHOP"
         title={user.name ?? "Home"}
         subtitle={roleLabel(user.role)}
-        right={<SignOutButton />}
       />
       <Flash error={error} />
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">

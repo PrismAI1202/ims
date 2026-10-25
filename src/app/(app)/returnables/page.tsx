@@ -3,6 +3,7 @@ import { DownloadLink } from "@/components/download-link";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordReturnable, returnableBalances } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -39,6 +40,28 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
         Crates sent on a dispatch are added automatically; record returns here, or add an opening balance for crates already at a customer.
       </p>
       <Flash error={error} ok={ok} />
+      <NewPanel label="Record a movement">
+        <Card className="space-y-3">
+          <Eyebrow>RECORD A MOVEMENT</Eyebrow>
+          <form action={record} className="grid gap-3 md:grid-cols-6">
+            <label className="text-[13px]">Customer
+              <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            </label>
+            <label className="text-[13px]">Container
+              <select name="itemId" required className={inputCls}>{items.map((i) => <option key={i.id} value={i.id}>{i.code}</option>)}</select>
+            </label>
+            <label className="text-[13px]">Type
+              <select name="move" className={inputCls}><option value="RETURNED">Returned by customer</option><option value="ISSUED">Opening balance / issued</option></select>
+            </label>
+            <label className="text-[13px]">Quantity<input name="qty" type="number" min="1" step="1" required className={inputCls} /></label>
+            <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
+            <label className="text-[13px]">Bin (returns of crates we own)
+              <select name="binCode" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>
+            </label>
+            <div className="md:col-span-6"><button className={`${btnCls} w-full md:w-auto`}>Record</button></div>
+          </form>
+        </Card>
+      </NewPanel>
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
         <DownloadLink href={"/api/v1/export/returnables?format=xlsx"}>Download Excel</DownloadLink>
         <DownloadLink href={"/api/v1/export/returnables?format=csv"}>Download CSV</DownloadLink>
@@ -60,26 +83,6 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
         {balances.length === 0 && <Card><p className="text-sm text-ink-3">No container movements yet.</p></Card>}
       </div>
 
-      <Card className="space-y-3">
-        <Eyebrow>RECORD A MOVEMENT</Eyebrow>
-        <form action={record} className="grid gap-3 md:grid-cols-6">
-          <label className="text-[13px]">Customer
-            <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          </label>
-          <label className="text-[13px]">Container
-            <select name="itemId" required className={inputCls}>{items.map((i) => <option key={i.id} value={i.id}>{i.code}</option>)}</select>
-          </label>
-          <label className="text-[13px]">Type
-            <select name="move" className={inputCls}><option value="RETURNED">Returned by customer</option><option value="ISSUED">Opening balance / issued</option></select>
-          </label>
-          <label className="text-[13px]">Quantity<input name="qty" type="number" min="1" step="1" required className={inputCls} /></label>
-          <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
-          <label className="text-[13px]">Bin (returns of crates we own)
-            <select name="binCode" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>
-          </label>
-          <div className="md:col-span-6"><button className={`${btnCls} w-full md:w-auto`}>Record</button></div>
-        </form>
-      </Card>
 
       <Eyebrow>RECENT MOVEMENTS</Eyebrow>
       <DataTable>

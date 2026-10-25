@@ -2,7 +2,6 @@ import { requirePermission } from "@/server/auth/guard";
 import { can } from "@/server/auth/permissions";
 import { NAV_GROUPS } from "@/components/nav-data";
 import { Badge, Eyebrow, ListRow, PageHeader } from "@/components/ui";
-import { SignOutButton } from "@/components/sign-out";
 
 export const instant = false;
 
@@ -15,7 +14,7 @@ export default async function MorePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="PLANT 2 · MOULDING SHOP" title="More" right={<SignOutButton />} />
+      <PageHeader eyebrow="PLANT 2 · MOULDING SHOP" title="More" />
       {groups.map((g) => (
         <section key={g.name} className="space-y-1.5">
           <Eyebrow>{g.name}</Eyebrow>

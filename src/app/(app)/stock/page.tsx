@@ -6,6 +6,7 @@ import { requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { stockByItem } from "@/server/services/stock";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import {
   Badge, Card, Chip, Chips, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
 } from "@/components/ui";
@@ -109,6 +110,21 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <div className="space-y-4">
         {header}
         <Flash error={sp.error} ok={sp.ok} />
+        {canMove && (
+          <NewPanel label="Move stock">
+          <Card>
+            <h2 className="mb-2 font-display text-sm font-bold">Move part of a lot</h2>
+            <form action={transfer} className="grid gap-3 md:grid-cols-5">
+              <label className="text-[13px]">Lot no.<input name="lotNumber" required placeholder="scan lot" className={inputCls} /></label>
+              <label className="text-[13px]">From bin<input name="fromCode" required placeholder="scan bin" defaultValue={selected?.code} className={inputCls} /></label>
+              <label className="text-[13px]">To bin<input name="toCode" required placeholder="scan bin" className={inputCls} /></label>
+              <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
+              <div className="flex items-end"><button className={`${btnCls} w-full`}>Transfer</button></div>
+              <input type="hidden" name="back" value="/stock?view=bins" />
+            </form>
+          </Card>
+          </NewPanel>
+        )}
         <div className="flex flex-wrap gap-3 text-xs text-ink-2">
           <LegendDot color="#1D4ED8" label="Full" />
           <LegendDot color="#8FAEF0" label="Part" />
@@ -181,19 +197,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </section>
         )}
 
-        {canMove && (
-          <Card>
-            <h2 className="mb-2 font-display text-sm font-bold">Move part of a lot</h2>
-            <form action={transfer} className="grid gap-3 md:grid-cols-5">
-              <label className="text-[13px]">Lot no.<input name="lotNumber" required placeholder="scan lot" className={inputCls} /></label>
-              <label className="text-[13px]">From bin<input name="fromCode" required placeholder="scan bin" defaultValue={selected?.code} className={inputCls} /></label>
-              <label className="text-[13px]">To bin<input name="toCode" required placeholder="scan bin" className={inputCls} /></label>
-              <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
-              <div className="flex items-end"><button className={`${btnCls} w-full`}>Transfer</button></div>
-              <input type="hidden" name="back" value="/stock?view=bins" />
-            </form>
-          </Card>
-        )}
       </div>
     );
   }

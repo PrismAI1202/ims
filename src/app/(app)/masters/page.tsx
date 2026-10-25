@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { NewPanel } from "@/components/new-panel";
 import { Badge, DataTable, Eyebrow, PageHeader, SegmentedTabs } from "@/components/ui";
 import {
   addCustomer, addItem, addLocation, addMachine, addMould, addSupplier, saveSupplier, toggleActive,
@@ -29,10 +30,9 @@ function Table({ head, children }: { head: string[]; children: React.ReactNode }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <details className="rounded-[14px] bg-white p-4">
-      <summary className="min-h-9 cursor-pointer text-sm font-semibold text-accent">{title}</summary>
-      <div className="mt-3">{children}</div>
-    </details>
+    <NewPanel label={title.replace(/^\+\s*/, "")}>
+      <div className="rounded-[14px] bg-white p-4">{children}</div>
+    </NewPanel>
   );
 }
 
