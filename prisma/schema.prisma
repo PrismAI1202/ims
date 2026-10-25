@@ -115,16 +115,18 @@ model Customer {
 }
 
 model Supplier {
-  id           String          @id @default(cuid())
-  code         String          @unique
-  name         String
-  leadTimeDays Int             @default(7)
-  active       Boolean         @default(true)
-  pos          PurchaseOrder[]
-  prices       PriceMaster[]
+  equivalentGrades EquivalentGrade[]
+  id               String            @id @default(cuid())
+  code             String            @unique
+  name             String
+  leadTimeDays     Int               @default(7)
+  active           Boolean           @default(true)
+  pos              PurchaseOrder[]
+  prices           PriceMaster[]
 }
 
 model Item {
+  equivalentGroup  EquivalentGroup?
   id               String                @id @default(cuid())
   code             String                @unique
   name             String
@@ -188,24 +190,38 @@ model Location {
 }
 
 model Machine {
-  id       String              @id @default(cuid())
-  code     String              @unique
-  name     String
-  tonnage  Int?
-  moulds   Mould[]
-  bookings ProductionBooking[]
+  id        String              @id @default(cuid())
+  code      String              @unique
+  name      String
+  tonnage   Int?
+  moulds    Mould[]
+  bookings  ProductionBooking[]
+  downtimes Downtime[]
+  planSlots PlanSlot[]
 }
 
 model Mould {
-  id            String   @id @default(cuid())
-  code          String   @unique
-  name          String
-  cavities      Int      @default(1)
-  shotWeightG   Decimal? @db.Decimal(10, 2)
-  runnerWeightG Decimal? @db.Decimal(10, 2)
-  machineId     String?
-  machine       Machine? @relation(fields: [machineId], references: [id])
-  boms          Bom[]
+  id              String         @id @default(cuid())
+  code            String         @unique
+  name            String
+  cavities        Int            @default(1)
+  shotWeightG     Decimal?       @db.Decimal(10, 2)
+  runnerWeightG   Decimal?       @db.Decimal(10, 2)
+  machineId       String?
+  machine         Machine?       @relation(fields: [machineId], references: [id])
+  boms            Bom[]
+  // Performance and planning: standard cycle time and the smallest press this mould can run on.
+  idealCycleSec   Decimal?       @db.Decimal(7, 2)
+  minTonnage      Int?
+  // Maintenance: shots = openingShots + shots booked in production; a PM is due every pmIntervalShots.
+  openingShots    Int            @default(0)
+  lifeShots       Int            @default(1000000)
+  pmIntervalShots Int            @default(50000)
+  lastPmShots     Int            @default(0)
+  pmRecords       PmRecord[]
+  repairs         RepairTicket[]
+  downtimes       Downtime[]
+  planSlots       PlanSlot[]
 }
 
 // ───────── Phase 2: BOM and production ─────────
@@ -608,4 +624,143 @@ model ScrapDisposition {
   createdAt    DateTime          @default(now())
 
   @@index([bookingId])
+}
+
+// ───────── Phase 6: equivalents, maintenance, planning, downtime ─────────
+
+// One spec, many vendor grades. A group represents one stock item; each grade is a supplier's version of it.
+// Grade stock is derived: on-hand lots of that item that arrived on a PO from the grade's supplier.
+model EquivalentGroup {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  itemId    String            @unique
+  item      Item              @relation(fields: [itemId], references: [id])
+  spec      String            @default("") // key spec values, comma separated
+  createdAt DateTime          @default(now())
+  grades    EquivalentGrade[]
+}
+
+enum GradeStatus {
+  PENDING_QA
+  APPROVED
+  REJECTED
+}
+
+model EquivalentGrade {
+  id            String          @id @default(cuid())
+  groupId       String
+  group         EquivalentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  gradeName     String
+  supplierId    String
+  supplier      Supplier        @relation(fields: [supplierId], references: [id])
+  status        GradeStatus     @default(PENDING_QA)
+  autoApproved  Boolean         @default(false) // true: may be used for automotive parts too
+  priority      Int             @default(100) // lower = preferred
+  leadTimeDays  Int?
+  datasheetRef  String?
+  trialRef      String?
+  note          String?
+  requestedById String?
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime        @default(now())
+
+  @@unique([groupId, gradeName, supplierId])
+}
+
+enum DowntimeReason {
+  MOULD_CHANGE
+  MOULD_REPAIR
+  MACHINE_BREAKDOWN
+  NO_MATERIAL
+  NO_OPERATOR
+  NO_PLAN
+  POWER_CUT
+  QC_HOLD
+  COLOUR_CHANGE
+  TRIAL
+}
+
+// Minutes a machine was stopped in a shift, with the reason. Feeds OEE availability and MTBF / MTTR.
+model Downtime {
+  id        String         @id @default(cuid())
+  machineId String
+  machine   Machine        @relation(fields: [machineId], references: [id])
+  mouldId   String?
+  mould     Mould?         @relation(fields: [mouldId], references: [id])
+  day       DateTime       @db.Date
+  shift     Shift
+  reason    DowntimeReason
+  minutes   Int
+  note      String?
+  userId    String?
+  createdAt DateTime       @default(now())
+
+  @@index([day])
+  @@index([machineId, day])
+}
+
+model PmRecord {
+  id        String   @id @default(cuid())
+  mouldId   String
+  mould     Mould    @relation(fields: [mouldId], references: [id])
+  shotsAtPm Int
+  checks    String // the checklist items that were ticked, one per line
+  photoRef  String
+  note      String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([mouldId, createdAt])
+}
+
+enum RepairKind {
+  REPAIR
+  TRIAL
+}
+
+model RepairTicket {
+  id          String     @id @default(cuid())
+  mouldId     String
+  mould       Mould      @relation(fields: [mouldId], references: [id])
+  kind        RepairKind @default(REPAIR)
+  summary     String
+  downtimeMin Int        @default(0)
+  photoRef    String?
+  note        String?
+  userId      String?
+  createdAt   DateTime   @default(now())
+
+  @@index([mouldId, createdAt])
+}
+
+enum PlanKind {
+  JOB
+  PM
+  TRIAL
+}
+
+// One machine-day in the weekly mould x machine plan.
+model PlanSlot {
+  id        String   @id @default(cuid())
+  machineId String
+  machine   Machine  @relation(fields: [machineId], references: [id])
+  day       DateTime @db.Date
+  kind      PlanKind @default(JOB)
+  mouldId   String?
+  mould     Mould?   @relation(fields: [mouldId], references: [id])
+  fgItemId  String? // the part being made, for JOB slots
+  note      String?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@unique([machineId, day])
+  @@index([day])
+}
+
+// Small key/value settings (e.g. shift length in minutes).
+model AppSetting {
+  key   String @id
+  value String
 }

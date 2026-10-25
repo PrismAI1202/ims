@@ -22,6 +22,10 @@ export type Permission =
   | "users.manage"
   | "scrap.approve"
   | "reports.view"
+  | "equivalents.manage"
+  | "plan.manage"
+  | "maintenance.manage"
+  | "downtime.log"
   | "dispatch.manage";
 
 // SRS §5 role matrix. ADMIN holds everything.
@@ -30,13 +34,14 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "masters.manage", "po.manage", "grn.create", "qc.inspect", "stock.view",
     "stock.transfer", "stock.issue", "reorder.view", "request.create",
     "production.book", "bom.manage", "fg.pack", "mrp.plan", "users.manage", "scrap.approve", "reports.view", "dispatch.manage",
+    "equivalents.manage", "plan.manage", "maintenance.manage", "downtime.log",
   ],
   STORE_INCHARGE: [
     "po.manage", "grn.create", "stock.view", "stock.transfer", "stock.issue", "reorder.view",
-    "mrp.plan", "reports.view",
+    "mrp.plan", "reports.view", "equivalents.manage", "plan.manage",
   ],
-  QA_INSPECTOR: ["qc.inspect", "scrap.approve", "stock.view", "reports.view"],
-  PRODUCTION_LEAD: ["request.create", "production.book", "fg.pack", "stock.view", "reports.view"],
+  QA_INSPECTOR: ["qc.inspect", "scrap.approve", "stock.view", "reports.view", "equivalents.manage"],
+  PRODUCTION_LEAD: ["request.create", "production.book", "fg.pack", "stock.view", "reports.view", "plan.manage", "maintenance.manage", "downtime.log"],
   DISPATCH_OFFICER: ["dispatch.manage", "fg.pack", "stock.view"],
 };
 
