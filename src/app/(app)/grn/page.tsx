@@ -1,6 +1,9 @@
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
-import { createGrn } from "@/server/services/inventory";
+import { createGrn, DomainError } from "@/server/services/inventory";
+import { saveUpload } from "@/server/services/storage";
+import { CoaRef } from "@/components/coa-ref";
+import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
@@ -20,11 +23,21 @@ async function receive(formData: FormData) {
         bags: formData.get(`bags_${l.id}`) ? Number(formData.get(`bags_${l.id}`)) : undefined,
       }))
       .filter((l) => l.qty > 0);
+    // An uploaded certificate wins over a typed reference.
+    let coaUrl = String(formData.get("coaUrl") || "").trim() || undefined;
+    const file = formData.get("coaFile");
+    if (file instanceof File && file.size > 0) {
+      try {
+        coaUrl = await saveUpload({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+      } catch (e) {
+        throw e instanceof DomainError ? e : new DomainError("The certificate could not be saved.");
+      }
+    }
     await createGrn({
       poId,
       vehicleNumber: String(formData.get("vehicleNumber")),
       invoiceNumber: String(formData.get("invoiceNumber")),
-      coaUrl: String(formData.get("coaUrl") || "") || undefined,
+      coaUrl,
       lines,
       userId: user.id,
     });
@@ -73,9 +86,11 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
             <div className="grid gap-3 md:grid-cols-3">
               <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" required className={inputCls} /></label>
               <label className="text-[13px]">Supplier invoice no.<input name="invoiceNumber" required className={inputCls} /></label>
-              <label className="text-[13px]">COA reference {selected.segment === "AUTOMOTIVE" && <b className="text-danger">(mandatory)</b>}
-                <input name="coaUrl" placeholder="coa file / reference" className={inputCls} />
-              </label>
+              <div className="space-y-1 text-[13px]">
+                <div>COA {selected.segment === "AUTOMOTIVE" && <b className="text-danger">(mandatory)</b>}</div>
+                <input name="coaFile" type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="COA file" className={`${inputCls} py-2.5 text-xs`} />
+                <input name="coaUrl" placeholder="or type a certificate reference" aria-label="COA reference" className={inputCls} />
+              </div>
             </div>
           </Card>
           <Card className="space-y-3">
@@ -84,7 +99,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
               <div key={l.id} className="grid items-end gap-3 border-t border-line pt-3 first:border-t-0 first:pt-0 md:grid-cols-4">
                 <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
                   <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
-                <label className="text-[13px]">Received qty<input name={`qty_${l.id}`} type="number" step="any" min="0" className={inputCls} /></label>
+                <div className="text-[13px]"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
                 <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
                 <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
               </div>
@@ -97,7 +112,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
       <Eyebrow>RECENT GRNs</Eyebrow>
       <DataTable>
         <thead><tr>
-          <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>Lots (pending QC → QC queue)</th>
+          <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>COA</th><th>Lots (pending QC → QC queue)</th>
         </tr></thead>
         <tbody>
           {recent.map((g) => (
@@ -105,6 +120,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
               <td className="font-semibold"><Mono>{g.grnNumber}</Mono></td>
               <td><Mono>{g.po.poNumber}</Mono></td>
               <td>{g.gateEntry?.vehicleNumber} / {g.gateEntry?.invoiceNumber}</td>
+              <td><CoaRef value={g.coaUrl} /></td>
               <td>
                 <div className="flex flex-wrap gap-1">
                   {g.lines.map((l) => l.lot && (
@@ -116,7 +132,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
               </td>
             </tr>
           ))}
-          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={4}>No GRNs yet.</td></tr>}
+          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No GRNs yet.</td></tr>}
         </tbody>
       </DataTable>
     </div>

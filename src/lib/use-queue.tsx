@@ -40,6 +40,11 @@ export function useQueue() {
   return { entries, online, lastSync, refresh, sync };
 }
 
+function describe(op: QueueEntry["op"]): string {
+  if (op.type === "DISPATCH_SCAN") return `Load ${op.scan.split("|").pop()} onto ${op.dcNumber}`;
+  return `${op.type === "ISSUE" ? "Issue" : "Move"} ${op.lotNumber} ×${op.qty}`;
+}
+
 export function QueueBar({ queue }: { queue: ReturnType<typeof useQueue> }) {
   const pending = queue.entries.filter((e) => !e.error);
   const rejected = queue.entries.filter((e) => e.error);
@@ -51,7 +56,7 @@ export function QueueBar({ queue }: { queue: ReturnType<typeof useQueue> }) {
       </div>
       {rejected.map((e) => (
         <div key={e.op.clientUuid} className="flex items-start justify-between gap-2 rounded-xl bg-danger-bg px-3 py-2 text-danger">
-          <span>{e.op.type} {e.op.lotNumber} ×{e.op.qty}: {e.error}</span>
+          <span>{describe(e.op)}: {e.error}</span>
           <button className="underline" onClick={async () => { await discard(e.op.clientUuid); await queue.refresh(); }}>Discard</button>
         </div>
       ))}

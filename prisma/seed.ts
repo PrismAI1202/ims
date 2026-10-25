@@ -56,6 +56,9 @@ async function main() {
     { code: "PK-BOX-5P", name: "Corrugated Box 5-ply 400x300", category: "PACKAGING", uom: "NOS", minStock: 500, reorderPoint: 1000, maxStock: 4000 },
     { code: "PK-FILM-01", name: "Stretch Film Roll", category: "PACKAGING", uom: "ROLL", minStock: 20, reorderPoint: 40, maxStock: 150 },
     { code: "PK-CRATE-A", name: "Returnable Crate (Apex Motors)", category: "RETURNABLE", uom: "NOS", minStock: 200, reorderPoint: 400, maxStock: 1500 },
+    { code: "RG-PP-001", name: "PP Regrind (in-house)", category: "REGRIND", polymerGrade: "PP", minStock: 0, reorderPoint: 0, maxStock: 0 },
+    { code: "RG-ABS-001", name: "ABS Regrind (in-house)", category: "REGRIND", polymerGrade: "ABS", minStock: 0, reorderPoint: 0, maxStock: 0 },
+    { code: "FG-CLIP-001", name: "Dashboard Clip (finished)", category: "FG", uom: "NOS", minStock: 2000, reorderPoint: 4000, maxStock: 20000 },
   ];
   for (const i of items) {
     await prisma.item.upsert({
@@ -117,6 +120,40 @@ async function main() {
     where: { code: "MLD-1001" }, update: {},
     create: { code: "MLD-1001", name: "Dashboard Clip Mould", cavities: 4, shotWeightG: 38.5, runnerWeightG: 6.2, machineId: m1.id },
   });
+
+  // Sample tax details so challans / e-way data can be shown complete. Replace with real values.
+  await prisma.item.update({ where: { code: "FG-CLIP-001" }, data: { hsnCode: "39269099", unitPrice: 4.25 } });
+  await prisma.customer.update({
+    where: { code: "CUST-AUTO" },
+    data: { gstin: "27AAAAA0000A1Z5", address: "Plot 12, MIDC Chakan, Pune, Maharashtra" },
+  });
+  await prisma.customer.update({
+    where: { code: "CUST-IND" },
+    data: { gstin: "27BBBBB1111B1Z6", address: "Industrial Estate, Nashik, Maharashtra" },
+  });
+
+  // The seeded crate belongs to the customer, so it is tracked in the returnable ledger only.
+  await prisma.item.update({ where: { code: "PK-CRATE-A" }, data: { stockTracked: false } });
+
+  // Demo BOM: 4-cavity clip, 70% PP + 5% black masterbatch + 25% PP regrind, two brass inserts per part.
+  const fg = await prisma.item.findUniqueOrThrow({ where: { code: "FG-CLIP-001" } });
+  if (!(await prisma.bom.findUnique({ where: { fgItemId: fg.id } }))) {
+    const mould = await prisma.mould.findUniqueOrThrow({ where: { code: "MLD-1001" } });
+    const id = async (code: string) => (await prisma.item.findUniqueOrThrow({ where: { code } })).id;
+    await prisma.bom.create({
+      data: {
+        fgItemId: fg.id, mouldId: mould.id, partWeightG: 8.5,
+        lines: {
+          create: [
+            { itemId: await id("RM-PP-001"), kind: "RESIN", pct: 70 },
+            { itemId: await id("MB-BLK-001"), kind: "MASTERBATCH", pct: 5 },
+            { itemId: await id("RG-PP-001"), kind: "REGRIND", pct: 25 },
+            { itemId: await id("BOP-INS-M6"), kind: "BOP", qtyPerPart: 2 },
+          ],
+        },
+      },
+    });
+  }
 
   console.log("Seed complete. Login: <role>@ims.local / password123");
 }

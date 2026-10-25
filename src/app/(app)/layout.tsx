@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth, signOut } from "@/auth";
@@ -22,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-canvas md:flex">
-      <aside className="hidden bg-shell p-4 text-on-shell md:block md:min-h-screen md:w-64 md:flex-none">
+      <aside className="hidden bg-shell p-4 text-on-shell md:block md:min-h-screen md:w-64 md:flex-none print:hidden">
         <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">PLANT 2 · MOULDING SHOP</div>
         <div className="font-display text-xl font-extrabold">IMS · Moulding</div>
         <SideNav groups={groups} />
@@ -34,11 +35,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           }}
         >
           <div className="text-sm text-on-shell">{session.user.name}</div>
+          <Link href="/account" className="underline">Change password</Link>
           <div className="mb-2">{roleLabel(role)}</div>
           <button className="min-h-9 rounded-lg bg-on-shell px-3 font-semibold text-ink">Sign out</button>
         </form>
       </aside>
-      <main className="min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8">
+      <main className="min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8 print:p-0">
         {children}
       </main>
       <BottomNav />

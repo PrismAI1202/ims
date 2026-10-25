@@ -2,7 +2,8 @@ import { openDB, type DBSchema } from "idb";
 
 export type QueuedOp =
   | { type: "TRANSFER"; clientUuid: string; lotNumber: string; fromCode: string; toCode: string; qty: number }
-  | { type: "ISSUE"; clientUuid: string; requestLineId: string; lotNumber: string; locationCode: string; qty: number; fifoOverrideReason?: string };
+  | { type: "ISSUE"; clientUuid: string; requestLineId: string; lotNumber: string; locationCode: string; qty: number; fifoOverrideReason?: string }
+  | { type: "DISPATCH_SCAN"; clientUuid: string; dispatchId: string; dcNumber: string; scan: string };
 
 export type QueueEntry = { op: QueuedOp; queuedAt: number; error?: string };
 

@@ -14,12 +14,23 @@ export async function requirePermission(permission: Permission) {
 }
 
 // Runs a server action body; domain errors come back to the page as ?error=..., success as ?ok=...
-export async function runAction(path: string, okMessage: string, fn: () => Promise<void>): Promise<never> {
+// `path` and `okMessage` may be functions so they can depend on what the action created (e.g. a new id).
+// When `path` is a function, pass `errorPath` too, since there is nothing to fall back to if fn() throws first.
+export async function runAction(
+  path: string | (() => string), okMessage: string | (() => string), fn: () => Promise<void>,
+  errorPath: string = typeof path === "string" ? path : "/dashboard",
+): Promise<never> {
   try {
     await fn();
   } catch (e) {
-    if (e instanceof DomainError) redirect(`${path}?error=${encodeURIComponent(e.message)}`);
+    if (e instanceof DomainError) redirect(withParam(errorPath, "error", e.message));
     throw e;
   }
-  redirect(`${path}?ok=${encodeURIComponent(okMessage)}`);
+  const target = typeof path === "function" ? path() : path;
+  redirect(withParam(target, "ok", typeof okMessage === "function" ? okMessage() : okMessage));
+}
+
+// Paths may already carry a query string (e.g. /masters?tab=items).
+export function withParam(path: string, key: string, value: string) {
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}`;
 }

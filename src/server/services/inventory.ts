@@ -12,7 +12,10 @@ export class DomainError extends Error {
   }
 }
 
-async function nextNumber(tx: Tx, prefix: string, table: "purchaseOrder" | "grn" | "gateEntry" | "materialRequest" | "lot") {
+export async function nextNumber(
+  tx: Tx, prefix: string,
+  table: "purchaseOrder" | "grn" | "gateEntry" | "materialRequest" | "lot" | "productionBooking" | "fgBox" | "dispatch",
+) {
   const count = await (tx[table] as unknown as { count: () => Promise<number> }).count();
   const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
   return `${prefix}-${stamp}-${String(count + 1).padStart(4, "0")}`;
@@ -226,6 +229,18 @@ export async function transferStock(input: TransferInput, db: Db = defaultDb) {
     ]);
     if (!from) throw new DomainError(`Unknown bin ${input.fromCode}.`);
     if (!to) throw new DomainError(`Unknown bin ${input.toCode}.`);
+
+    // Parts already inside labelled boxes are reserved for dispatch and must stay put.
+    const boxed = (await tx.fgBox.aggregate({
+      _sum: { qty: true }, where: { lotId: lot.id, locationId: from.id, status: "IN_STOCK" },
+    }))._sum.qty ?? 0;
+    if (boxed > 0) {
+      const bal = await tx.stockBalance.findUnique({ where: { lotId_locationId: { lotId: lot.id, locationId: from.id } } });
+      const free = Number(bal?.qty ?? 0) - boxed;
+      if (input.qty > free) {
+        throw new DomainError(`${boxed} parts of ${lot.lotNumber} in ${from.code} are already in labelled boxes; only ${Math.max(free, 0)} can be moved.`);
+      }
+    }
     await moveWithin(tx, lot.id, from.id, to.id, input.qty, {
       type: "TRANSFER", userId: input.userId, refType: "TRANSFER", clientUuid: input.clientUuid,
     });

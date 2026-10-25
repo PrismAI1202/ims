@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getApiUser } from "@/server/auth/api-auth";
 import { can } from "@/server/auth/permissions";
+import { DuplicateScanError, scanBox } from "@/server/services/dispatch";
 import { DomainError, issueStock, transferStock } from "@/server/services/inventory";
 
 const opSchema = z.discriminatedUnion("type", [
@@ -15,6 +16,11 @@ const opSchema = z.discriminatedUnion("type", [
     clientUuid: z.string().min(8).max(100),
     requestLineId: z.string().min(1), lotNumber: z.string().min(1), locationCode: z.string().min(1),
     qty: z.number().positive(), fifoOverrideReason: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("DISPATCH_SCAN"),
+    clientUuid: z.string().min(8).max(100),
+    dispatchId: z.string().min(1), scan: z.string().min(1).max(300),
   }),
 ]);
 const bodySchema = z.object({ ops: z.array(opSchema).max(200) });
@@ -37,6 +43,15 @@ export async function POST(req: Request) {
         if (!can(user.role, "stock.transfer")) throw new DomainError("Not allowed to transfer stock.");
         const r = await transferStock({ ...op, userId: user.id });
         results.push({ clientUuid: op.clientUuid, status: r.replayed ? "replayed" : "ok" });
+      } else if (op.type === "DISPATCH_SCAN") {
+        if (!can(user.role, "dispatch.manage")) throw new DomainError("Not allowed to load dispatches.");
+        try {
+          await scanBox({ dispatchId: op.dispatchId, scan: op.scan });
+          results.push({ clientUuid: op.clientUuid, status: "ok" });
+        } catch (e) {
+          if (!(e instanceof DuplicateScanError)) throw e;
+          results.push({ clientUuid: op.clientUuid, status: "replayed" });
+        }
       } else {
         if (!can(user.role, "stock.issue")) throw new DomainError("Not allowed to issue stock.");
         const r = await issueStock({ ...op, userId: user.id });

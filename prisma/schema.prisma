@@ -100,12 +100,18 @@ model ApiToken {
 // ───────── Masters ─────────
 
 model Customer {
-  id          String  @id @default(cuid())
-  code        String  @unique
+  id          String             @id @default(cuid())
+  code        String             @unique
   name        String
   segment     Segment
-  labelFormat String  @default("GENERIC") // GENERIC | OEM
-  active      Boolean @default(true)
+  labelFormat String             @default("GENERIC") // GENERIC | OEM
+  gstin       String?
+  address     String?
+  active      Boolean            @default(true)
+  boxes       FgBox[]
+  dispatches  Dispatch[]
+  returnables ReturnableLedger[]
+  demandLines DemandLine[]
 }
 
 model Supplier {
@@ -119,24 +125,33 @@ model Supplier {
 }
 
 model Item {
-  id            String                @id @default(cuid())
-  code          String                @unique
-  name          String
-  category      ItemCategory
-  uom           String                @default("KG")
-  polymerGrade  String? // e.g. PP, ABS, PA66
-  minStock      Decimal               @default(0) @db.Decimal(14, 3)
-  maxStock      Decimal               @default(0) @db.Decimal(14, 3)
-  reorderPoint  Decimal               @default(0) @db.Decimal(14, 3)
-  safetyStock   Decimal               @default(0) @db.Decimal(14, 3)
-  shelfLifeDays Int?
-  requiresCoa   Boolean               @default(false)
-  maxRegrindPct Decimal?              @db.Decimal(5, 2)
-  active        Boolean               @default(true)
-  prices        PriceMaster[]
-  poLines       PurchaseOrderLine[]
-  lots          Lot[]
-  requestLines  MaterialRequestLine[]
+  id               String                @id @default(cuid())
+  code             String                @unique
+  name             String
+  category         ItemCategory
+  uom              String                @default("KG")
+  polymerGrade     String? // e.g. PP, ABS, PA66
+  minStock         Decimal               @default(0) @db.Decimal(14, 3)
+  maxStock         Decimal               @default(0) @db.Decimal(14, 3)
+  reorderPoint     Decimal               @default(0) @db.Decimal(14, 3)
+  safetyStock      Decimal               @default(0) @db.Decimal(14, 3)
+  shelfLifeDays    Int?
+  requiresCoa      Boolean               @default(false)
+  maxRegrindPct    Decimal?              @db.Decimal(5, 2)
+  hsnCode          String?
+  unitPrice        Decimal?              @db.Decimal(14, 4) // selling price, FG only
+  active           Boolean               @default(true)
+  dispatchLines    DispatchLine[]
+  returnableLedger ReturnableLedger[]
+  demandLines      DemandLine[]
+  stockTracked     Boolean               @default(false) // returnable containers only: true = we own them and track their stock
+  prices           PriceMaster[]
+  poLines          PurchaseOrderLine[]
+  lots             Lot[]
+  requestLines     MaterialRequestLine[]
+  boms             Bom[]
+  bomLines         BomLine[]
+  consumption      BookingConsumption[]
 }
 
 model PriceMaster {
@@ -169,14 +184,16 @@ model Location {
   type        LocationType       @default(STORAGE)
   balances    StockBalance[]
   txns        StockTransaction[]
+  boxes       FgBox[]
 }
 
 model Machine {
-  id      String  @id @default(cuid())
-  code    String  @unique
-  name    String
-  tonnage Int?
-  moulds  Mould[]
+  id       String              @id @default(cuid())
+  code     String              @unique
+  name     String
+  tonnage  Int?
+  moulds   Mould[]
+  bookings ProductionBooking[]
 }
 
 model Mould {
@@ -188,6 +205,83 @@ model Mould {
   runnerWeightG Decimal? @db.Decimal(10, 2)
   machineId     String?
   machine       Machine? @relation(fields: [machineId], references: [id])
+  boms          Bom[]
+}
+
+// ───────── Phase 2: BOM and production ─────────
+
+enum BomLineKind {
+  RESIN
+  MASTERBATCH
+  REGRIND
+  BOP
+  PACKAGING
+}
+
+enum Shift {
+  A
+  B
+  C
+}
+
+// One BOM per finished part. RESIN/MASTERBATCH/REGRIND lines are a weight blend (pct sums to 100);
+// BOP/PACKAGING lines are a count per good part.
+model Bom {
+  id          String              @id @default(cuid())
+  fgItemId    String              @unique
+  fgItem      Item                @relation(fields: [fgItemId], references: [id])
+  mouldId     String
+  mould       Mould               @relation(fields: [mouldId], references: [id])
+  partWeightG Decimal             @db.Decimal(10, 3) // net weight of one moulded part
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  lines       BomLine[]
+  bookings    ProductionBooking[]
+}
+
+model BomLine {
+  id         String      @id @default(cuid())
+  bomId      String
+  bom        Bom         @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item        @relation(fields: [itemId], references: [id])
+  kind       BomLineKind
+  pct        Decimal?    @db.Decimal(7, 3) // blend lines only
+  qtyPerPart Decimal?    @db.Decimal(12, 4) // BOP / packaging only
+}
+
+model ProductionBooking {
+  id            String               @id @default(cuid())
+  bookingNumber String               @unique
+  bomId         String
+  bom           Bom                  @relation(fields: [bomId], references: [id])
+  machineId     String
+  machine       Machine              @relation(fields: [machineId], references: [id])
+  shift         Shift
+  shots         Int
+  goodParts     Int
+  rejectParts   Int                  @default(0)
+  runnerKg      Decimal              @default(0) @db.Decimal(12, 3) // runner/sprue generated
+  regrindLotId  String?
+  fgLotId       String?
+  producedAt    DateTime             @default(now())
+  userId        String?
+  note          String?
+  consumption   BookingConsumption[]
+  lotUses       ProductionLotUse[]
+  scrap         ScrapDisposition[]
+
+  @@index([producedAt])
+}
+
+// Expected material use frozen at booking time, so later BOM edits don't rewrite history.
+model BookingConsumption {
+  id          String            @id @default(cuid())
+  bookingId   String
+  booking     ProductionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item              @relation(fields: [itemId], references: [id])
+  expectedQty Decimal           @db.Decimal(14, 4)
 }
 
 // ───────── Procurement ─────────
@@ -271,6 +365,8 @@ model Lot {
   balances      StockBalance[]
   txns          StockTransaction[]
   issueLines    IssueLine[]
+  boxes         FgBox[]
+  lotUses       ProductionLotUse[]
 
   @@index([itemId, qcStatus, receivedAt])
 }
@@ -355,4 +451,161 @@ model IssueLine {
   clientUuid         String?             @unique
   issuedById         String?
   issuedAt           DateTime            @default(now())
+}
+
+// ───────── Phase 3: FG boxes, dispatch, returnables ─────────
+
+enum BoxStatus {
+  IN_STOCK
+  DISPATCHED
+}
+
+enum DispatchStatus {
+  LOADING
+  DISPATCHED
+  CANCELLED
+}
+
+enum ReturnableMove {
+  ISSUED
+  RETURNED
+}
+
+// A labelled box of finished parts. Stock lives on the lot's balance; a box only reserves part of it
+// until it is scanned onto a truck.
+model FgBox {
+  id           String    @id @default(cuid())
+  boxCode      String    @unique // human + QR key
+  lotId        String
+  lot          Lot       @relation(fields: [lotId], references: [id])
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id])
+  locationId   String
+  location     Location  @relation(fields: [locationId], references: [id])
+  qty          Int
+  shift        String? // snapshot for the label
+  machineCode  String?
+  batchCode    String? // production booking number
+  producedDate DateTime
+  status       BoxStatus @default(IN_STOCK)
+  dispatchId   String?
+  dispatch     Dispatch? @relation(fields: [dispatchId], references: [id])
+  createdAt    DateTime  @default(now())
+
+  @@index([lotId, status])
+  @@index([dispatchId])
+}
+
+model Dispatch {
+  id            String             @id @default(cuid())
+  dcNumber      String             @unique
+  customerId    String
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  vehicleNumber String
+  driverName    String?
+  status        DispatchStatus     @default(LOADING)
+  createdAt     DateTime           @default(now())
+  dispatchedAt  DateTime?
+  createdById   String?
+  lines         DispatchLine[]
+  boxes         FgBox[]
+  returnables   ReturnableLedger[]
+}
+
+model DispatchLine {
+  id         String   @id @default(cuid())
+  dispatchId String
+  dispatch   Dispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  qty        Int
+}
+
+// Customer-owned crates, trolleys and pallets: issued with a dispatch, returned later. Balance = issued - returned.
+model ReturnableLedger {
+  id         String         @id @default(cuid())
+  customerId String
+  customer   Customer       @relation(fields: [customerId], references: [id])
+  itemId     String
+  item       Item           @relation(fields: [itemId], references: [id])
+  move       ReturnableMove
+  qty        Int
+  dispatchId String?
+  dispatch   Dispatch?      @relation(fields: [dispatchId], references: [id])
+  note       String?
+  userId     String?
+  createdAt  DateTime       @default(now())
+
+  @@index([customerId, itemId])
+}
+
+// ───────── Phase 4: demand and MRP ─────────
+
+enum DemandType {
+  FORECAST
+  FIRM
+  SPOT
+}
+
+model DemandImport {
+  id        String       @id @default(cuid())
+  fileName  String
+  rowCount  Int
+  replaced  Int          @default(0) // forecast rows superseded by this upload
+  userId    String?
+  createdAt DateTime     @default(now())
+  lines     DemandLine[]
+}
+
+model DemandLine {
+  id         String        @id @default(cuid())
+  importId   String?
+  import     DemandImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  customerId String
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  fgItemId   String
+  fgItem     Item          @relation(fields: [fgItemId], references: [id])
+  dueDate    DateTime      @db.Date
+  qty        Int
+  type       DemandType
+  createdAt  DateTime      @default(now())
+
+  @@index([dueDate])
+  @@index([customerId, fgItemId, type])
+}
+
+// ───────── Phase 5: traceability and scrap ─────────
+
+// Which material lots a production run actually consumed (stock was already issued; this is the trace link).
+model ProductionLotUse {
+  id        String            @id @default(cuid())
+  bookingId String
+  booking   ProductionBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  lotId     String
+  lot       Lot               @relation(fields: [lotId], references: [id])
+  qty       Decimal           @db.Decimal(14, 3)
+
+  @@index([lotId])
+  @@index([bookingId])
+}
+
+enum ScrapKind {
+  REGRIND
+  WASTE
+}
+
+// QA's decision on rejected parts from a booking: crush into regrind, or scrap as waste.
+model ScrapDisposition {
+  id           String            @id @default(cuid())
+  bookingId    String
+  booking      ProductionBooking @relation(fields: [bookingId], references: [id])
+  parts        Int
+  weightKg     Decimal           @db.Decimal(12, 3)
+  kind         ScrapKind
+  regrindLotId String?
+  note         String?
+  approvedById String?
+  createdAt    DateTime          @default(now())
+
+  @@index([bookingId])
 }

@@ -76,6 +76,16 @@ describe("RBAC", () => {
     expect(can("PRODUCTION_LEAD", "request.create")).toBe(true);
     expect(can("PRODUCTION_LEAD", "stock.issue")).toBe(false);
   });
+  it("keeps BOM editing admin-only but lets production book and roles read reports", () => {
+    expect(can("ADMIN", "bom.manage")).toBe(true);
+    for (const r of ["STORE_INCHARGE", "QA_INSPECTOR", "PRODUCTION_LEAD", "DISPATCH_OFFICER"] as const) {
+      expect(can(r, "bom.manage")).toBe(false);
+    }
+    expect(can("PRODUCTION_LEAD", "production.book")).toBe(true);
+    expect(can("STORE_INCHARGE", "production.book")).toBe(false);
+    expect(can("QA_INSPECTOR", "reports.view")).toBe(true);
+    expect(can("DISPATCH_OFFICER", "reports.view")).toBe(false);
+  });
   it("denies unauthenticated and throws on assert", () => {
     expect(can(undefined, "stock.view")).toBe(false);
     expect(() => assertCan("DISPATCH_OFFICER", "grn.create")).toThrow(ForbiddenError);

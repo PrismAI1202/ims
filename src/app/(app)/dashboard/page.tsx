@@ -4,6 +4,7 @@ import { stockByItem } from "@/server/services/stock";
 import { requirePermission } from "@/server/auth/guard";
 import { can, type Permission } from "@/server/auth/permissions";
 import { Flash } from "@/components/flash";
+import { DownloadLink } from "@/components/download-link";
 import { Card, Chip, Eyebrow, Mono, PageHeader, roleLabel, SectionTitle, StatTile } from "@/components/ui";
 import { SignOutButton } from "@/components/sign-out";
 
@@ -49,6 +50,11 @@ export default async function Dashboard({
         right={<SignOutButton />}
       />
       <Flash error={error} />
+      <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
+        <DownloadLink href={"/api/v1/export/stock?format=xlsx"}>Download Excel</DownloadLink>
+        <DownloadLink href={"/api/v1/export/stock?format=csv"}>Download CSV</DownloadLink>
+        <span className="font-normal text-ink-3">For a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+      </p>
       <Card className="space-y-3">
         <Link href="/stock" className="flex min-h-8 items-center justify-between gap-2">
           <span>

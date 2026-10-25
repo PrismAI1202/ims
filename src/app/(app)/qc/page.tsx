@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordQc } from "@/server/services/inventory";
 import { btnDangerCls, btnOkCls, btnWarnCls, Flash, inputCls } from "@/components/flash";
+import { CoaRef } from "@/components/coa-ref";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -58,6 +59,7 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
               </div>
               <div className="text-right text-xs text-ink-2">
                 <div><Mono>{Number(l.receivedQty)}</Mono> {l.item.uom} · heat/lot <Mono>{l.supplierLotNo}</Mono></div>
+                <div>COA: <CoaRef value={l.grnLine?.grn.coaUrl} /></div>
                 <Badge tone={l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "info" : "neutral"}>
                   {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}
                 </Badge>

@@ -10,6 +10,7 @@ export default async function ScanHome() {
   const tiles = [
     { href: "/scan/issue", label: "Issue to shop floor", sub: "FIFO lot scan", perm: "stock.issue" as const },
     { href: "/scan/transfer", label: "Bin transfer / put-away", sub: "Move between bins", perm: "stock.transfer" as const },
+    { href: "/scan/dispatch", label: "Load a dispatch", sub: "Scan boxes", perm: "dispatch.manage" as const },
   ].filter((t) => can(user.role, t.perm));
 
   return (
