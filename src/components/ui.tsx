@@ -168,13 +168,14 @@ export function SegmentedTabs({
 }
 
 const STORES_TABS = [
-  { href: "/stock", label: "Stock & bins" },
-  { href: "/requests", label: "Requisitions" },
-  { href: "/issue", label: "FIFO issue" },
-];
+  { key: "stock", href: "/stock", label: "Stock" },
+  { key: "bins", href: "/stock?view=bins", label: "Bins" },
+  { key: "requests", href: "/requests", label: "Requisitions" },
+  { key: "issue", href: "/issue", label: "FIFO issue" },
+] as const;
 
-export function StoresTabs({ active }: { active: "/stock" | "/requests" | "/issue" }) {
-  return <SegmentedTabs tabs={STORES_TABS.map((t) => ({ ...t, active: t.href === active }))} />;
+export function StoresTabs({ active }: { active: (typeof STORES_TABS)[number]["key"] }) {
+  return <SegmentedTabs tabs={STORES_TABS.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }
 
 /** Scrollable table wrapper with the design's dividers and mono numerals. */
@@ -197,6 +198,79 @@ export function ComingSoon({ title, what }: { title: string; what: string }) {
         <p className="text-[15px]">{what}</p>
         <p className="text-sm text-ink-3">This module is part of the design but has not been built yet.</p>
       </Card>
+    </div>
+  );
+}
+
+/** Stock level against its Min marker; fill is relative to Max (as in the design's Stores cards). */
+export function MinMaxBar({
+  value, min, max, color,
+}: { value: number; min: number; max: number; color: string }) {
+  const top = Math.max(max, value, 1);
+  const w = Math.min(100, (value / top) * 100);
+  const m = Math.min(100, (min / top) * 100);
+  return (
+    <div aria-hidden className="relative h-2.5 rounded-[5px] bg-canvas">
+      <span className="absolute inset-y-0 left-0 rounded-[5px]" style={{ width: `${w}%`, background: color }} />
+      <span className="absolute -inset-y-[3px] w-0.5 bg-ink" style={{ left: `${m}%` }} />
+    </div>
+  );
+}
+
+/** Plain progress bar (e.g. bins scanned onto a truck). */
+export function ProgressBar({ value, max, color = "#1D4ED8" }: { value: number; max: number; color?: string }) {
+  const w = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div role="progressbar" aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className="h-2.5 rounded-[5px] bg-canvas">
+      <span className="block h-2.5 rounded-[5px]" style={{ width: `${w}%`, background: color }} />
+    </div>
+  );
+}
+
+export const BLEND_COLORS = { virgin: "#1D4ED8", regrind: "#E98A3E", masterbatch: "#15171A" } as const;
+
+/** Virgin / regrind / masterbatch split, as on the design's BOM cards. */
+export function StackedBar({ parts }: { parts: { pct: number; color: string; label?: string }[] }) {
+  return (
+    <div aria-hidden className="flex h-3.5 gap-0.5 overflow-hidden rounded-[7px] bg-canvas">
+      {parts.filter((p) => p.pct > 0).map((p, i) => (
+        <span key={i} className="flex min-w-1.5 items-center justify-center text-[9px] font-bold text-white" style={{ width: `${p.pct}%`, background: p.color }}>
+          {p.pct >= 14 ? p.label : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function LegendDot({ color, label, border }: { color: string; label: string; border?: boolean }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span className="size-3 rounded-[3px]" style={{ background: color, border: border ? "1px solid #C9C5BC" : undefined }} />
+      {label}
+    </span>
+  );
+}
+
+/** Light pill filters rendered as links, for use on the canvas background. */
+export function Chips({
+  chips,
+}: { chips: { href: string; label: string; active: boolean; n?: number }[] }) {
+  return (
+    <div role="group" className="flex flex-wrap gap-1.5">
+      {chips.map((c) => (
+        <Link
+          key={c.label}
+          href={c.href}
+          scroll={false}
+          aria-current={c.active ? "true" : undefined}
+          className={`flex min-h-9 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 text-[13px] font-semibold ${
+            c.active ? "border-ink bg-ink text-white" : "border-border bg-white text-ink"
+          }`}
+        >
+          {c.label}
+          {c.n !== undefined && <span className="font-mono text-[11px] opacity-70">{c.n}</span>}
+        </Link>
+      ))}
     </div>
   );
 }

@@ -30,7 +30,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="STORES" title="Requisitions from the shop floor">
-        <StoresTabs active="/requests" />
+        <StoresTabs active="requests" />
       </PageHeader>
       <Flash error={error} ok={ok} />
       <Card>

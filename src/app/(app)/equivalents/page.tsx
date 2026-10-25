@@ -1,9 +1,9 @@
-import { ComingSoon } from "@/components/ui";
-import { STUBS } from "@/components/nav-data";
+import { requirePermission } from "@/server/auth/guard";
+import { EquivalentsView } from "@/components/demo/equivalents-view";
 
 export const instant = false;
 
-export default function Page() {
-  const s = STUBS.equivalents;
-  return <ComingSoon title={s.title} what={s.what} />;
+export default async function EquivalentsPage() {
+  await requirePermission("stock.view");
+  return <EquivalentsView />;
 }

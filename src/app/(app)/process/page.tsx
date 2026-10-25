@@ -1,9 +1,9 @@
-import { ComingSoon } from "@/components/ui";
-import { STUBS } from "@/components/nav-data";
+import { requirePermission } from "@/server/auth/guard";
+import { ProcessView } from "@/components/demo/process-view";
 
 export const instant = false;
 
-export default function Page() {
-  const s = STUBS.process;
-  return <ComingSoon title={s.title} what={s.what} />;
+export default async function ProcessPage() {
+  const user = await requirePermission("stock.view");
+  return <ProcessView role={user.role} />;
 }

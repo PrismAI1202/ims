@@ -44,7 +44,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="STORES" title="FIFO issue" subtitle="Pick in the order shown. Scanning a newer lot while an older one has stock is blocked unless you give a reason.">
-        <StoresTabs active="/issue" />
+        <StoresTabs active="issue" />
       </PageHeader>
       <Flash error={error} ok={ok} />
       {rows.length === 0 && <Card><p className="text-ink-3">No open material requests.</p></Card>}

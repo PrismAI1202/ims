@@ -1,9 +1,9 @@
-import { ComingSoon } from "@/components/ui";
-import { STUBS } from "@/components/nav-data";
+import { requirePermission } from "@/server/auth/guard";
+import { MaintenanceView } from "@/components/demo/maintenance-view";
 
 export const instant = false;
 
-export default function Page() {
-  const s = STUBS.maintenance;
-  return <ComingSoon title={s.title} what={s.what} />;
+export default async function MaintenancePage() {
+  await requirePermission("stock.view");
+  return <MaintenanceView />;
 }
