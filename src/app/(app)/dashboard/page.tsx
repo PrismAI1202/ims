@@ -37,7 +37,8 @@ export default async function Dashboard({
   const sel: Status = status === "YELLOW" || status === "GREEN" ? status : "RED";
   const rows = await stockByItem();
   const count = (s: Status) => rows.filter((r) => r.status === s).length;
-  const shown = rows.filter((r) => r.status === sel);
+  // Most urgent first: how far below its minimum each item is.
+  const shown = rows.filter((r) => r.status === sel).sort((a, b) => a.onHand / Math.max(a.minStock, 1) - b.onHand / Math.max(b.minStock, 1));
   const actions = ACTIONS.filter((a) => can(user.role, a.perm));
 
   return (
@@ -45,14 +46,9 @@ export default async function Dashboard({
       <PageHeader
         eyebrow="PLANT 2 · MOULDING SHOP"
         title={user.name ?? "Home"}
-        subtitle={roleLabel(user.role)}
+        subtitle={(user.name ?? "").toLowerCase() === roleLabel(user.role).toLowerCase() ? undefined : roleLabel(user.role)}
       />
       <Flash error={error} />
-      <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
-        <DownloadLink href={"/api/v1/export/stock?format=xlsx"}>Download Excel</DownloadLink>
-        <DownloadLink href={"/api/v1/export/stock?format=csv"}>Download CSV</DownloadLink>
-        <span className="font-normal text-ink-3">For a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
-      </p>
       <Card className="space-y-3">
         <Link href="/stock" className="flex min-h-8 items-center justify-between gap-2">
           <span>
@@ -76,27 +72,33 @@ export default async function Dashboard({
           ))}
         </div>
         <div>
-          {shown.map((r) => (
-            <div key={r.itemId} className="flex flex-col gap-1 border-t border-line py-2.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Chip>{r.category.replace("_", " ")}</Chip>
-                  <span className="whitespace-nowrap text-sm font-semibold">{r.code}</span>
-                </span>
-                <Mono className={`flex-none text-xs ${sel === "RED" ? "text-danger" : "text-ink-2"}`}>
-                  {r.onHand.toLocaleString()} / min {r.minStock.toLocaleString()} {r.uom}
-                </Mono>
+          <div
+            tabIndex={0} role="region" aria-label="Stock list"
+            className="max-h-[21rem] overflow-y-auto overscroll-contain rounded-xl border border-line px-3 [scrollbar-width:thin]"
+          >
+            {shown.map((r, i) => (
+              <div key={r.itemId} className={`flex flex-col gap-1 py-2.5 ${i > 0 ? "border-t border-line" : ""}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Chip>{r.category.replace("_", " ")}</Chip>
+                    <span className="whitespace-nowrap text-sm font-semibold">{r.code}</span>
+                  </span>
+                  <Mono className={`flex-none text-xs ${sel === "RED" ? "text-danger" : "text-ink-2"}`}>
+                    {r.onHand.toLocaleString()} / min {r.minStock.toLocaleString()} {r.uom}
+                  </Mono>
+                </div>
+                <div className="text-[13px] text-ink-2">{r.name}</div>
+                <div className="flex gap-4 text-xs text-ink-2">
+                  <span>Pending QC <Mono>{r.pendingQc.toLocaleString()}</Mono></span>
+                  <span>ROP <Mono>{r.reorderPoint.toLocaleString()}</Mono></span>
+                  <span>Max <Mono>{r.maxStock.toLocaleString()}</Mono></span>
+                </div>
               </div>
-              <div className="text-[13px] text-ink-2">{r.name}</div>
-              <div className="flex gap-4 text-xs text-ink-2">
-                <span>Pending QC <Mono>{r.pendingQc.toLocaleString()}</Mono></span>
-                <span>ROP <Mono>{r.reorderPoint.toLocaleString()}</Mono></span>
-                <span>Max <Mono>{r.maxStock.toLocaleString()}</Mono></span>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          {shown.length > 5 && <p className="pt-1.5 text-center text-[11px] text-ink-3">Showing the most urgent first · scroll for all {shown.length}</p>}
           {shown.length === 0 && (
-            <p className="border-t border-line py-4 text-sm text-ink-3">Nothing {LABEL[sel].toLowerCase()} right now.</p>
+            <p className="py-4 text-sm text-ink-3">Nothing {LABEL[sel].toLowerCase()} right now.</p>
           )}
           {can(user.role, "stock.view") && (
             <Link href="/stock" className="flex min-h-11 items-center justify-center gap-1 border-t border-line text-sm font-semibold">
@@ -125,6 +127,11 @@ export default async function Dashboard({
           </div>
         </section>
       )}
+      <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
+        <DownloadLink href={"/api/v1/export/stock?format=xlsx"}>Download Excel</DownloadLink>
+        <DownloadLink href={"/api/v1/export/stock?format=csv"}>Download CSV</DownloadLink>
+        <span className="font-normal text-ink-3">For a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
+      </p>
     </div>
   );
 }

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
+import { NewPanel, Panels } from "@/components/new-panel";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
 import { Badge, DataTable, Eyebrow, PageHeader, SegmentedTabs } from "@/components/ui";
 import {
   addCustomer, addItem, addLocation, addMachine, addMould, addSupplier, saveSupplier, toggleActive,
@@ -49,9 +51,10 @@ function ActiveToggle({ kind, id, active }: { kind: string; id: string; active: 
 
 export default async function MastersPage({
   searchParams,
-}: { searchParams: Promise<{ tab?: string; error?: string; ok?: string }> }) {
+}: { searchParams: Promise<{ tab?: string; error?: string; ok?: string; q?: string }> }) {
   await requirePermission("masters.manage");
   const sp = await searchParams;
+  const q = sp.q?.trim() || undefined;
   const tab: Tab = TABS.some(([k]) => k === sp.tab) ? (sp.tab as Tab) : "items";
 
   return (
@@ -61,24 +64,25 @@ export default async function MastersPage({
       </PageHeader>
       <Flash error={sp.error} ok={sp.ok} />
 
-      {tab === "items" && <Items />}
-      {tab === "suppliers" && <Suppliers />}
-      {tab === "customers" && <Customers />}
-      {tab === "bins" && <Bins />}
-      {tab === "machines" && <Machines />}
+      {tab === "items" && <Items q={q} />}
+      {tab === "suppliers" && <Suppliers q={q} />}
+      {tab === "customers" && <Customers q={q} />}
+      {tab === "bins" && <Bins q={q} />}
+      {tab === "machines" && <Machines q={q} />}
     </div>
   );
 }
 
-async function Items() {
+async function Items({ q }: { q?: string }) {
   const items = await db.item.findMany({ orderBy: { code: "asc" } });
   return (
     <>
       <Panel title="+ New item">
         <form action={addItem} className="space-y-3"><ItemFields /><button className={btnCls}>Create item</button></form>
       </Panel>
+      <SearchBar q={q} placeholder="Search code, name or category" keep={{ tab: "items" }} clearHref="/masters?tab=items" />
       <Table head={["Code", "Name", "Category", "UOM", "Min", "ROP", "Max", "COA", "Status", ""]}>
-        {items.map((i) => (
+        {items.filter((i) => matches(q, i.code, i.name, i.category)).map((i) => (
           <tr key={i.id} className={i.active ? "" : "text-ink-3"}>
             <td className={`${td} font-medium`}>{i.code}</td><td className={td}>{i.name}</td><td className={td}>{i.category}</td>
             <td className={td}>{i.uom}</td><td className={td}>{Number(i.minStock)}</td><td className={td}>{Number(i.reorderPoint)}</td>
@@ -95,7 +99,7 @@ async function Items() {
   );
 }
 
-async function Suppliers() {
+async function Suppliers({ q }: { q?: string }) {
   const suppliers = await db.supplier.findMany({ orderBy: { code: "asc" } });
   return (
     <>
@@ -107,8 +111,9 @@ async function Suppliers() {
           <div className="md:col-span-4"><button className={btnCls}>Create supplier</button></div>
         </form>
       </Panel>
+      <SearchBar q={q} placeholder="Search code or name" keep={{ tab: "suppliers" }} clearHref="/masters?tab=suppliers" />
       <Table head={["Code", "Name", "Lead time (days)", "Status", ""]}>
-        {suppliers.map((s) => (
+        {suppliers.filter((s) => matches(q, s.code, s.name)).map((s) => (
           <tr key={s.id} className={s.active ? "" : "text-ink-3"}>
             <td className={`${td} font-medium`}>{s.code}</td>
             <td colSpan={2} className={td}>
@@ -128,7 +133,7 @@ async function Suppliers() {
   );
 }
 
-async function Customers() {
+async function Customers({ q }: { q?: string }) {
   const customers = await db.customer.findMany({ orderBy: { code: "asc" } });
   return (
     <>
@@ -147,8 +152,9 @@ async function Customers() {
           <div className="md:col-span-4"><button className={btnCls}>Create customer</button></div>
         </form>
       </Panel>
+      <SearchBar q={q} placeholder="Search code, name or GSTIN" keep={{ tab: "customers" }} clearHref="/masters?tab=customers" />
       <Table head={["Code", "Name", "Segment", "Label format", "GSTIN", "Status", ""]}>
-        {customers.map((c) => (
+        {customers.filter((c) => matches(q, c.code, c.name, c.segment, c.gstin)).map((c) => (
           <tr key={c.id} className={c.active ? "" : "text-ink-3"}>
             <td className={`${td} font-medium`}>{c.code}</td><td className={td}>{c.name}</td><td className={td}>{c.segment}</td>
             <td className={td}>{c.labelFormat}</td><td className={td}>{c.gstin ?? "—"}</td><td className={td}><Badge tone={c.active ? "ok" : "neutral"}>{c.active ? "Active" : "Inactive"}</Badge></td>
@@ -160,7 +166,7 @@ async function Customers() {
   );
 }
 
-async function Bins() {
+async function Bins({ q }: { q?: string }) {
   const [locations, warehouses] = await Promise.all([
     db.location.findMany({ orderBy: { code: "asc" } }), db.warehouse.findMany({ orderBy: { code: "asc" } }),
   ]);
@@ -182,8 +188,9 @@ async function Bins() {
         </form>
       </Panel>
       <p className="text-sm"><Link className="font-semibold text-accent" href="/masters/bin-labels">Print bin labels (Code 128 barcodes)</Link></p>
+      <SearchBar q={q} placeholder="Search bin code" keep={{ tab: "bins" }} clearHref="/masters?tab=bins" />
       <Table head={["Code", "Rack", "Shelf", "Bin", "Type"]}>
-        {locations.map((l) => (
+        {locations.filter((l) => matches(q, l.code, l.type)).map((l) => (
           <tr key={l.id}>
             <td className={`${td} font-medium`}>{l.code}</td><td className={td}>{l.rack}</td><td className={td}>{l.shelf}</td>
             <td className={td}>{l.bin}</td><td className={td}>{l.type}</td>
@@ -194,21 +201,19 @@ async function Bins() {
   );
 }
 
-async function Machines() {
+async function Machines({ q }: { q?: string }) {
   const machines = await db.machine.findMany({ orderBy: { code: "asc" }, include: { moulds: true } });
   const moulds = await db.mould.findMany({ orderBy: { code: "asc" }, include: { machine: true } });
   return (
     <>
-      <Panel title="+ New machine">
-        <form action={addMachine} className="grid gap-3 md:grid-cols-4">
+      <Panels items={[
+        { label: "New machine", node: (<div className="rounded-[14px] bg-white p-4"><form action={addMachine} className="grid gap-3 md:grid-cols-4">
           <label className="text-[13px]">Code<input name="code" required className={inputCls} /></label>
           <label className="text-[13px] md:col-span-2">Name<input name="name" required className={inputCls} /></label>
           <label className="text-[13px]">Tonnage<input name="tonnage" type="number" min="1" className={inputCls} /></label>
           <div className="md:col-span-4"><button className={btnCls}>Create machine</button></div>
-        </form>
-      </Panel>
-      <Panel title="+ New mould">
-        <form action={addMould} className="grid gap-3 md:grid-cols-4">
+        </form></div>) },
+        { label: "New mould", node: (<div className="rounded-[14px] bg-white p-4"><form action={addMould} className="grid gap-3 md:grid-cols-4">
           <label className="text-[13px]">Code<input name="code" required className={inputCls} /></label>
           <label className="text-[13px] md:col-span-2">Name<input name="name" required className={inputCls} /></label>
           <label className="text-[13px]">Cavities<input name="cavities" type="number" min="1" defaultValue={1} className={inputCls} /></label>
@@ -218,11 +223,12 @@ async function Machines() {
             <select name="machineId" className={inputCls}><option value="">—</option>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select>
           </label>
           <div className="md:col-span-4"><button className={btnCls}>Create mould</button></div>
-        </form>
-      </Panel>
+        </form></div>) },
+      ]} />
+      <SearchBar q={q} placeholder="Search machine or mould" keep={{ tab: "machines" }} clearHref="/masters?tab=machines" />
       <Eyebrow>MACHINES</Eyebrow>
       <Table head={["Code", "Name", "Tonnage", "Moulds"]}>
-        {machines.map((m) => (
+        {machines.filter((m) => matches(q, m.code, m.name, ...m.moulds.map((x) => x.code))).map((m) => (
           <tr key={m.id}>
             <td className={`${td} font-medium`}>{m.code}</td><td className={td}>{m.name}</td><td className={td}>{m.tonnage ?? "—"}</td>
             <td className={td}>{m.moulds.map((x) => x.code).join(", ") || "—"}</td>
@@ -231,7 +237,7 @@ async function Machines() {
       </Table>
       <Eyebrow>MOULDS</Eyebrow>
       <Table head={["Code", "Name", "Cavities", "Shot (g)", "Runner (g)", "Machine"]}>
-        {moulds.map((m) => (
+        {moulds.filter((m) => matches(q, m.code, m.name, m.machine?.code)).map((m) => (
           <tr key={m.id}>
             <td className={`${td} font-medium`}>{m.code}</td><td className={td}>{m.name}</td><td className={td}>{m.cavities}</td>
             <td className={td}>{m.shotWeightG ? Number(m.shotWeightG) : "—"}</td><td className={td}>{m.runnerWeightG ? Number(m.runnerWeightG) : "—"}</td>

@@ -5,8 +5,10 @@ import { importDemand, undoImport } from "@/server/services/demand";
 import { MAX_UPLOAD_BYTES, parseDemandRows, readSpreadsheet } from "@/server/services/demand-import";
 import { DomainError } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { SearchBar } from "@/components/search-bar";
+import { href, matches } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { Badge, Card, Chips, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -41,9 +43,11 @@ async function undo(formData: FormData) {
   });
 }
 
-export default async function DemandPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function DemandPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; type?: string }> }) {
   await requirePermission("mrp.plan");
-  const { error, ok } = await searchParams;
+  const { error, ok, q: rawQ, type } = await searchParams;
+  const q = rawQ?.trim() || undefined;
+  const kind = type === "FIRM" || type === "FORECAST" || type === "SPOT" ? type : undefined;
   const [lines, imports] = await Promise.all([
     db.demandLine.findMany({ orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }], take: 200, include: { customer: true, fgItem: true } }),
     db.demandImport.findMany({ orderBy: { createdAt: "desc" }, take: 8 }),
@@ -53,14 +57,15 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
 
   const TYPE_TONE = { FIRM: "info", FORECAST: "neutral", SPOT: "warn" } as const;
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="SET UP" title="Customer demand" subtitle={`${lines.length} demand line${lines.length === 1 ? "" : "s"} loaded`} />
+      <PageHeader right={<CreateButton label="Upload schedule" />} eyebrow="SET UP" title="Customer demand" subtitle={`${lines.length} demand line${lines.length === 1 ? "" : "s"} loaded`} />
       <p className="max-w-3xl text-sm text-ink-2">
         Upload rolling forecasts, firm weekly schedules and spot orders from Excel or CSV. The MRP plan uses these to work out what to make and buy.
         Dates are read day-first (05/11/2026 is 5 November). A file with any bad row is rejected as a whole, so nothing half-loads.
       </p>
       <Flash error={error} ok={ok} />
-      <NewPanel label="Upload schedule">
+      <CreatePanel>
         <Card>
           <form action={upload} className="space-y-3">
             <label className="block text-[13px] font-semibold">Schedule file (.csv or .xlsx, up to 5 MB)
@@ -74,7 +79,7 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
             <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
           </form>
         </Card>
-      </NewPanel>
+      </CreatePanel>
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
         <DownloadLink href={"/api/v1/export/demand?format=xlsx"}>Download Excel</DownloadLink>
         <DownloadLink href={"/api/v1/export/demand?format=csv"}>Download CSV</DownloadLink>
@@ -89,10 +94,15 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
 
 
       <Eyebrow>DEMAND LINES</Eyebrow>
+      <SearchBar q={q} placeholder="Search customer or part" keep={{ type: kind }} clearHref={href("/demand", { type: kind })} />
+      <Chips chips={[
+        { href: href("/demand", { q }), label: "All", active: !kind },
+        ...(["FIRM", "FORECAST", "SPOT"] as const).map((t) => ({ href: href("/demand", { q, type: t }), label: t[0] + t.slice(1).toLowerCase(), active: kind === t })),
+      ]} />
       <DataTable>
         <thead><tr><th>Due</th><th>Customer</th><th>Part</th><th className="text-right!">Qty</th><th>Type</th></tr></thead>
         <tbody>
-          {lines.map((l) => (
+          {lines.filter((l) => (!kind || l.type === kind) && matches(q, l.customer.name, l.fgItem.code, l.fgItem.name, l.type)).map((l) => (
             <tr key={l.id}>
               <td><Mono className="text-xs">{l.dueDate.toISOString().slice(0, 10)}</Mono></td><td>{l.customer.name}</td><td><Mono className="font-semibold">{l.fgItem.code}</Mono></td>
               <td className="text-right"><Mono>{l.qty.toLocaleString()}</Mono></td><td><Badge tone={TYPE_TONE[l.type as keyof typeof TYPE_TONE] ?? "neutral"}>{l.type}</Badge></td>
@@ -117,5 +127,6 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
         </tbody>
       </DataTable>
     </div>
+    </CreateProvider>
   );
 }

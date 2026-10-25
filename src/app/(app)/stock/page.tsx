@@ -6,6 +6,8 @@ import { requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { stockByItem } from "@/server/services/stock";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
 import { NewPanel } from "@/components/new-panel";
 import {
   Badge, Card, Chip, Chips, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
@@ -55,7 +57,7 @@ const BIN_STYLE: Record<BinState, string> = {
   hold: "bg-[#E98A3E] text-ink border-transparent",
 };
 
-type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string };
+type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string; q?: string };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("stock.view");
@@ -205,8 +207,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const st: Status | "ALL" = sp.status === "RED" || sp.status === "YELLOW" || sp.status === "GREEN" ? sp.status : "ALL";
   const catKey = CATS.find((c) => c.key === sp.cat)?.key ?? "all";
   const cat = CATS.find((c) => c.key === catKey)!;
+  const search = sp.q?.trim() || undefined;
   const q = (over: Partial<{ status: string; cat: string }>) => {
     const p = new URLSearchParams();
+    if (search) p.set("q", search);
     const s2 = over.status ?? (st === "ALL" ? "" : st);
     const c2 = over.cat ?? (catKey === "all" ? "" : catKey);
     if (s2) p.set("status", s2);
@@ -214,7 +218,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     const qs = p.toString();
     return `/stock${qs ? `?${qs}` : ""}`;
   };
-  const inCat = rows.filter((r) => cat.match(r.category));
+  const inCat = rows.filter((r) => cat.match(r.category) && matches(search, r.code, r.name, r.category));
   const count = (s: Status) => inCat.filter((r) => r.status === s).length;
   const shown = inCat.filter((r) => st === "ALL" || r.status === st);
 
@@ -222,6 +226,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     <div className="space-y-4">
       {header}
       <Flash error={sp.error} ok={sp.ok} />
+      <SearchBar q={search} placeholder="Search item code or name" keep={{ status: st === "ALL" ? undefined : st, cat: catKey === "all" ? undefined : catKey }} clearHref={q({})} />
       <Chips
         chips={[
           { href: q({ status: "" }), label: "All", n: inCat.length, active: st === "ALL" },

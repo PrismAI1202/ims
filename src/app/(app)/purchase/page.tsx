@@ -4,8 +4,11 @@ import { requirePermission, runAction } from "@/server/auth/guard";
 import { createPurchaseOrder } from "@/server/services/inventory";
 import { cancelPurchaseOrder, closePurchaseOrderShort } from "@/server/services/purchase";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
-import { Badge, Card, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
+import { SearchBar } from "@/components/search-bar";
+import { href } from "@/lib/url";
+import type { PoStatus } from "@prisma/client";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { Badge, Card, Chips, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
 const PO_LINES = 4;
@@ -39,24 +42,36 @@ async function closeShort(formData: FormData) {
 
 const isOpenPo = (st: string) => st === "APPROVED" || st === "PARTIAL";
 
-export default async function PurchasePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function PurchasePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
   await requirePermission("po.manage");
-  const { error, ok } = await searchParams;
-  const [suppliers, items, pos] = await Promise.all([
+  const { error, ok, q: rawQ, status } = await searchParams;
+  const q = rawQ?.trim() || undefined;
+  const view = status === "closed" || status === "all" ? status : "open";
+  const OPEN: PoStatus[] = ["APPROVED", "PARTIAL"];
+  const DONE: PoStatus[] = ["CLOSED", "CANCELLED"];
+  const ci = (v: string) => ({ contains: v, mode: "insensitive" as const });
+  const [suppliers, items, pos, nOpen, nDone] = await Promise.all([
     db.supplier.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.item.findMany({ where: { active: true, category: { notIn: ["FG", "REGRIND"] } }, orderBy: { code: "asc" } }),
     db.purchaseOrder.findMany({
-      orderBy: { createdAt: "desc" }, take: 30,
+      where: {
+        ...(view === "open" ? { status: { in: OPEN } } : view === "closed" ? { status: { in: DONE } } : {}),
+        ...(q ? { OR: [{ poNumber: ci(q) }, { supplier: { name: ci(q) } }, { lines: { some: { item: { OR: [{ code: ci(q) }, { name: ci(q) }] } } } }] } : {}),
+      },
+      orderBy: { createdAt: "desc" }, take: 60,
       include: { supplier: true, lines: { include: { item: true } } },
     }),
+    db.purchaseOrder.count({ where: { status: { in: OPEN } } }),
+    db.purchaseOrder.count({ where: { status: { in: DONE } } }),
   ]);
 
   const tone = (st: string) => (st === "CLOSED" ? "ok" : st === "CANCELLED" ? "danger" : st === "PARTIAL" ? "warn" : "info") as "ok" | "danger" | "warn" | "info";
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="BUY & RECEIVE" title="Supplier POs" subtitle={`${pos.filter((p) => p.status === "APPROVED" || p.status === "PARTIAL").length} open`} />
+      <PageHeader right={<CreateButton label="New PO" />} eyebrow="BUY & RECEIVE" title="Supplier POs" subtitle={`${nOpen} open · ${nDone} closed`} />
       <Flash error={error} ok={ok} />
-      <NewPanel label="New purchase order">
+      <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>RAISE PURCHASE ORDER</Eyebrow>
           <form action={create} className="space-y-3">
@@ -81,9 +96,14 @@ export default async function PurchasePage({ searchParams }: { searchParams: Pro
             <button className={`${btnCls} w-full md:w-auto`}>Create &amp; approve PO</button>
           </form>
         </Card>
-      </NewPanel>
+      </CreatePanel>
 
-      <Eyebrow>SUPPLIER POs</Eyebrow>
+      <SearchBar q={q} placeholder="Search PO no., supplier or item" keep={{ status: view === "open" ? undefined : view }} clearHref={href("/purchase", { status: view === "open" ? undefined : view })} />
+      <Chips chips={[
+        { href: href("/purchase", { q }), label: "Open", n: nOpen, active: view === "open" },
+        { href: href("/purchase", { q, status: "closed" }), label: "Closed", n: nDone, active: view === "closed" },
+        { href: href("/purchase", { q, status: "all" }), label: "All", n: nOpen + nDone, active: view === "all" },
+      ]} />
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {[...pos].sort((a, b) => Number(isOpenPo(b.status)) - Number(isOpenPo(a.status))).map((p) => {
           const untouched = p.lines.every((l) => Number(l.receivedQty) === 0);
@@ -113,8 +133,9 @@ export default async function PurchasePage({ searchParams }: { searchParams: Pro
             </article>
           );
         })}
-        {pos.length === 0 && <Card><p className="text-sm text-ink-3">No purchase orders yet.</p></Card>}
+        {pos.length === 0 && <Card><p className="text-sm text-ink-3">{q ? `No purchase orders match “${q}”.` : "No purchase orders in this view."}</p></Card>}
       </div>
     </div>
+    </CreateProvider>
   );
 }

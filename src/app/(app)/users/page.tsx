@@ -2,7 +2,9 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createUser, resetPassword, ROLES, updateUser } from "@/server/services/users";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
 import { Badge, Card, Eyebrow, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -40,17 +42,20 @@ async function reset(formData: FormData) {
   });
 }
 
-export default async function UsersPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function UsersPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
   const me = await requirePermission("users.manage");
-  const { error, ok } = await searchParams;
-  const users = await db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] });
+  const { error, ok, q: rawQ } = await searchParams;
+  const q = rawQ?.trim() || undefined;
+  const everyone = await db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] });
+  const users = everyone.filter((u) => matches(q, u.name, u.email, ROLE_LABEL[u.role]));
 
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="ADMIN" title="Users & roles" subtitle={`${users.filter((u) => u.active).length} active · ${users.filter((u) => !u.active).length} inactive`} />
+      <PageHeader right={<CreateButton label="New user" />} eyebrow="ADMIN" title="Users & roles" subtitle={`${everyone.filter((u) => u.active).length} active · ${everyone.filter((u) => !u.active).length} inactive`} />
       <p className="max-w-3xl text-sm text-ink-2">Create logins for plant staff and set their role. Users are deactivated, never deleted, so history keeps its names. There must always be one active admin.</p>
       <Flash error={error} ok={ok} />
-      <NewPanel label="New user">
+      <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>NEW USER</Eyebrow>
           <form action={create} className="grid gap-3 md:grid-cols-5">
@@ -63,9 +68,10 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             <div className="flex items-end"><button className={`${btnCls} w-full`}>Add user</button></div>
           </form>
         </Card>
-      </NewPanel>
+      </CreatePanel>
 
 
+      <SearchBar q={q} placeholder="Search name, email or role" clearHref="/users" />
       <div className="grid gap-3 lg:grid-cols-2">
         {users.map((u) => (
           <article key={u.id} className={`rounded-[14px] bg-white p-4 ${u.active ? "" : "opacity-60"}`}>
@@ -91,5 +97,6 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         ))}
       </div>
     </div>
+    </CreateProvider>
   );
 }

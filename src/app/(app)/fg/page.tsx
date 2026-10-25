@@ -3,8 +3,10 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { packBoxes, unboxedQty } from "@/server/services/fg";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { SearchBar } from "@/components/search-bar";
+import { href, matches } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { Badge, Card, Chips, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -22,9 +24,11 @@ async function pack(formData: FormData) {
   });
 }
 
-export default async function FgPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function FgPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
   await requirePermission("fg.pack");
-  const { error, ok } = await searchParams;
+  const { error, ok, q: rawQ, status } = await searchParams;
+  const q = rawQ?.trim() || undefined;
+  const view = status === "IN_STOCK" || status === "DISPATCHED" ? status : "ALL";
   const [balances, customers, boxes] = await Promise.all([
     db.stockBalance.findMany({
       where: { qty: { gt: 0 }, lot: { item: { category: "FG" } } },
@@ -32,7 +36,7 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
     }),
     db.customer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.fgBox.findMany({
-      orderBy: { createdAt: "desc" }, take: 40, include: { lot: { include: { item: true } }, customer: true },
+      orderBy: { createdAt: "desc" }, take: 200, include: { lot: { include: { item: true } }, customer: true },
     }),
   ]);
   const sources = (await Promise.all(balances.map(async (b) => ({
@@ -41,8 +45,9 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
   })))).filter((s) => s.free > 0);
 
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="STORE & SHOP FLOOR" title="FG & box labels" subtitle="Pack finished goods into labelled boxes for a customer" />
+      <PageHeader right={sources.length > 0 ? <CreateButton label="Create boxes" /> : undefined} eyebrow="STORE & SHOP FLOOR" title="FG & box labels" subtitle="Pack finished goods into labelled boxes for a customer" />
       <p className="max-w-3xl text-sm text-ink-2">
         The label follows the customer&apos;s format (OEM labels carry part, batch, shift, machine, quantity and date).
         Boxes reserve stock; it leaves the bin when the box is scanned onto a completed dispatch.
@@ -51,7 +56,7 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
       {sources.length === 0 ? (
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No unboxed finished goods. Book production first.</p>
       ) : (
-        <NewPanel label="Create boxes"><Card>
+        <CreatePanel><Card>
           <form action={pack} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Lot / bin
               <select name="source" required className={inputCls}>
@@ -67,16 +72,18 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
             <label className="text-[13px]">Number of boxes<input name="boxCount" type="number" min="1" max="200" step="1" defaultValue={1} required className={inputCls} /></label>
             <div className="flex items-end md:col-span-2"><button className={`${btnCls} w-full md:w-auto`}>Create boxes</button></div>
           </form>
-        </Card></NewPanel>
+        </Card></CreatePanel>
       )}
 
       <Eyebrow>BOXES</Eyebrow>
+      <SearchBar q={q} placeholder="Search box, part, customer or batch" keep={{ status: view === "ALL" ? undefined : view }} clearHref={href("/fg", { status: view === "ALL" ? undefined : view })} />
+      <Chips chips={(["ALL", "IN_STOCK", "DISPATCHED"] as const).map((k) => ({ href: href("/fg", { q, status: k === "ALL" ? undefined : k }), label: k === "ALL" ? "All" : k === "IN_STOCK" ? "In stock" : "Dispatched", active: view === k }))} />
       <DataTable>
         <thead><tr>
           <th>Box</th><th>Part</th><th>Customer</th><th className="text-right!">Qty</th><th>Batch</th><th>Status</th><th>Label</th>
         </tr></thead>
         <tbody>
-          {boxes.map((b) => (
+          {boxes.filter((b) => (view === "ALL" || b.status === view) && matches(q, b.boxCode, b.lot.item.code, b.customer.name, b.batchCode)).map((b) => (
             <tr key={b.id}>
               <td><Mono className="text-xs font-semibold">{b.boxCode}</Mono></td><td>{b.lot.item.code}</td><td>{b.customer.name}</td>
               <td className="text-right"><Mono>{b.qty.toLocaleString()}</Mono></td><td><Mono className="text-xs">{b.batchCode ?? "—"}</Mono></td>
@@ -94,5 +101,6 @@ export default async function FgPage({ searchParams }: { searchParams: Promise<{
         </Link>
       )}
     </div>
+    </CreateProvider>
   );
 }

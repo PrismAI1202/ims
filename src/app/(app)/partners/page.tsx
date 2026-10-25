@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
 import { Badge, Card, Chips, Mono, PageHeader, SegmentedTabs } from "@/components/ui";
 
 export const instant = false;
@@ -13,10 +15,11 @@ type Row = {
 
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 
-export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ tab?: string; filter?: string; id?: string }> }) {
+export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ tab?: string; filter?: string; id?: string; q?: string }> }) {
   await requirePermission("stock.view");
   const sp = await searchParams;
   const sup = sp.tab === "suppliers";
+  const q = sp.q?.trim() || undefined;
 
   const rows: Row[] = sup
     ? (await db.supplier.findMany({ orderBy: { code: "asc" }, include: { pos: { orderBy: { createdAt: "desc" }, include: { lines: { include: { item: true } } } }, prices: { include: { item: true } } } }))
@@ -47,8 +50,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   const openN = (r: Row) => r.orders.filter((o) => o.open).length;
   const bucket = (r: Row) => (openN(r) > 0 ? 1 : r.orders.length > 0 ? 2 : 3);
   const filter = Number(sp.filter) || 0;
-  const q = (over: Record<string, string>) => `/partners?${new URLSearchParams({ tab: sup ? "suppliers" : "customers", ...over })}`;
-  const shown = rows.filter((r) => filter === 0 || bucket(r) === filter);
+  const link = (over: Record<string, string>) => `/partners?${new URLSearchParams({ tab: sup ? "suppliers" : "customers", ...(q ? { q } : {}), ...over })}`;
+  const shown = rows.filter((r) => (filter === 0 || bucket(r) === filter) && matches(q, r.name, r.code, r.sub, r.tag));
   const sel = sp.id ? rows.find((r) => r.id === sp.id) : undefined;
   const oneLabel = sup ? "supplier" : "customer";
 
@@ -56,7 +59,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
     return (
       <div className="space-y-4">
         <PageHeader eyebrow={sel.code} title={sel.name} subtitle={sel.sub}>
-          <Link href={q({})} className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> {sup ? "Suppliers" : "Customers"}</Link>
+          <Link href={link({})} className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> {sup ? "Suppliers" : "Customers"}</Link>
         </PageHeader>
         <Card><dl className="grid gap-2 text-sm">{sel.facts.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-ink-3">{k}</dt><dd className="text-right font-semibold">{v}</dd></div>)}</dl></Card>
         <div className="flex items-baseline justify-between"><h2 className="font-display text-[15px] font-bold text-ink-3">Orders</h2><span className="text-xs text-ink-3">{sel.orders.length} total · {openN(sel)} open</span></div>
@@ -82,15 +85,16 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
       <PageHeader eyebrow="SET UP" title="Customers & suppliers">
         <SegmentedTabs tabs={[{ href: "/partners?tab=customers", label: "Customers", active: !sup }, { href: "/partners?tab=suppliers", label: "Suppliers", active: sup }]} />
       </PageHeader>
+      <SearchBar q={q} placeholder={`Search ${oneLabel}s by name or code`} keep={{ tab: sup ? "suppliers" : undefined, filter: filter ? String(filter) : undefined }} clearHref={`/partners?${new URLSearchParams({ tab: sup ? "suppliers" : "customers", ...(filter ? { filter: String(filter) } : {}) })}`} />
       <Chips chips={[
-        { href: q({}), label: "All", n: rows.length, active: filter === 0 },
-        { href: q({ filter: "1" }), label: "Open orders", n: count(1), active: filter === 1 },
-        { href: q({ filter: "2" }), label: "Past orders only", n: count(2), active: filter === 2 },
-        { href: q({ filter: "3" }), label: "No orders", n: count(3), active: filter === 3 },
+        { href: link({}), label: "All", n: rows.length, active: filter === 0 },
+        { href: link({ filter: "1" }), label: "Open orders", n: count(1), active: filter === 1 },
+        { href: link({ filter: "2" }), label: "Past orders only", n: count(2), active: filter === 2 },
+        { href: link({ filter: "3" }), label: "No orders", n: count(3), active: filter === 3 },
       ]} />
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {shown.map((r) => (
-          <Link key={r.id} href={q({ id: r.id, ...(filter ? { filter: String(filter) } : {}) })} className="flex flex-col gap-2.5 rounded-[14px] bg-white p-3.5">
+          <Link key={r.id} href={link({ id: r.id, ...(filter ? { filter: String(filter) } : {}) })} className="flex flex-col gap-2.5 rounded-[14px] bg-white p-3.5">
             <span className="flex items-start justify-between gap-2">
               <span className="flex flex-col"><span className="font-semibold">{r.name}</span><span className="text-xs text-ink-3"><Mono>{r.code}</Mono> · {r.sub}</span></span>
               <Badge tone={r.tagTone}>{r.tag}</Badge>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
@@ -7,7 +6,6 @@ import { BottomNav } from "@/components/bottom-nav";
 import { SideNav } from "@/components/side-nav";
 import { NAV_GROUPS } from "@/components/nav-data";
 import { SignOutButton } from "@/components/sign-out";
-import { roleLabel } from "@/components/ui";
 
 export const instant = false;
 
@@ -28,11 +26,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">PLANT 2 · MOULDING SHOP</div>
         <div className="font-display text-xl font-extrabold">IMS · Moulding</div>
         <SideNav groups={groups} />
-        <div className="mt-6 border-t border-shell-line pt-4 text-xs text-on-shell-2">
-          <div className="text-sm text-on-shell">{session.user.name}</div>
-          <div>{roleLabel(role)}</div>
-          <Link href="/account" className="mt-1 inline-block underline">Change password</Link>
-        </div>
       </aside>
       <main className="relative min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8 print:p-0">
         <div className="absolute right-4 top-2 z-20 md:right-8 print:hidden"><SignOutButton /></div>

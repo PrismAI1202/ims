@@ -3,8 +3,10 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { createDispatch, dispatchProgress } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
-import { Badge, Card, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
+import { SearchBar } from "@/components/search-bar";
+import { href } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { Badge, Card, Chips, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
 const LINES = 4;
@@ -25,13 +27,22 @@ async function create(formData: FormData) {
   }, "/dispatch");
 }
 
-export default async function DispatchPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function DispatchPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
   await requirePermission("dispatch.manage");
-  const { error, ok } = await searchParams;
+  const { error, ok, q: rawQ, status } = await searchParams;
+  const q = rawQ?.trim() || undefined;
+  const view = status === "LOADING" || status === "DISPATCHED" || status === "CANCELLED" ? status : "ALL";
+  const ci = (v: string) => ({ contains: v, mode: "insensitive" as const });
   const [customers, fgItems, dispatches] = await Promise.all([
     db.customer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.item.findMany({ where: { category: "FG", active: true }, orderBy: { code: "asc" } }),
-    db.dispatch.findMany({ orderBy: { createdAt: "desc" }, take: 25, include: { customer: true, lines: { include: { item: true } } } }),
+    db.dispatch.findMany({
+      where: {
+        ...(view === "ALL" ? {} : { status: view }),
+        ...(q ? { OR: [{ dcNumber: ci(q) }, { vehicleNumber: ci(q) }, { driverName: ci(q) }, { customer: { name: ci(q) } }] } : {}),
+      },
+      orderBy: { createdAt: "desc" }, take: 50, include: { customer: true, lines: { include: { item: true } } },
+    }),
   ]);
 
   const progress = new Map(
@@ -40,10 +51,11 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
   const tone = (s: string) => (s === "DISPATCHED" ? "ok" : s === "CANCELLED" ? "danger" : "warn") as "ok" | "danger" | "warn";
 
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="SHIP" title="Dispatch" subtitle={`${dispatches.filter((d) => d.status === "LOADING").length} loading now`} />
+      <PageHeader right={<CreateButton label="New pick list" />} eyebrow="SHIP" title="Dispatch" subtitle={`${dispatches.filter((d) => d.status === "LOADING").length} loading now`} />
       <Flash error={error} ok={ok} />
-      <NewPanel label="New pick list">
+      <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>NEW PICK LIST</Eyebrow>
           <form action={create} className="space-y-3">
@@ -66,8 +78,12 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
             <button className={`${btnCls} w-full md:w-auto`}>Create &amp; start loading</button>
           </form>
         </Card>
-      </NewPanel>
+      </CreatePanel>
 
+      <SearchBar q={q} placeholder="Search DC no., customer or vehicle" keep={{ status: view === "ALL" ? undefined : view }} clearHref={href("/dispatch", { status: view === "ALL" ? undefined : view })} />
+      <Chips chips={(["ALL", "LOADING", "DISPATCHED", "CANCELLED"] as const).map((k) => ({
+        href: href("/dispatch", { q, status: k === "ALL" ? undefined : k }), label: k === "ALL" ? "All" : k[0] + k.slice(1).toLowerCase(), active: view === k,
+      }))} />
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {dispatches.map((d) => {
           const pr = progress.get(d.id);
@@ -89,8 +105,9 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
             </Link>
           );
         })}
-        {dispatches.length === 0 && <Card><p className="text-sm text-ink-3">No dispatches yet.</p></Card>}
+        {dispatches.length === 0 && <Card><p className="text-sm text-ink-3">{q ? `No dispatches match “${q}”.` : "No dispatches in this view."}</p></Card>}
       </div>
     </div>
+    </CreateProvider>
   );
 }

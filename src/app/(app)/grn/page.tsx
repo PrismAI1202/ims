@@ -5,7 +5,9 @@ import { saveUpload } from "@/server/services/storage";
 import { CoaRef } from "@/components/coa-ref";
 import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
 export const instant = false;
@@ -45,9 +47,10 @@ async function receive(formData: FormData) {
   });
 }
 
-export default async function GrnPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; po?: string }> }) {
+export default async function GrnPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; po?: string; q?: string }> }) {
   await requirePermission("grn.create");
-  const { error, ok, po: poId } = await searchParams;
+  const { error, ok, po: poId, q: rawQ } = await searchParams;
+  const q = rawQ?.trim() || undefined;
   const openPos = await db.purchaseOrder.findMany({
     where: { status: { in: ["APPROVED", "PARTIAL"] } },
     orderBy: { createdAt: "desc" },
@@ -57,16 +60,17 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
     ? await db.purchaseOrder.findUnique({ where: { id: poId }, include: { supplier: true, lines: { include: { item: true } } } })
     : null;
   const recent = await db.grn.findMany({
-    orderBy: { createdAt: "desc" }, take: 10,
+    orderBy: { createdAt: "desc" }, take: 100,
     include: { po: true, gateEntry: true, lines: { include: { lot: true } } },
   });
 
   return (
+    <CreateProvider defaultOpen={!!selected}>
     <div className="space-y-4">
-      <PageHeader eyebrow="INWARD" title="Gate entry & GRN" />
+      <PageHeader right={<CreateButton label="New GRN" />} eyebrow="INWARD" title="Gate entry & GRN" />
       <Flash error={error} ok={ok} />
 
-      <NewPanel label="New gate entry / GRN" defaultOpen={!!selected}>
+      <CreatePanel>
       <div className="space-y-4">
         <Card>
           <form className="flex max-w-xl items-end gap-3" method="get">
@@ -112,15 +116,16 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
           </form>
         )}
       </div>
-      </NewPanel>
+      </CreatePanel>
 
       <Eyebrow>RECENT GRNs</Eyebrow>
+      <SearchBar q={q} placeholder="Search GRN, PO, vehicle, invoice or lot" clearHref="/grn" />
       <DataTable>
         <thead><tr>
           <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>COA</th><th>Lots (pending QC → QC queue)</th>
         </tr></thead>
         <tbody>
-          {recent.map((g) => (
+          {recent.filter((g) => matches(q, g.grnNumber, g.po.poNumber, g.gateEntry?.vehicleNumber, g.gateEntry?.invoiceNumber, ...g.lines.map((l) => l.lot?.lotNumber))).map((g) => (
             <tr key={g.id}>
               <td className="font-semibold"><Mono>{g.grnNumber}</Mono></td>
               <td><Mono>{g.po.poNumber}</Mono></td>
@@ -141,5 +146,6 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
         </tbody>
       </DataTable>
     </div>
+    </CreateProvider>
   );
 }

@@ -2,7 +2,9 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
-import { NewPanel } from "@/components/new-panel";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
 import { Card, Eyebrow, Mono, PageHeader } from "@/components/ui";
 import { WeightInput } from "@/components/weight-input";
 
@@ -38,27 +40,29 @@ async function book(formData: FormData) {
   });
 }
 
-export default async function ProductionPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function ProductionPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
   await requirePermission("production.book");
-  const { error, ok } = await searchParams;
+  const { error, ok, q: rawQ } = await searchParams;
+  const q = rawQ?.trim() || undefined;
   const [boms, machines, bins, recent] = await Promise.all([
     db.bom.findMany({ include: { fgItem: true, mould: true }, orderBy: { fgItem: { code: "asc" } } }),
     db.machine.findMany({ orderBy: { code: "asc" } }),
     db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
     db.productionBooking.findMany({
-      orderBy: { producedAt: "desc" }, take: 15,
+      orderBy: { producedAt: "desc" }, take: 100,
       include: { bom: { include: { fgItem: true } }, machine: true },
     }),
   ]);
 
   return (
+    <CreateProvider>
     <div className="space-y-4">
-      <PageHeader eyebrow="STORE & SHOP FLOOR" title="Production" subtitle="Book output per shift, with the material lots that went into the machine" />
+      <PageHeader right={boms.length > 0 ? <CreateButton label="Book production" /> : undefined} eyebrow="STORE & SHOP FLOOR" title="Production" subtitle="Book output per shift, with the material lots that went into the machine" />
       <Flash error={error} ok={ok} />
       {boms.length === 0 ? (
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No BOMs defined yet. Ask an admin to add one under BOMs.</p>
       ) : (
-        <NewPanel label="Book production"><Card>
+        <CreatePanel><Card>
           <form action={book} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Part / BOM
               <select name="bomId" required className={inputCls}>
@@ -92,12 +96,13 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
             <label className="text-[13px] md:col-span-3">Note<input name="note" className={inputCls} /></label>
             <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Book production</button></div>
           </form>
-        </Card></NewPanel>
+        </Card></CreatePanel>
       )}
 
       <Eyebrow>RECENT BOOKINGS</Eyebrow>
+      <SearchBar q={q} placeholder="Search booking, part or machine" clearHref="/production" />
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-        {recent.map((b) => {
+        {recent.filter((b) => matches(q, b.bookingNumber, b.bom.fgItem.code, b.bom.fgItem.name, b.machine.code, `shift ${b.shift}`)).map((b) => {
           const total = b.goodParts + b.rejectParts;
           const rej = total ? (b.rejectParts / total) * 100 : 0;
           return (
@@ -121,5 +126,6 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
         {recent.length === 0 && <Card><p className="text-sm text-ink-3">No production booked yet.</p></Card>}
       </div>
     </div>
+    </CreateProvider>
   );
 }

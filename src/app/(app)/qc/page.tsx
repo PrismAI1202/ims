@@ -3,6 +3,8 @@ import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { recordQc } from "@/server/services/inventory";
 import { btnDangerCls, btnOkCls, btnWarnCls, Flash, inputCls } from "@/components/flash";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
 import { CoaRef } from "@/components/coa-ref";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
 
@@ -27,9 +29,10 @@ async function decide(formData: FormData) {
   });
 }
 
-export default async function QcPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+export default async function QcPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
   await requirePermission("qc.inspect");
-  const { error, ok } = await searchParams;
+  const { error, ok, q: rawQ } = await searchParams;
+  const q = rawQ?.trim() || undefined;
   const [pending, bins, recent] = await Promise.all([
     db.lot.findMany({
       where: { qcStatus: "PENDING_QC" }, orderBy: { receivedAt: "asc" },
@@ -37,7 +40,7 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
     }),
     db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
     db.lot.findMany({
-      where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 10, include: { item: true },
+      where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 100, include: { item: true },
     }),
   ]);
 
@@ -91,10 +94,11 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
       ))}
 
       <Eyebrow>RECENTLY DECIDED</Eyebrow>
+      <SearchBar q={q} placeholder="Search lot or item" clearHref="/qc" />
       <DataTable>
         <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
         <tbody>
-          {recent.map((l) => (
+          {recent.filter((l) => matches(q, l.lotNumber, l.item.code, l.item.name, l.qcStatus)).map((l) => (
             <tr key={l.id}>
               <td className="font-semibold"><Mono>{l.lotNumber}</Mono></td><td>{l.item.code}</td>
               <td><Badge tone={l.qcStatus === "APPROVED" ? "ok" : l.qcStatus === "REJECTED" ? "danger" : "warn"}>{l.qcStatus}</Badge></td>

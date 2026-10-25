@@ -4,8 +4,10 @@ import { DomainError } from "@/server/services/inventory";
 import { isBlend, kindForCategory, type BomLineInput } from "@/server/services/bom-math";
 import { saveBom } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
+import { SearchBar } from "@/components/search-bar";
+import { matches } from "@/lib/url";
 import Link from "next/link";
-import { NewPanel } from "@/components/new-panel";
+import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
 import { BLEND_COLORS, Badge, Card, Chip, Eyebrow, LegendDot, Mono, PageHeader, StackedBar } from "@/components/ui";
 
 export const instant = false;
@@ -37,9 +39,10 @@ async function save(formData: FormData) {
   }, "/bom");
 }
 
-export default async function BomPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; edit?: string }> }) {
+export default async function BomPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; edit?: string; q?: string }> }) {
   await requirePermission("bom.manage");
-  const { error, ok, edit } = await searchParams;
+  const { error, ok, edit, q: rawQ } = await searchParams;
+  const q = rawQ?.trim() || undefined;
   const [fgItems, items, moulds, boms] = await Promise.all([
     db.item.findMany({ where: { category: "FG", active: true }, orderBy: { code: "asc" } }),
     db.item.findMany({ where: { category: { in: [...BOM_CATEGORIES] }, active: true }, orderBy: { code: "asc" } }),
@@ -52,15 +55,17 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
   const editing = edit ? boms.find((b) => b.id === edit) : undefined;
   const byCat = (c: string) => items.filter((i) => i.category === c);
 
+  const visible = boms.filter((b) => matches(q, b.fgItem.code, b.fgItem.name, b.mould.code, ...b.lines.flatMap((l) => [l.item.code, l.item.name])));
   const pctOf = (b: (typeof boms)[number], kind: string) => b.lines.filter((l) => l.kind === kind).reduce((a, l) => a + Number(l.pct ?? 0), 0);
 
   return (
+    <CreateProvider defaultOpen={!!editing}>
     <div className="space-y-4">
-      <PageHeader eyebrow="SET UP" title="BOMs" subtitle={`${boms.length} BOM${boms.length === 1 ? "" : "s"} · one per finished part`}>
+      <PageHeader right={<CreateButton label="New BOM" />} eyebrow="SET UP" title="BOMs" subtitle={`${boms.length} BOM${boms.length === 1 ? "" : "s"} · one per finished part`}>
         <Link href="/equivalents" className="text-sm font-semibold">Equivalent groups →</Link>
       </PageHeader>
       <Flash error={error} ok={ok} />
-      <NewPanel label="New BOM" defaultOpen={!!editing}>
+      <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>{editing ? `EDIT BOM · ${editing.fgItem.code}` : "NEW BOM"}</Eyebrow>
           <form key={editing?.id ?? "new"} action={save} className="space-y-4">
@@ -102,7 +107,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
             <button className={`${btnCls} w-full disabled:opacity-50 md:w-auto`} disabled={fgItems.length === 0}>Save BOM</button>
           </form>
         </Card>
-      </NewPanel>
+      </CreatePanel>
       <p className="max-w-3xl text-sm text-ink-2">
         Resin + masterbatch + regrind must add up to 100% by weight, and regrind can&apos;t exceed the resin&apos;s max-regrind limit.
         Saving a part that already has a BOM replaces it.
@@ -111,11 +116,12 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No finished-goods items yet. Add one in Masters → Items with category FG.</p>
       )}
 
+      <SearchBar q={q} placeholder="Search part, mould or material" clearHref="/bom" />
       <div className="flex flex-wrap gap-3 text-xs text-ink-2">
         <LegendDot color={BLEND_COLORS.virgin} label="Virgin" /><LegendDot color={BLEND_COLORS.regrind} label="Regrind" /><LegendDot color={BLEND_COLORS.masterbatch} label="Masterbatch" />
       </div>
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-        {boms.map((b) => {
+        {visible.map((b) => {
           const virgin = pctOf(b, "RESIN"), regrind = pctOf(b, "REGRIND"), mb = pctOf(b, "MASTERBATCH");
           const limit = Math.min(...b.lines.filter((l) => l.kind === "RESIN" && l.item.maxRegrindPct !== null).map((l) => Number(l.item.maxRegrindPct)), 100);
           return (
@@ -146,9 +152,10 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
             </article>
           );
         })}
-        {boms.length === 0 && <Card><p className="text-sm text-ink-3">No BOMs yet.</p></Card>}
+        {visible.length === 0 && <Card><p className="text-sm text-ink-3">{q ? `No BOMs match “${q}”.` : "No BOMs yet."}</p></Card>}
       </div>
 
     </div>
+    </CreateProvider>
   );
 }
