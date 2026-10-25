@@ -31,6 +31,7 @@ cp .env.example .env        # then set AUTH_SECRET:  openssl rand -base64 32
 npm run db:up               # Postgres 16 in Docker (port 5433)
 npm run db:migrate
 npm run db:seed             # DEMO data and demo logins (see prisma/seed.ts). Never run this in production.
+npm run db:seed:demo        # optional: richer DEMO data matching the design mock-ups (stock in bins, BOMs, production, dispatch). Run after db:seed; never in production.
 npm run dev
 ```
 

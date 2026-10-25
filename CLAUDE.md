@@ -16,6 +16,7 @@ Stack: Next.js 16.4 (App Router, `cacheComponents: true`), React 19, TypeScript,
 npm run db:up            # Postgres in Docker, container "ims-postgres", host port 5433 (not 5432)
 npm run db:migrate       # prisma migrate dev
 npm run db:seed          # tsx prisma/seed.ts: items, bins, one user per role
+npm run db:seed:demo     # tsx prisma/seed-demo.ts: design-mock-up examples (lots, BOMs, production, dispatch); run after db:seed
 npm run dev
 npm run lint
 npm run typecheck        # tsc --noEmit

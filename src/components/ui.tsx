@@ -189,19 +189,6 @@ export function DataTable({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ComingSoon({ title, what }: { title: string; what: string }) {
-  return (
-    <div className="space-y-4">
-      <PageHeader eyebrow="PLANT 2 · MOULDING SHOP" title={title} />
-      <Card className="space-y-3">
-        <Badge tone="info">Coming soon</Badge>
-        <p className="text-[15px]">{what}</p>
-        <p className="text-sm text-ink-3">This module is part of the design but has not been built yet.</p>
-      </Card>
-    </div>
-  );
-}
-
 /** Stock level against its Min marker; fill is relative to Max (as in the design's Stores cards). */
 export function MinMaxBar({
   value, min, max, color,
