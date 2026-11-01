@@ -19,7 +19,7 @@ export function SideNav({ groups }: { groups: NavGroup[] }) {
         <div className="px-3 pb-1 font-mono text-[11px] tracking-[0.08em] text-on-shell-2">OVERVIEW</div>
         {[
           { href: "/process", name: "Process", bar: "#C2410C" },
-          { href: "/trace", name: "Orders & traceability", bar: "#1D4ED8" },
+          { href: "/orders", name: "Orders", bar: "#1D4ED8" },
           { href: "/metrics", name: "Metrics", bar: "#1E7A46" },
         ].map((n) => (
           <Link key={n.href} href={n.href}

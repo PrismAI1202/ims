@@ -5,10 +5,11 @@ import { can } from "@/server/auth/permissions";
 import { requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { stockByItem } from "@/server/services/stock";
-import { btnCls, Flash, inputCls } from "@/components/flash";
+import { Flash } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
-import { NewPanel } from "@/components/new-panel";
+import { MoveLotForm } from "@/components/move-lot-form";
+import { X } from "lucide-react";
 import {
   Badge, Card, Chip, Chips, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
 } from "@/components/ui";
@@ -65,7 +66,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const view = sp.view === "bins" ? "bins" : "stock";
   const canMove = can(user.role, "stock.transfer");
 
-  const [rows, balances, locations] = await Promise.all([
+  const [rows, balances, locations, boxedRows] = await Promise.all([
     stockByItem(),
     db.stockBalance.findMany({
       where: { qty: { gt: 0 } },
@@ -73,7 +74,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       orderBy: [{ location: { code: "asc" } }, { lot: { receivedAt: "asc" } }],
     }),
     db.location.findMany({ orderBy: { code: "asc" } }),
+    db.fgBox.groupBy({ by: ["lotId", "locationId"], where: { status: "IN_STOCK" }, _sum: { qty: true } }),
   ]);
+  // Parts already in labelled boxes are reserved for dispatch and cannot be moved.
+  const boxed = new Map(boxedRows.map((r) => [`${r.lotId}:${r.locationId}`, r._sum.qty ?? 0]));
 
   const where = new Map<string, Set<string>>();
   for (const b of balances) {
@@ -105,28 +109,18 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     const highlight = new Set(sp.item ? (rows.find((r) => r.code === sp.item) ? [...(where.get(rows.find((r) => r.code === sp.item)!.itemId) ?? [])] : []) : []);
     const selected = sp.bin ? locations.find((l) => l.code === sp.bin) : undefined;
     const selBalances = selected ? byLoc.get(selected.id) ?? [] : [];
-    const emptyTargets = locations.filter((l) => l.type === "STORAGE" && stateOf(l.id) === "empty");
-    const here = `/stock?view=bins&bin=${selected?.code ?? ""}`;
+    const targetsFor = (fromId: string) => locations.filter((l) => l.type === "STORAGE" && l.id !== fromId).map((l) => {
+      const bs = byLoc.get(l.id) ?? [];
+      const codes = [...new Set(bs.map((b) => b.lot.item.code))];
+      return { code: l.code, rack: l.rack, note: bs.length === 0 ? "empty" : `holds ${codes.slice(0, 2).join(", ")}${codes.length > 2 ? "…" : ""}` };
+    });
+    const here = `/stock?view=bins&bin=${selected?.code ?? ""}${sp.item ? `&item=${sp.item}` : ""}`;
+    const closeHref = `/stock?view=bins${sp.item ? `&item=${sp.item}` : ""}`;
 
     return (
       <div className="space-y-4">
         {header}
-        <Flash error={sp.error} ok={sp.ok} />
-        {canMove && (
-          <NewPanel label="Move stock">
-          <Card>
-            <h2 className="mb-2 font-display text-sm font-bold">Move part of a lot</h2>
-            <form action={transfer} className="grid gap-3 md:grid-cols-5">
-              <label className="text-[13px]">Lot no.<input name="lotNumber" required placeholder="scan lot" className={inputCls} /></label>
-              <label className="text-[13px]">From bin<input name="fromCode" required placeholder="scan bin" defaultValue={selected?.code} className={inputCls} /></label>
-              <label className="text-[13px]">To bin<input name="toCode" required placeholder="scan bin" className={inputCls} /></label>
-              <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
-              <div className="flex items-end"><button className={`${btnCls} w-full`}>Transfer</button></div>
-              <input type="hidden" name="back" value="/stock?view=bins" />
-            </form>
-          </Card>
-          </NewPanel>
-        )}
+        {!selected && <Flash error={sp.error} ok={sp.ok} />}
         <div className="flex flex-wrap gap-3 text-xs text-ink-2">
           <LegendDot color="#1D4ED8" label="Full" />
           <LegendDot color="#8FAEF0" label="Part" />
@@ -162,43 +156,51 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
         </div>
 
         {selected && (
-          <section className="space-y-3 rounded-[14px] bg-shell p-4 text-on-shell">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-mono text-[15px]">{selected.code}</span>
-              <span className="text-xs text-on-shell-2">{selected.type === "STAGING" ? "Staging area" : `Rack ${selected.rack} · shelf ${selected.shelf} · bin ${selected.bin}`}</span>
-            </div>
-            {selBalances.length === 0 ? (
-              <p className="text-sm">Empty bin. Move stock here from another bin.</p>
-            ) : (
-              selBalances.map((b) => (
-                <div key={b.id} className="space-y-2 rounded-[10px] bg-shell-2 p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                    <span><Mono className="text-[13px]">{b.lot.lotNumber}</Mono> · {b.lot.item.code}</span>
-                    <span><Mono>{Number(b.qty).toLocaleString()}</Mono> {b.lot.item.uom}</span>
-                  </div>
-                  <div className="text-xs text-on-shell-2">
-                    {b.lot.item.name} · received {b.lot.receivedAt.toISOString().slice(0, 10)} · {b.lot.qcStatus.replace("_", " ")}
-                  </div>
-                  {canMove && emptyTargets.length > 0 && (
-                    <form action={transfer} className="flex flex-wrap items-center gap-2">
-                      <input type="hidden" name="lotNumber" value={b.lot.lotNumber} />
-                      <input type="hidden" name="fromCode" value={selected.code} />
-                      <input type="hidden" name="qty" value={Number(b.qty)} />
-                      <input type="hidden" name="back" value={here} />
-                      <label className="text-xs text-on-shell-2">Move all to an empty bin
-                        <select name="toCode" className="ml-2 min-h-10 rounded-lg border border-shell-line bg-shell px-2 font-mono text-xs text-white">
-                          {emptyTargets.map((t) => <option key={t.id} value={t.code}>{t.code}</option>)}
-                        </select>
-                      </label>
-                      <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-4 text-sm font-semibold text-white">Move</button>
-                    </form>
-                  )}
-                </div>
-              ))
-            )}
-          </section>
+          <div className="fixed inset-0 z-50 print:hidden" role="dialog" aria-modal="true" aria-label={`Bin ${selected.code}`}>
+            <Link href={closeHref} scroll={false} aria-label="Close bin" className="absolute inset-0 bg-black/45" />
+            <section className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-2xl bg-shell text-on-shell shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[420px] md:rounded-none">
+              <div className="flex items-start justify-between gap-3 border-b border-shell-line p-4">
+                <span className="flex flex-col">
+                  <span className="font-mono text-[17px] font-semibold">{selected.code}</span>
+                  <span className="text-xs text-on-shell-2">{selected.type === "STAGING" ? "Staging area" : `Rack ${selected.rack} · shelf ${selected.shelf} · bin ${selected.bin}`}</span>
+                </span>
+                <Link href={closeHref} scroll={false} aria-label="Close" className="flex size-10 items-center justify-center rounded-lg bg-shell-2"><X size={18} aria-hidden /></Link>
+              </div>
+              <div className="space-y-3 overflow-y-auto p-4">
+                <Flash error={sp.error} ok={sp.ok} />
+                {selBalances.length === 0 ? (
+                  <p className="text-sm">Empty bin. Open another bin and choose this one as the destination.</p>
+                ) : (
+                  selBalances.map((b) => {
+                    const onBox = boxed.get(`${b.lotId}:${b.locationId}`) ?? 0;
+                    const max = Math.max(Number(b.qty) - onBox, 0);
+                    const blocked = b.lot.qcStatus === "PENDING_QC" || b.lot.qcStatus === "REJECTED";
+                    return (
+                      <div key={b.id} className="space-y-2.5 rounded-[10px] bg-shell-2 p-3">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                          <span><Mono className="text-[13px]">{b.lot.lotNumber}</Mono> · {b.lot.item.code}</span>
+                          <span><Mono>{Number(b.qty).toLocaleString()}</Mono> {b.lot.item.uom}</span>
+                        </div>
+                        <div className="text-xs text-on-shell-2">
+                          {b.lot.item.name} · received {b.lot.receivedAt.toISOString().slice(0, 10)} · {b.lot.qcStatus.replace("_", " ")}
+                        </div>
+                        {onBox > 0 && <div className="text-xs text-on-shell-2">{onBox.toLocaleString()} {b.lot.item.uom} are in labelled boxes and stay here.</div>}
+                        {!canMove ? null : blocked ? (
+                          <p className="text-xs text-on-shell-2">This lot is {b.lot.qcStatus.replace("_", " ").toLowerCase()} and cannot be moved.</p>
+                        ) : max <= 0 ? null : (
+                          <MoveLotForm
+                            action={transfer} lotNumber={b.lot.lotNumber} fromCode={selected.code} back={here}
+                            max={max} uom={b.lot.item.uom} targets={targetsFor(selected.id)}
+                          />
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          </div>
         )}
-
       </div>
     );
   }

@@ -74,7 +74,7 @@ export const NAV_GROUPS: NavGroup[] = [
 export const TABS = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/process", label: "Process", icon: "process" },
-  { href: "/trace", label: "Orders", icon: "orders" },
+  { href: "/orders", label: "Orders", icon: "orders" },
   { href: "/metrics", label: "Metrics", icon: "metrics" },
   { href: "/more", label: "More", icon: "more" },
 ] as const;
