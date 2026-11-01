@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { get, put } from "@vercel/blob";
 import { DomainError } from "./inventory";
 
 // Uploaded certificates live outside the web root and are only served through an authenticated route.
-// For cloud deployment, point UPLOAD_DIR at a mounted persistent volume (or swap this module for object storage).
+// Two backends: local disk (UPLOAD_DIR, a persistent volume in Docker) or, when BLOB_READ_WRITE_TOKEN is set (Vercel),
+// a private Vercel Blob store. Vercel's own filesystem is read-only and wiped between requests, so it cannot hold uploads.
 // The paths below are decided at runtime from UPLOAD_DIR, so the bundler is told not to try tracing them (otherwise it
 // would pull the whole project into the deployment output).
 export const uploadDir = () => path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR ?? "./uploads");
+
+const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+const blobPath = (name: string) => `uploads/${name}`;
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(pdf|png|jpg)$/;
@@ -33,6 +38,10 @@ export async function saveUpload(file: { name: string; bytes: Uint8Array }): Pro
   if (file.bytes.length > MAX_FILE_BYTES) throw new DomainError("File is larger than 5 MB.");
   const t = detectType(file.name, file.bytes);
   const name = `${randomUUID()}.${t.ext}`;
+  if (blobEnabled()) {
+    await put(blobPath(name), Buffer.from(file.bytes), { access: "private", addRandomSuffix: false, contentType: t.mime });
+    return `file:${name}`;
+  }
   await mkdir(uploadDir(), { recursive: true });
   await writeFile(path.join(/*turbopackIgnore: true*/ uploadDir(), name), file.bytes, { flag: "wx" });
   return `file:${name}`;
@@ -45,6 +54,11 @@ export const fileUrl = (ref: string) => `/api/v1/files/${ref.slice(5)}`;
 export async function readUpload(name: string): Promise<{ bytes: Buffer; mime: string } | null> {
   if (!NAME.test(name)) return null;
   try {
+    if (blobEnabled()) {
+      const r = await get(blobPath(name), { access: "private" });
+      if (!r || r.statusCode !== 200) return null;
+      return { bytes: Buffer.from(await new Response(r.stream).arrayBuffer()), mime: r.blob.contentType };
+    }
     const bytes = await readFile(path.join(/*turbopackIgnore: true*/ uploadDir(), name));
     return { bytes, mime: Object.values(TYPES).find((t) => t.ext === name.split(".").pop())!.mime };
   } catch {

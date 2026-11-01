@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  push: { branches: [main] }
+  push: { branches: [main, design_changes] }
   pull_request:
 
 jobs:
@@ -33,3 +33,39 @@ jobs:
       - run: npx eslint src prisma scripts
       - run: npm test
       - run: npm run build
+
+  # Deploys to Vercel once every check above has passed. main goes to production; any other branch and same-repo
+  # pull requests get a preview URL. Needs the VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID repository secrets.
+  deploy:
+    needs: check
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    concurrency: { group: "vercel-${{ github.ref }}", cancel-in-progress: false }
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      TARGET: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - name: Check the Vercel secrets are set
+        run: |
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            [ -n "${!v}" ] || { echo "::error::Repository secret $v is missing. See docs/DEPLOYMENT-VERCEL.md."; exit 1; }
+          done
+      - run: npm ci
+      - run: npm install --global vercel@65.9.0
+      - name: Pull project settings and env vars
+        run: vercel pull --yes --environment=$TARGET --token=$VERCEL_TOKEN
+      - name: Build (runs scripts/vercel-build.sh, which applies migrations on production)
+        run: |
+          if [ "$TARGET" = production ]; then vercel build --prod --token=$VERCEL_TOKEN; else vercel build --token=$VERCEL_TOKEN; fi
+      - name: Deploy
+        id: deploy
+        run: |
+          if [ "$TARGET" = production ]; then url=$(vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN); else url=$(vercel deploy --prebuilt --token=$VERCEL_TOKEN); fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Deployed to $TARGET: $url" >> "$GITHUB_STEP_SUMMARY"

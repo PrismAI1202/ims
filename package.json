@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "bash scripts/vercel-build.sh",
     "start": "next start",
     "lint": "eslint",
     "db:up": "docker compose up -d",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^2.8.2",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "bcryptjs": "^3.0.3",
@@ -27,7 +29,7 @@
     "exceljs": "^4.4.0",
     "idb": "^8.0.4",
     "lucide-react": "^1.56.0",
-    "next": "16.4.0",
+    "next": "16.4.3",
     "next-auth": "^5.0.0-beta.32",
     "papaparse": "^5.7.0",
     "prisma": "^6.19.3",
@@ -44,7 +46,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.3",
     "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
