@@ -14,7 +14,7 @@
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "token:create": "tsx scripts/create-api-token.ts",
     "admin:create": "tsx scripts/create-admin.ts"
   },
