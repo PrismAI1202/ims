@@ -21,7 +21,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ report: 
 
   const { report } = await params;
   if (!isReport(report)) return Response.json({ error: "Unknown report" }, { status: 404 });
-  if (!can(user.role, REPORTS[report])) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, REPORTS[report])) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const q = new URL(req.url).searchParams;
   const table = await buildReport(report, {

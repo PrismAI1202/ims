@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createPurchaseOrder } from "@/server/services/inventory";
 import { cancelPurchaseOrder, closePurchaseOrderShort } from "@/server/services/purchase";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -43,7 +43,7 @@ async function closeShort(formData: FormData) {
 const isOpenPo = (st: string) => st === "APPROVED" || st === "PARTIAL";
 
 export default async function PurchasePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
-  await requirePermission("po.manage");
+  await requireView("purchase");
   const { error, ok, q: rawQ, status } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const view = status === "closed" || status === "all" ? status : "open";

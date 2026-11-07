@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { DomainError } from "@/server/services/inventory";
 import { isBlend, kindForCategory, type BomLineInput } from "@/server/services/bom-math";
 import { saveBom } from "@/server/services/production";
@@ -40,7 +40,7 @@ async function save(formData: FormData) {
 }
 
 export default async function BomPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; edit?: string; q?: string }> }) {
-  await requirePermission("bom.manage");
+  await requireView("bom");
   const { error, ok, edit, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [fgItems, items, moulds, boms] = await Promise.all([

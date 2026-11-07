@@ -1,4 +1,4 @@
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireUser, runAction } from "@/server/auth/guard";
 import { changeOwnPassword } from "@/server/services/users";
 import { DomainError } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -8,7 +8,7 @@ export const instant = false;
 
 async function change(formData: FormData) {
   "use server";
-  const user = await requirePermission("stock.view"); // any signed-in role
+  const user = await requireUser(); // any signed-in role
   await runAction("/account", "Password changed.", async () => {
     const next = String(formData.get("next") || "");
     if (next !== String(formData.get("confirm") || "")) throw new DomainError("The new passwords don't match.");
@@ -17,7 +17,7 @@ async function change(formData: FormData) {
 }
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireUser();
   const { error, ok } = await searchParams;
   return (
     <div className="space-y-4">

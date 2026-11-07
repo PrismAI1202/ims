@@ -17,7 +17,7 @@ It handles automotive customers (strict lot traceability, COA before GRN, Kanban
 | **Scanner PWA** | Mobile screens for issue, bin transfer and dispatch loading with an offline queue that syncs safely. |
 | **Reports** | Excel/CSV export of stock, variance, returnables, MRP plan and demand; print-to-PDF from the browser. |
 | **Hardware** | ZPL output for Zebra-compatible printers (download or send to a network printer); weighing-scale input via Web Serial. |
-| **Admin** | Users and roles (five roles per SRS §5), password reset/change, sessions re-checked on every request so deactivation takes effect immediately. |
+| **Admin** | Users, plus Settings · Roles & access: create roles and choose the screens (views) and actions each gets. Seven built-in roles (the five from SRS §5, Planner, and a full-access Demo). Each role lands on a Home inbox of its own tasks with a trimmed menu. Sessions are re-checked on every request, so deactivation and role edits take effect immediately. |
 
 ## Stack
 Next.js 16 (App Router) · TypeScript · Tailwind · Prisma · PostgreSQL · Auth.js · Vitest
@@ -35,7 +35,7 @@ npm run db:seed:demo        # optional: richer DEMO data matching the design moc
 npm run dev
 ```
 
-Open http://localhost:3000 and sign in with a seeded demo account (emails and the dev-only password are in `prisma/seed.ts`).
+Open http://localhost:3000 and sign in with a seeded demo account (emails and the dev-only password are in `prisma/seed.ts`). `demo@ims.local` sees every screen; the other accounts see only their role's.
 
 ## Scripts
 | Command | What it does |
@@ -59,7 +59,7 @@ DATABASE_URL="postgresql://ims:ims@localhost:5433/ims_test?schema=public" npx pr
 - Business rules live in `src/server/services/` (no React/Next imports). Pages call them via server actions; the scanner uses the same services through `/api/v1/*`.
 - Every stock change is written to the append-only `StockTransaction` ledger; balances update in the same database transaction.
 - Offline scans carry a client UUID and sync through `/api/v1/sync`, which is idempotent, so replays are safe.
-- Roles and permissions: `src/server/auth/permissions.ts`. Every page and action checks its own permission.
+- Roles and permissions: roles are rows in `AccessRole` (edited under Settings). The screen catalog is `src/lib/views.ts`, permissions and default roles are in `src/server/auth/permissions.ts`. Every page checks its view (`requireView`) and every action its permission (`requirePermission`).
 - File uploads (COA) live under `UPLOAD_DIR`, outside the web root, served only to signed-in users after the file's real type is verified.
 
 ## Known limits

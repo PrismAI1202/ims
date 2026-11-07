@@ -1,6 +1,6 @@
 import { db } from "@/server/db";
 import { DownloadLink } from "@/components/download-link";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { importDemand, undoImport } from "@/server/services/demand";
 import { MAX_UPLOAD_BYTES, parseDemandRows, readSpreadsheet } from "@/server/services/demand-import";
 import { DomainError } from "@/server/services/inventory";
@@ -44,7 +44,7 @@ async function undo(formData: FormData) {
 }
 
 export default async function DemandPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; type?: string }> }) {
-  await requirePermission("mrp.plan");
+  await requireView("demand");
   const { error, ok, q: rawQ, type } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const kind = type === "FIRM" || type === "FORECAST" || type === "SPOT" ? type : undefined;

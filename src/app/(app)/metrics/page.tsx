@@ -1,5 +1,5 @@
 import { can } from "@/server/auth/permissions";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { computeMetrics } from "@/server/services/metrics";
 import { setShiftMinutes } from "@/server/services/settings";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -15,16 +15,17 @@ async function saveShift(formData: FormData) {
 }
 
 export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("metrics");
   const { error, ok } = await searchParams;
   const data = await computeMetrics();
   return (
     <MetricsView
       data={data}
+      views={user.views}
       footer={
         <>
           <Flash error={error} ok={ok} />
-          {can(user.role, "masters.manage") && (
+          {can(user, "masters.manage") && (
             <Card>
               <form action={saveShift} className="flex flex-wrap items-end gap-3">
                 <label className="text-[13px]">Shift length (minutes)

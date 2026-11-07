@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { NewPanel, Panels } from "@/components/new-panel";
 import { SearchBar } from "@/components/search-bar";
@@ -52,7 +52,7 @@ function ActiveToggle({ kind, id, active }: { kind: string; id: string; active: 
 export default async function MastersPage({
   searchParams,
 }: { searchParams: Promise<{ tab?: string; error?: string; ok?: string; q?: string }> }) {
-  await requirePermission("masters.manage");
+  await requireView("masters");
   const sp = await searchParams;
   const q = sp.q?.trim() || undefined;
   const tab: Tab = TABS.some(([k]) => k === sp.tab) ? (sp.tab as Tab) : "items";

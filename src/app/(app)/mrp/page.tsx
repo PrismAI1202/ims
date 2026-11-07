@@ -1,4 +1,4 @@
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { DownloadLink } from "@/components/download-link";
 import { DomainError } from "@/server/services/inventory";
 import { createPosFromPlan, planMrp } from "@/server/services/mrp";
@@ -34,7 +34,7 @@ const date = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "—");
 export default async function MrpPage({
   searchParams,
 }: { searchParams: Promise<{ horizon?: string; scrap?: string; error?: string; ok?: string }> }) {
-  await requirePermission("mrp.plan");
+  await requireView("mrp");
   const sp = await searchParams;
   const horizonDays = clamp(sp.horizon, 60, 7, 365);
   const scrapPct = clamp(sp.scrap, 2, 0, 50);

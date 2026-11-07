@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createDispatch, dispatchProgress } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
@@ -28,7 +28,7 @@ async function create(formData: FormData) {
 }
 
 export default async function DispatchPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
-  await requirePermission("dispatch.manage");
+  await requireView("dispatch");
   const { error, ok, q: rawQ, status } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const view = status === "LOADING" || status === "DISPATCHED" || status === "CANCELLED" ? status : "ALL";

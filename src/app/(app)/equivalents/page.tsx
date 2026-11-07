@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ChevronLeft, FileText } from "lucide-react";
 import { db } from "@/server/db";
-import { can } from "@/server/auth/permissions";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { can, canView } from "@/server/auth/permissions";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { addGrade, createGroup, decideGrade, GROUP_CATEGORIES, listGroups, moveGradeUp, type GroupView } from "@/server/services/equivalents";
 import { uploadFrom } from "@/server/upload-form";
 import { btnCls, btnDangerCls, btnOkCls, Flash, inputCls } from "@/components/flash";
@@ -67,12 +67,12 @@ function GroupBar({ g }: { g: GroupView }) {
 }
 
 export default async function EquivalentsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; id?: string; q?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("equivalents");
   const { error, ok, id, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const groups = await listGroups();
-  const canManage = can(user.role, "equivalents.manage");
-  const canDecide = can(user.role, "qc.inspect");
+  const canManage = can(user, "equivalents.manage");
+  const canDecide = can(user, "qc.inspect");
   const sel = id ? groups.find((g) => g.id === id) : undefined;
 
   if (sel) {
@@ -181,7 +181,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
     <CreateProvider>
       <div className="space-y-4">
         <PageHeader right={canManage ? <CreateButton label="New group" /> : undefined} eyebrow="SET UP" title="Equivalent groups" subtitle="One spec, many vendor grades. BOMs, MRP and stock use the group.">
-          <Link href="/bom" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> BOMs</Link>
+          {canView(user, "bom") && <Link href="/bom" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> BOMs</Link>}
         </PageHeader>
         <Flash error={error} ok={ok} />
         <CreatePanel>

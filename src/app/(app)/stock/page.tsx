@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ScanLine } from "lucide-react";
 import { db } from "@/server/db";
-import { can } from "@/server/auth/permissions";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { can, canView } from "@/server/auth/permissions";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { stockByItem } from "@/server/services/stock";
 import { Flash } from "@/components/flash";
@@ -61,10 +61,10 @@ const BIN_STYLE: Record<BinState, string> = {
 type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string; q?: string };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("stock");
   const sp = await searchParams;
   const view = sp.view === "bins" ? "bins" : "stock";
-  const canMove = can(user.role, "stock.transfer");
+  const canMove = can(user, "stock.transfer");
 
   const [rows, balances, locations, boxedRows] = await Promise.all([
     stockByItem(),
@@ -90,9 +90,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     <PageHeader
       eyebrow={`STORES · ${user.role.replace("_", " ")}`}
       title="Stores"
-      right={canMove ? <Link href="/scan" className={headerBtnCls}><ScanLine size={16} aria-hidden /> Scan</Link> : undefined}
+      right={canMove && canView(user, "scan") ? <Link href="/scan" className={headerBtnCls}><ScanLine size={16} aria-hidden /> Scan</Link> : undefined}
     >
-      <StoresTabs active={view} />
+      <StoresTabs active={view} views={user.views} />
     </PageHeader>
   );
 
@@ -265,7 +265,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     Show on bin map
                   </Link>
                 )}
-                {r.status !== "GREEN" && r.category !== "FG" && can(user.role, "po.manage") && (
+                {r.status !== "GREEN" && r.category !== "FG" && canView(user, "purchase") && (
                   <Link href="/purchase" className={`flex min-h-9 items-center rounded-[10px] px-3 text-[13px] font-semibold ${r.status === "RED" ? "bg-danger-bg text-danger" : "bg-warn-bg text-warn-ink"}`}>
                     {r.status === "RED" ? "Raise PO" : "Reorder"}
                   </Link>

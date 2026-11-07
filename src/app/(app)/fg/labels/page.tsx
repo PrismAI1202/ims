@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { notFound, redirect } from "next/navigation";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { boxLabel } from "@/server/services/fg";
 import { DomainError } from "@/server/services/inventory";
 import { printerFromEnv, sendZpl, zplBoxLabel } from "@/server/services/zpl";
@@ -27,10 +27,11 @@ async function printToPrinter(formData: FormData) {
 }
 
 export default async function LabelsPage({ searchParams }: { searchParams: Promise<{ boxes?: string; error?: string; ok?: string }> }) {
-  await requirePermission("fg.pack");
+  await requireView("fg");
   const { boxes, error, ok } = await searchParams;
   const codes = (boxes ?? "").split(",").map((c) => c.trim()).filter(Boolean).slice(0, 200);
-  if (codes.length === 0) notFound();
+  // Opened from a menu or bookmark rather than after packing: send them where labels are made.
+  if (codes.length === 0) redirect("/fg?error=" + encodeURIComponent("Pack or pick boxes first, then print their labels from here."));
 
   const labels = (await Promise.all(codes.map((c) => boxLabel(c)))).filter((l) => l !== null);
   if (labels.length === 0) notFound();

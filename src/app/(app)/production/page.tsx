@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import type { DowntimeReason } from "@prisma/client";
 import { logDowntime } from "@/server/services/downtime";
@@ -58,7 +58,7 @@ async function logStop(formData: FormData) {
 }
 
 export default async function ProductionPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  const user = await requirePermission("production.book");
+  const user = await requireView("production");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [boms, machines, bins, recent, stops, moulds] = await Promise.all([
@@ -72,7 +72,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
     db.downtime.findMany({ orderBy: { createdAt: "desc" }, take: 8, include: { machine: true } }),
     db.mould.findMany({ orderBy: { code: "asc" } }),
   ]);
-  const canLog = can(user.role, "downtime.log");
+  const canLog = can(user, "downtime.log");
 
   return (
     <CreateProvider>

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const q = new URL(req.url).searchParams;
-  const need = (p: Permission) => can(user.role, p);
+  const need = (p: Permission) => can(user, p);
   const list = (v: string | null) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 200);
   let zpl = "";
   let name = "labels";

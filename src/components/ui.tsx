@@ -168,14 +168,17 @@ export function SegmentedTabs({
 }
 
 const STORES_TABS = [
-  { key: "stock", href: "/stock", label: "Stock" },
-  { key: "bins", href: "/stock?view=bins", label: "Bins" },
-  { key: "requests", href: "/requests", label: "Requisitions" },
-  { key: "issue", href: "/issue", label: "FIFO issue" },
+  { key: "stock", href: "/stock", label: "Stock", view: "stock" },
+  { key: "bins", href: "/stock?view=bins", label: "Bins", view: "stock" },
+  { key: "requests", href: "/requests", label: "Requisitions", view: "requests" },
+  { key: "issue", href: "/issue", label: "FIFO issue", view: "issue" },
 ] as const;
 
-export function StoresTabs({ active }: { active: (typeof STORES_TABS)[number]["key"] }) {
-  return <SegmentedTabs tabs={STORES_TABS.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
+/** Only the tabs the user's role can open; nothing at all when that leaves just one. */
+export function StoresTabs({ active, views }: { active: (typeof STORES_TABS)[number]["key"]; views: readonly string[] }) {
+  const tabs = STORES_TABS.filter((t) => views.includes(t.view));
+  if (tabs.length < 2) return null;
+  return <SegmentedTabs tabs={tabs.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }
 
 /** Scrollable table wrapper with the design's dividers and mono numerals. */

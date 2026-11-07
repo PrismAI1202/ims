@@ -2,7 +2,7 @@ import Link from "next/link";
 import { DownloadLink } from "@/components/download-link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { cancelDispatch, completeDispatch, dispatchProgress, scanBox, unscanBox } from "@/server/services/dispatch";
 import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
@@ -50,7 +50,7 @@ async function cancel(formData: FormData) {
 export default async function DispatchDetail({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requirePermission("dispatch.manage");
+  await requireView("dispatch");
   const [{ id }, { error, ok }] = await Promise.all([params, searchParams]);
   const d = await db.dispatch.findUnique({ where: { id }, include: { customer: true } });
   if (!d) notFound();

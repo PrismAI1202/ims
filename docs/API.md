@@ -19,7 +19,7 @@ Two ways, both resolved by the same code (`src/server/auth/api-auth.ts`):
   revokes their tokens.
 
 Errors look like `{ "error": "message" }` with status `401` (no or invalid credentials), `403` (role not allowed), `400`
-(bad input), `404`. Permissions follow the role matrix in `src/server/auth/permissions.ts`.
+(bad input), `404`. Permissions come from the user's role (`AccessRole`, edited under Settings · Roles & access; defaults in `src/server/auth/permissions.ts`).
 
 ## Endpoints
 

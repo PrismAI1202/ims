@@ -7,7 +7,7 @@ import { readUpload } from "@/server/services/storage";
 export async function GET(req: Request, { params }: { params: Promise<{ name: string }> }) {
   const user = await getApiUser(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (!can(user.role, "stock.view")) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, "stock.view")) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { name } = await params;
   const file = await readUpload(name);

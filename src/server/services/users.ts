@@ -6,11 +6,14 @@ import { DomainError } from "./inventory";
 
 type Db = PrismaClient;
 
-export const ROLES = ["ADMIN", "STORE_INCHARGE", "QA_INSPECTOR", "PRODUCTION_LEAD", "DISPATCH_OFFICER"] as const;
-
 const email = z.string().trim().toLowerCase().email("Enter a valid email address.").max(120);
 const name = z.string().trim().min(2, "Name is required.").max(80);
-const role = z.enum(ROLES, { message: "Choose a role." });
+const role = z.string().trim().min(1, "Choose a role.");
+
+// Roles live in AccessRole (Settings · Roles & access), so a role is valid when that row exists.
+async function assertRole(key: string, db: Db) {
+  if (!(await db.accessRole.findUnique({ where: { key } }))) throw new DomainError("Choose a role.");
+}
 
 // Deliberately simple, since this is an internal plant tool: length is what matters most, plus a basic guard against the obvious.
 export function checkPassword(pw: string, userEmail?: string): string | null {
@@ -29,6 +32,7 @@ function first(r: { error: z.ZodError }): never {
 export async function createUser(input: { email: string; name: string; role: string; password: string }, db: Db = defaultDb) {
   const p = z.object({ email, name, role }).safeParse(input);
   if (!p.success) first(p);
+  await assertRole(p.data.role, db);
   const bad = checkPassword(input.password, p.data.email);
   if (bad) throw new DomainError(bad);
   try {
@@ -50,6 +54,7 @@ export async function updateUser(
 ) {
   const p = z.object({ name, role }).safeParse(input);
   if (!p.success) first(p);
+  await assertRole(p.data.role, db);
   const target = await db.user.findUnique({ where: { id } });
   if (!target) throw new DomainError("Unknown user.");
 

@@ -11,14 +11,6 @@ datasource db {
 
 // ───────── Enums ─────────
 
-enum Role {
-  ADMIN
-  STORE_INCHARGE
-  QA_INSPECTOR
-  PRODUCTION_LEAD
-  DISPATCH_OFFICER
-}
-
 enum Segment {
   AUTOMOTIVE
   NON_AUTOMOTIVE
@@ -83,10 +75,26 @@ model User {
   email        String     @unique
   name         String
   passwordHash String
-  role         Role
+  role         String // AccessRole.key
+  access       AccessRole @relation(fields: [role], references: [key])
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   tokens       ApiToken[]
+}
+
+// A role is a named set of screens (views) and actions (permissions); see src/lib/views.ts and
+// src/server/auth/permissions.ts. System roles come from the migration; admins add their own under Settings.
+model AccessRole {
+  key         String   @id
+  name        String   @unique
+  description String   @default("")
+  system      Boolean  @default(false)
+  allAccess   Boolean  @default(false) // every view and permission, including ones added later
+  views       String[]
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
 }
 
 model ApiToken {

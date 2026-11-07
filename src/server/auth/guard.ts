@@ -1,16 +1,33 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
-import { can, type Permission } from "./permissions";
+import { can, canView, type Permission } from "./permissions";
+import { viewDef, type ViewKey } from "@/lib/views";
 import { DomainError } from "@/server/services/inventory";
 
-// Every page and server action calls this itself: layout-level auth does not cover server actions.
-export async function requirePermission(permission: Permission) {
+const DENIED = "/dashboard?error=" + encodeURIComponent("You don't have access to that.");
+
+// Any signed-in user: Home, Account and Sync centre.
+export async function requireUser() {
   await connection(); // session reads are request-time; keep Next from prerendering the caller
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!can(session.user.role, permission)) redirect("/dashboard?error=" + encodeURIComponent("You don't have access to that."));
   return session.user;
+}
+
+// Every server action calls this itself: layout-level auth does not cover server actions.
+export async function requirePermission(permission: Permission) {
+  const user = await requireUser();
+  if (!can(user, permission)) redirect(DENIED);
+  return user;
+}
+
+// Pages call this: the user's role must include the screen, and the permission the screen cannot work without.
+export async function requireView(view: ViewKey) {
+  const user = await requireUser();
+  const needs = viewDef(view)?.requires;
+  if (!canView(user, view) || (needs && !can(user, needs))) redirect(DENIED);
+  return user;
 }
 
 // Runs a server action body; domain errors come back to the page as ?error=..., success as ?ok=...

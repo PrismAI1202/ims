@@ -1,6 +1,7 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
-import { createUser, resetPassword, ROLES, updateUser } from "@/server/services/users";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
+import Link from "next/link";
+import { createUser, resetPassword, updateUser } from "@/server/services/users";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
@@ -8,10 +9,6 @@ import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-pane
 import { Badge, Card, Eyebrow, PageHeader } from "@/components/ui";
 
 export const instant = false;
-
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Admin", STORE_INCHARGE: "Store Incharge", QA_INSPECTOR: "QA Inspector", PRODUCTION_LEAD: "Production Lead", DISPATCH_OFFICER: "Dispatch Officer",
-};
 
 async function create(formData: FormData) {
   "use server";
@@ -43,17 +40,24 @@ async function reset(formData: FormData) {
 }
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  const me = await requirePermission("users.manage");
+  const me = await requireView("users");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
-  const everyone = await db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] });
-  const users = everyone.filter((u) => matches(q, u.name, u.email, ROLE_LABEL[u.role]));
+  const [everyone, roles] = await Promise.all([
+    db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }], include: { access: true } }),
+    db.accessRole.findMany({ orderBy: { name: "asc" } }),
+  ]);
+  const users = everyone.filter((u) => matches(q, u.name, u.email, u.access.name));
+  const roleOptions = roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>);
 
   return (
     <CreateProvider>
     <div className="space-y-4">
-      <PageHeader right={<CreateButton label="New user" />} eyebrow="ADMIN" title="Users & roles" subtitle={`${everyone.filter((u) => u.active).length} active · ${everyone.filter((u) => !u.active).length} inactive`} />
-      <p className="max-w-3xl text-sm text-ink-2">Create logins for plant staff and set their role. Users are deactivated, never deleted, so history keeps its names. There must always be one active admin.</p>
+      <PageHeader right={<CreateButton label="New user" />} eyebrow="ADMIN" title="Users" subtitle={`${everyone.filter((u) => u.active).length} active · ${everyone.filter((u) => !u.active).length} inactive`} />
+      <p className="max-w-3xl text-sm text-ink-2">
+        Create logins for plant staff and set their role. Users are deactivated, never deleted, so history keeps its names. There must always be one active admin.
+        {me.views.includes("settings") && <> What each role can see and do is set under <Link href="/settings" className="font-semibold text-accent">Settings · Roles &amp; access</Link>.</>}
+      </p>
       <Flash error={error} ok={ok} />
       <CreatePanel>
         <Card className="space-y-3">
@@ -62,7 +66,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             <label className="text-[13px]">Name<input name="name" required className={inputCls} /></label>
             <label className="text-[13px]">Email<input name="email" type="email" required autoComplete="off" className={inputCls} /></label>
             <label className="text-[13px]">Role
-              <select name="role" className={inputCls}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+              <select name="role" className={inputCls}>{roleOptions}</select>
             </label>
             <label className="text-[13px]">Initial password<input name="password" type="text" required minLength={8} autoComplete="off" className={inputCls} /></label>
             <div className="flex items-end"><button className={`${btnCls} w-full`}>Add user</button></div>
@@ -77,13 +81,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <article key={u.id} className={`rounded-[14px] bg-white p-4 ${u.active ? "" : "opacity-60"}`}>
             <div className="mb-3 flex items-center justify-between gap-2">
               <span className="flex min-w-0 flex-col"><span className="font-semibold">{u.name}</span><span className="truncate text-xs text-ink-3">{u.email}</span></span>
-              <Badge tone={u.active ? "ok" : "neutral"}>{u.active ? ROLE_LABEL[u.role] : "Inactive"}</Badge>
+              <Badge tone={u.active ? "ok" : "neutral"}>{u.active ? u.access.name : "Inactive"}</Badge>
             </div>
             <form action={save} className="grid items-end gap-3 sm:grid-cols-2">
               <input type="hidden" name="id" value={u.id} />
               <label className="text-[13px]">Name<input name="name" defaultValue={u.name} className={inputCls} /></label>
               <label className="text-[13px]">Role
-                <select name="role" defaultValue={u.role} className={inputCls}>{ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+                <select name="role" defaultValue={u.role} className={inputCls}>{roleOptions}</select>
               </label>
               <label className="flex min-h-11 items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={u.active} className="size-5 accent-[#c2410c]" /> Active{u.id === me.id && " (you)"}</label>
               <div><button className={`${btnCls} w-full`}>Save</button></div>

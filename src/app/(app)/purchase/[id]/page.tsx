@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { updatePurchaseOrder } from "@/server/services/purchase";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { Badge, Card, PageHeader } from "@/components/ui";
@@ -25,7 +25,7 @@ async function save(formData: FormData) {
 }
 
 export default async function EditPo({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
-  await requirePermission("po.manage");
+  await requireView("purchase");
   const [{ id }, { error }] = await Promise.all([params, searchParams]);
   const po = await db.purchaseOrder.findUnique({ where: { id }, include: { supplier: true, lines: { include: { item: true } } } });
   if (!po) notFound();

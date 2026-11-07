@@ -7,7 +7,7 @@ import { dispatchProgress } from "@/server/services/dispatch";
 export async function GET(req: Request) {
   const user = await getApiUser(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (!can(user.role, "dispatch.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, "dispatch.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const open = await db.dispatch.findMany({ where: { status: "LOADING" }, orderBy: { createdAt: "asc" }, include: { customer: true } });
   const dispatches = await Promise.all(open.map(async (d) => {

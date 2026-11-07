@@ -1,12 +1,12 @@
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { DownloadLink } from "@/components/download-link";
 
 export const instant = false;
 
 // Rack/shelf/bin labels: Code 128, so any handheld scanner reads them without a camera.
 export default async function BinLabelsPage() {
-  await requirePermission("masters.manage");
+  await requireView("masters");
   const bins = await db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } });
   return (
     <div className="space-y-4">

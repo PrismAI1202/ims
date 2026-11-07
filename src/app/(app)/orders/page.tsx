@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { requirePermission } from "@/server/auth/guard";
-import { can } from "@/server/auth/permissions";
+import { requireView } from "@/server/auth/guard";
+import { canView } from "@/server/auth/permissions";
 import { listOrders, type OrderRow } from "@/server/services/orders";
 import { SearchBar } from "@/components/search-bar";
 import { href, matches } from "@/lib/url";
@@ -36,7 +36,7 @@ function OrderCard({ o }: { o: OrderRow }) {
 }
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; dir?: string; state?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("orders");
   const sp = await searchParams;
   const q = sp.q?.trim() || undefined;
   const dir = DIRS.find((d) => d === sp.dir);
@@ -52,10 +52,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
 
   const link = (over: { dir?: string; state?: string }) => href("/orders", { q, dir: "dir" in over ? over.dir : dir, state: "state" in over ? over.state : state });
   const quick = [
-    can(user.role, "po.manage") && { href: "/purchase", label: "Supplier POs" },
-    can(user.role, "mrp.plan") && { href: "/demand", label: "Customer demand" },
-    can(user.role, "dispatch.manage") && { href: "/dispatch", label: "Dispatch" },
-    { href: "/trace", label: "Trace a box or lot" },
+    canView(user, "purchase") && { href: "/purchase", label: "Supplier POs" },
+    canView(user, "demand") && { href: "/demand", label: "Customer demand" },
+    canView(user, "dispatch") && { href: "/dispatch", label: "Dispatch" },
+    canView(user, "trace") && { href: "/trace", label: "Trace a box or lot" },
   ].filter((x): x is { href: string; label: string } => !!x);
 
   return (

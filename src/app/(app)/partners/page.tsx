@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { Badge, Card, Chips, Mono, PageHeader, SegmentedTabs } from "@/components/ui";
@@ -16,7 +16,7 @@ type Row = {
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 
 export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ tab?: string; filter?: string; id?: string; q?: string }> }) {
-  await requirePermission("stock.view");
+  await requireView("partners");
   const sp = await searchParams;
   const sup = sp.tab === "suppliers";
   const q = sp.q?.trim() || undefined;

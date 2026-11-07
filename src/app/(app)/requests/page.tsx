@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createMaterialRequest } from "@/server/services/inventory";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
@@ -22,7 +22,7 @@ async function create(formData: FormData) {
 }
 
 export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requirePermission("request.create");
+  const user = await requireView("requests");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [items, machines, requests] = await Promise.all([
@@ -35,7 +35,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
     <CreateProvider>
     <div className="space-y-4">
       <PageHeader right={<CreateButton label="New requisition" />} eyebrow="STORES" title="Requisitions from the shop floor">
-        <StoresTabs active="requests" />
+        <StoresTabs active="requests" views={user.views} />
       </PageHeader>
       <Flash error={error} ok={ok} />
       <CreatePanel><Card>

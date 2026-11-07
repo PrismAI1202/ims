@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { approveScrap, pendingScrap } from "@/server/services/scrap";
 import { btnDangerCls, btnOkCls, Flash, inputCls } from "@/components/flash";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
@@ -19,7 +19,7 @@ async function decide(formData: FormData) {
 }
 
 export default async function ScrapPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requirePermission("scrap.approve");
+  await requireView("scrap");
   const { error, ok } = await searchParams;
   const [pending, bins, history] = await Promise.all([
     pendingScrap(),

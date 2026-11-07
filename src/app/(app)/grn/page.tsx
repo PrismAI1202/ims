@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn, DomainError } from "@/server/services/inventory";
 import { saveUpload } from "@/server/services/storage";
 import { CoaRef } from "@/components/coa-ref";
@@ -48,7 +48,7 @@ async function receive(formData: FormData) {
 }
 
 export default async function GrnPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; po?: string; q?: string }> }) {
-  await requirePermission("grn.create");
+  await requireView("grn");
   const { error, ok, po: poId, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const openPos = await db.purchaseOrder.findMany({

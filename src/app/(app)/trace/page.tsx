@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { traceQuery, type FgTrace, type MaterialOrigin, type MaterialTrace } from "@/server/services/trace";
 import { btnCls, inputCls } from "@/components/flash";
 import { CoaRef } from "@/components/coa-ref";
@@ -112,7 +112,7 @@ function Material({ t }: { t: MaterialTrace }) {
 }
 
 export default async function TracePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requirePermission("stock.view");
+  await requireView("trace");
   const { q } = await searchParams;
   const result = q?.trim() ? await traceQuery(q) : null;
 

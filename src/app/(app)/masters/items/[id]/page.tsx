@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { btnCls, Flash } from "@/components/flash";
 import { Card, PageHeader } from "@/components/ui";
 import { saveItem } from "../../actions";
@@ -12,7 +12,7 @@ export const instant = false;
 export default async function EditItem({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
-  await requirePermission("masters.manage");
+  await requireView("masters");
   const [{ id }, { error }] = await Promise.all([params, searchParams]);
   const item = await db.item.findUnique({ where: { id } });
   if (!item) notFound();

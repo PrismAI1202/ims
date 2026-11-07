@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { db } from "@/server/db";
 import { can } from "@/server/auth/permissions";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { completePm, logRepair, machineReliability, mouldHistory, mouldRows, PM_CHECKS, updateMouldSettings, type MouldMaint } from "@/server/services/maintenance";
 import { uploadFrom } from "@/server/upload-form";
 import { btnCls, btnOkCls, Flash, inputCls } from "@/components/flash";
@@ -57,10 +57,10 @@ const fmt = (n: number) => Math.abs(n).toLocaleString("en-US");
 const pmText = (m: MouldMaint) => (m.left <= 0 ? `${fmt(m.left)} over` : `${fmt(m.left)} shots`);
 
 export default async function MaintenancePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; tab?: string; id?: string; q?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("maintenance");
   const { error, ok, tab, id, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
-  const manage = can(user.role, "maintenance.manage");
+  const manage = can(user, "maintenance.manage");
   const moulds = await mouldRows();
   const sel = id ? moulds.find((m) => m.id === id) : undefined;
 

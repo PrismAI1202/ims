@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { challanData } from "@/server/services/dispatch";
 
 export const instant = false;
@@ -8,7 +8,7 @@ export const instant = false;
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default async function ChallanPage({ params }: { params: Promise<{ id: string }> }) {
-  await requirePermission("dispatch.manage");
+  await requireView("dispatch");
   const { id } = await params;
   if (!(await db.dispatch.findUnique({ where: { id }, select: { id: true } }))) notFound();
   const { dispatch: d, date, items, eway, company } = await challanData(id);

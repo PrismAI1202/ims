@@ -1,6 +1,6 @@
 import { db } from "@/server/db";
 import { DownloadLink } from "@/components/download-link";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { recordReturnable, returnableBalances } from "@/server/services/dispatch";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
@@ -24,7 +24,7 @@ async function record(formData: FormData) {
 }
 
 export default async function ReturnablesPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requirePermission("dispatch.manage");
+  await requireView("returnables");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [balances, customers, items, recent, bins] = await Promise.all([

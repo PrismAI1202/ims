@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { can } from "@/server/auth/permissions";
 
 export const instant = false;
 
 export default async function ScanHome() {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("scan");
   const tiles = [
     { href: "/scan/issue", label: "Issue to shop floor", sub: "FIFO lot scan", perm: "stock.issue" as const },
     { href: "/scan/transfer", label: "Bin transfer / put-away", sub: "Move between bins", perm: "stock.transfer" as const },
     { href: "/scan/dispatch", label: "Load a dispatch", sub: "Scan boxes", perm: "dispatch.manage" as const },
-  ].filter((t) => can(user.role, t.perm));
+  ].filter((t) => can(user, t.perm));
 
   return (
     <div className="space-y-3">

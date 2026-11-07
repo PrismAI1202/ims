@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { packBoxes, unboxedQty } from "@/server/services/fg";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
@@ -25,7 +25,7 @@ async function pack(formData: FormData) {
 }
 
 export default async function FgPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string; status?: string }> }) {
-  await requirePermission("fg.pack");
+  await requireView("fg");
   const { error, ok, q: rawQ, status } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const view = status === "IN_STOCK" || status === "DISPATCHED" ? status : "ALL";

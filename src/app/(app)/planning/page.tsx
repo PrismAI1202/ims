@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { can } from "@/server/auth/permissions";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { can, canView } from "@/server/auth/permissions";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { blockSlot, clearSlot, mondayOf, parseDay, placeJob, planWeek, weekDays } from "@/server/services/planning";
 import { btnCls, btnDangerCls, Flash, inputCls } from "@/components/flash";
 import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
@@ -44,12 +44,12 @@ async function clear(formData: FormData) {
 }
 
 export default async function PlanningPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; week?: string; job?: string; slot?: string }> }) {
-  const user = await requirePermission("stock.view");
+  const user = await requireView("planning");
   const sp = await searchParams;
   const now = new Date();
   const monday = sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? mondayOf(parseDay(sp.week)) : mondayOf(now);
   const week = await planWeek(monday);
-  const manage = can(user.role, "plan.manage");
+  const manage = can(user, "plan.manage");
   const job = week.jobs.find((j) => j.fgItemId === sp.job);
   const slot = week.slots.find((s) => s.id === sp.slot);
   const slotAt = (machineId: string, day: string) => week.slots.find((s) => s.machineId === machineId && s.day === day);
@@ -147,7 +147,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
                 <span className="font-mono text-[11px] text-ink-3">{week.machines.find((m) => m.id === slot.machineId)?.code} · {label(slot.day)}</span>
                 <span className="block font-display text-base font-bold">{slot.part}{slot.mould ? ` · ${slot.mould}` : ""}</span>
                 <span className="block text-[13px] text-ink-3">{slot.kind === "JOB" ? `Colour ${slot.colour}` : slot.note || (slot.kind === "PM" ? "Preventive maintenance" : "Trial")}</span>
-                {slot.kind === "JOB" && <Link href="/bom" className="inline-block pt-1 text-[13px] font-semibold text-accent">View BOM</Link>}
+                {slot.kind === "JOB" && canView(user, "bom") && <Link href="/bom" className="inline-block pt-1 text-[13px] font-semibold text-accent">View BOM</Link>}
                 {manage && (
                   <form action={clear} className="pt-1"><input type="hidden" name="week" value={wk} /><input type="hidden" name="slotId" value={slot.id} />
                     <button className={`${btnDangerCls} min-h-10 px-4 text-[13px]`}>Unschedule this day</button></form>

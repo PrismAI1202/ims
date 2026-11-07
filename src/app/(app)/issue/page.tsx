@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { issueStock, pickableLots } from "@/server/services/inventory";
 import { sortForPicking } from "@/server/services/fifo";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -23,7 +23,7 @@ async function issue(formData: FormData) {
 }
 
 export default async function IssuePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requirePermission("stock.issue");
+  const user = await requireView("issue");
   const { error, ok } = await searchParams;
   const requests = await db.materialRequest.findMany({
     where: { status: { in: ["OPEN", "PARTIAL"] } }, orderBy: { createdAt: "asc" },
@@ -44,7 +44,7 @@ export default async function IssuePage({ searchParams }: { searchParams: Promis
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="STORES" title="FIFO issue" subtitle="Pick in the order shown. Scanning a newer lot while an older one has stock is blocked unless you give a reason.">
-        <StoresTabs active="issue" />
+        <StoresTabs active="issue" views={user.views} />
       </PageHeader>
       <Flash error={error} ok={ok} />
       {rows.length === 0 && <Card><p className="text-ink-3">No open material requests.</p></Card>}

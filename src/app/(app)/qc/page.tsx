@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { recordQc } from "@/server/services/inventory";
 import { btnDangerCls, btnOkCls, btnWarnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
@@ -30,7 +30,7 @@ async function decide(formData: FormData) {
 }
 
 export default async function QcPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requirePermission("qc.inspect");
+  await requireView("qc");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [pending, bins, recent] = await Promise.all([

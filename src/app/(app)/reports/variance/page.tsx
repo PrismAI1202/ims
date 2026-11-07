@@ -1,4 +1,4 @@
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { DownloadLink } from "@/components/download-link";
 import { varianceReport } from "@/server/services/production";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -13,7 +13,7 @@ const parse = (s: string | undefined, fallback: Date) => {
 };
 
 export default async function VariancePage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
-  await requirePermission("reports.view");
+  await requireView("variance");
   const sp = await searchParams;
   const today = new Date();
   const from = parse(sp.from, new Date(today.getTime() - 30 * 86_400_000));
