@@ -101,15 +101,21 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
         ...(["FIRM", "FORECAST", "SPOT"] as const).map((t) => ({ href: href("/demand", { q, type: t }), label: t[0] + t.slice(1).toLowerCase(), active: kind === t })),
       ]} />
       <DataTable>
-        <thead><tr><th>Due</th><th>Customer</th><th>Part</th><th className="text-right!">Qty</th><th>Type</th></tr></thead>
+        <thead><tr><th>Due</th><th>Customer</th><th>Part</th><th className="text-right!">Qty</th><th className="text-right!">Shipped</th><th>Type</th><th>Status</th></tr></thead>
         <tbody>
           {lines.filter((l) => (!kind || l.type === kind) && matches(q, l.customer.name, l.fgItem.code, l.fgItem.name, l.type)).map((l) => (
             <tr key={l.id}>
               <td><Mono className="text-xs">{l.dueDate.toISOString().slice(0, 10)}</Mono></td><td>{l.customer.name}</td><td><Mono className="font-semibold">{l.fgItem.code}</Mono></td>
-              <td className="text-right"><Mono>{l.qty.toLocaleString()}</Mono></td><td><Badge tone={TYPE_TONE[l.type as keyof typeof TYPE_TONE] ?? "neutral"}>{l.type}</Badge></td>
+              <td className="text-right"><Mono>{l.qty.toLocaleString()}</Mono></td>
+              <td className="text-right"><Mono>{l.type === "FORECAST" ? "—" : l.shippedQty.toLocaleString()}</Mono></td>
+              <td><Badge tone={TYPE_TONE[l.type as keyof typeof TYPE_TONE] ?? "neutral"}>{l.type}</Badge></td>
+              <td>{l.type === "FORECAST" ? <span className="text-xs text-ink-3">Forecast</span>
+                : l.shippedQty >= l.qty ? <Badge tone="ok">Shipped</Badge>
+                : l.dueDate < new Date(new Date().toDateString()) ? <Badge tone="danger">{l.shippedQty > 0 ? "Part shipped · overdue" : "Overdue"}</Badge>
+                : l.shippedQty > 0 ? <Badge tone="info">Part shipped</Badge> : <Badge tone="neutral">Open</Badge>}</td>
             </tr>
           ))}
-          {lines.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No demand loaded yet.</td></tr>}
+          {lines.length === 0 && <tr><td className="text-ink-3" colSpan={7}>No demand loaded yet.</td></tr>}
         </tbody>
       </DataTable>
 

@@ -73,14 +73,16 @@ export async function listOrders(db: Db = defaultDb): Promise<OrderRow[]> {
   }
 
   for (const d of demand) {
-    const late = d.dueDate < today;
+    const done = d.shippedQty >= d.qty;
+    const late = !done && d.dueDate < today;
     rows.push({
       key: `dl-${d.id}`, id: d.id, type: "DEMAND", partyId: d.customerId, segment: d.customer.segment, searchText: d.customer.segment === "AUTOMOTIVE" ? "automotive" : "non-automotive", actions: [],
       direction: "SELL", number: `${d.type} · ${d.fgItem.code}`, party: d.customer.name,
       kind: d.type === "FIRM" ? "Firm order" : "Spot order",
-      status: late ? "PAST DUE" : "OPEN", state: late ? "overdue" : "open", tone: late ? "warn" : "info",
+      status: done ? "SHIPPED" : late ? "PAST DUE" : d.shippedQty > 0 ? "PART SHIPPED" : "OPEN",
+      state: done ? "closed" : late ? "overdue" : "open", tone: done ? "ok" : late ? "warn" : "info",
       date: d.dueDate, href: "/demand",
-      lines: [{ label: d.fgItem.code, sub: `${d.fgItem.name} · due ${d.dueDate.toISOString().slice(0, 10)}`, total: d.qty, uom: "pcs" }],
+      lines: [{ label: d.fgItem.code, sub: `${d.fgItem.name} · due ${d.dueDate.toISOString().slice(0, 10)}`, done: d.shippedQty, total: d.qty, uom: "pcs" }],
     });
   }
 

@@ -18,7 +18,7 @@ let fgLotId: string;
 beforeEach(async () => {
   expect(url).toContain("ims_test");
   for (const t of [
-    "ReturnableLedger", "FgBox", "DispatchLine", "Dispatch", "BookingConsumption", "ProductionBooking", "BomLine", "Bom",
+    "DemandLine", "ReturnableLedger", "FgBox", "DispatchLine", "Dispatch", "BookingConsumption", "ProductionBooking", "BomLine", "Bom",
     "IssueLine", "MaterialRequestLine", "MaterialRequest", "StockTransaction", "StockBalance", "QcInspection", "Lot",
     "Mould", "Machine", "Location", "Warehouse", "Customer", "Item",
   ]) await db.$executeRawUnsafe(`TRUNCATE TABLE "${t}" RESTART IDENTITY CASCADE`);
@@ -175,6 +175,26 @@ describe("completeDispatch", () => {
     const ledger = await db.stockTransaction.aggregate({ _sum: { qty: true }, where: { lotId: fgLotId } });
     const bals = await db.stockBalance.aggregate({ _sum: { qty: true }, where: { lotId: fgLotId } });
     expect(Number(ledger._sum.qty)).toBe(Number(bals._sum.qty));
+  });
+
+  it("closes the customer's open orders for that part, oldest due date first, and never touches forecast", async () => {
+    const line = (qty: number, due: string, type: "FIRM" | "SPOT" | "FORECAST", customerId = ids.apex, fgItemId = ids.fg) =>
+      db.demandLine.create({ data: { customerId, fgItemId, qty, dueDate: new Date(due), type } });
+    const late = await line(600, "2026-10-01", "FIRM");
+    const next = await line(700, "2026-11-20", "SPOT");
+    const forecast = await line(5000, "2026-10-02", "FORECAST");
+    const other = await line(900, "2026-10-01", "FIRM", ids.bright); // another customer's order for the same part
+    const otherPart = await line(900, "2026-10-01", "FIRM", ids.apex, ids.fg2);
+
+    const { d } = await fullyLoaded(); // ships 1000 parts
+    await completeDispatch({ dispatchId: d.id }, db);
+
+    const shipped = async (id: string) => (await db.demandLine.findUniqueOrThrow({ where: { id } })).shippedQty;
+    expect(await shipped(late.id)).toBe(600);   // the overdue order is closed first
+    expect(await shipped(next.id)).toBe(400);   // the rest goes to the next one
+    expect(await shipped(forecast.id)).toBe(0); // a forecast is not an order
+    expect(await shipped(other.id)).toBe(0);
+    expect(await shipped(otherPart.id)).toBe(0);
   });
 
   it("refuses to dispatch a short or empty load and can't be completed twice", async () => {

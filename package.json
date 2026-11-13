@@ -16,7 +16,8 @@
     "test": "vitest run",
     "typecheck": "next typegen && tsc --noEmit",
     "token:create": "tsx scripts/create-api-token.ts",
-    "admin:create": "tsx scripts/create-admin.ts"
+    "admin:create": "tsx scripts/create-admin.ts",
+    "demo:reset": "tsx prisma/demo-reset.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

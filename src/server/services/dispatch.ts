@@ -1,3 +1,4 @@
+import { allocateShipment } from "./demand";
 import type { PrismaClient } from "@prisma/client";
 import { db as defaultDb } from "@/server/db";
 import { suggestPicks } from "./fifo";
@@ -167,6 +168,7 @@ export async function completeDispatch(input: CompleteInput, db: Db = defaultDb)
       });
       await tx.fgBox.update({ where: { id: b.id }, data: { status: "DISPATCHED" } });
     }
+    for (const l of d.lines) await allocateShipment(tx, d.customerId, l.itemId, l.qty);
     for (const c of crates) {
       const crateItem = crateItems.find((i) => i.id === c.itemId)!;
       // Crates we own come out of stock (oldest first); customer-owned crates are tracked in the ledger only.

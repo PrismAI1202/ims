@@ -73,7 +73,7 @@ export async function planWeek(monday: Date, db: Db = defaultDb, now = new Date(
   const stock = new Map<string, number>();
   for (const b of fgBalances) stock.set(b.lot.itemId, (stock.get(b.lot.itemId) ?? 0) + Number(b.qty));
   const need = new Map<string, number>();
-  for (const d of demand) need.set(d.fgItemId, (need.get(d.fgItemId) ?? 0) + d.qty);
+  for (const d of demand) need.set(d.fgItemId, (need.get(d.fgItemId) ?? 0) + Math.max(d.qty - d.shippedQty, 0));
 
   const jobs: PlanJob[] = [];
   for (const [fgItemId, total] of need) {

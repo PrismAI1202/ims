@@ -67,8 +67,8 @@ export async function buildReport(name: ReportName, p: ReportParams = {}, db: Db
       const lines = await db.demandLine.findMany({ orderBy: [{ dueDate: "asc" }], include: { customer: true, fgItem: true } });
       return {
         title: "Customer demand",
-        columns: ["Due date", "Customer", "Part", "Qty", "Type"],
-        rows: lines.map((l) => [day(l.dueDate), l.customer.name, l.fgItem.code, l.qty, l.type]),
+        columns: ["Due date", "Customer", "Part", "Qty", "Shipped", "Type"],
+        rows: lines.map((l) => [day(l.dueDate), l.customer.name, l.fgItem.code, l.qty, l.shippedQty, l.type]),
       };
     }
   }

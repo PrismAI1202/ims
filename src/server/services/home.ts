@@ -85,7 +85,7 @@ export async function shipments(db: Db = defaultDb, now = new Date()): Promise<S
     ready.set(k, (ready.get(k) ?? 0) + b.qty);
   }
   return {
-    rows: demand.map((d) => ({ customer: d.customer.name, part: d.fgItem.code, due: iso(d.dueDate), qty: d.qty, ready: ready.get(`${d.customerId}:${d.fgItemId}`) ?? 0 })),
+    rows: demand.filter((d) => d.qty > d.shippedQty).map((d) => ({ customer: d.customer.name, part: d.fgItem.code, due: iso(d.dueDate), qty: d.qty - d.shippedQty, ready: ready.get(`${d.customerId}:${d.fgItemId}`) ?? 0 })),
     loading: loading.map((d) => ({ id: d.id, dcNumber: d.dcNumber, customer: d.customer.name, scanned: d.boxes.length })),
     readyBoxes: boxes.length,
   };

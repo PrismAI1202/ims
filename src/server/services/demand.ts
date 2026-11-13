@@ -5,6 +5,27 @@ import { DomainError } from "./inventory";
 
 type Db = PrismaClient;
 
+/** What is still to ship on a demand line. */
+export const remainingQty = (d: { qty: number; shippedQty: number }) => Math.max(d.qty - d.shippedQty, 0);
+
+/**
+ * A completed dispatch fulfils the customer's open firm and spot orders for that part, oldest due date first. Forecast lines are
+ * not orders and are never closed by a shipment. Shipping more than is on order simply leaves the last line complete.
+ */
+export async function allocateShipment(tx: Pick<PrismaClient, "demandLine">, customerId: string, fgItemId: string, qty: number) {
+  let left = qty;
+  const open = await tx.demandLine.findMany({
+    where: { customerId, fgItemId, type: { in: ["FIRM", "SPOT"] } }, orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+  });
+  for (const l of open) {
+    if (left <= 0) break;
+    const take = Math.min(remainingQty(l), left);
+    if (take <= 0) continue;
+    await tx.demandLine.update({ where: { id: l.id }, data: { shippedQty: { increment: take } } });
+    left -= take;
+  }
+}
+
 export interface ImportResult { importId: string; imported: number; replaced: number }
 
 // All-or-nothing: one unknown part code rejects the whole file, so a half-loaded schedule never reaches MRP.

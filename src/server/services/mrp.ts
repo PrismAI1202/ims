@@ -4,6 +4,7 @@ import { DomainError, createPurchaseOrder } from "./inventory";
 import { orderByDate, runMrp, type MrpBom, type MrpRow } from "./mrp-engine";
 import { stockByItem } from "./stock";
 import { partsPerDay } from "./planning";
+import { remainingQty } from "./demand";
 import { getShiftMinutes } from "./settings";
 
 type Db = PrismaClient;
@@ -54,7 +55,7 @@ const DAY_MS = 86_400_000;
 async function loadInputs(db: Db, today: Date, maxDays: number) {
   const startOfToday = new Date(today.toISOString().slice(0, 10));
   const horizonEnd = new Date(startOfToday.getTime() + maxDays * DAY_MS);
-  const [stock, openPo, boms, demand, itemRows, slots, shiftMinutes] = await Promise.all([
+  const [stock, openPo, boms, demandAll, itemRows, slots, shiftMinutes] = await Promise.all([
     stockByItem(db),
     db.purchaseOrderLine.findMany({ where: { po: { status: { in: ["APPROVED", "PARTIAL"] } } }, include: { po: { include: { supplier: true } } } }),
     db.bom.findMany({ include: { mould: true, lines: true } }),
@@ -63,6 +64,8 @@ async function loadInputs(db: Db, today: Date, maxDays: number) {
     db.planSlot.findMany({ where: { kind: "JOB", fgItemId: { not: null }, day: { gte: startOfToday, lte: horizonEnd } }, include: { mould: true } }),
     getShiftMinutes(db),
   ]);
+  // Only what is still to ship counts: a completed order has been made and sent, and must not be planned again.
+  const demand = demandAll.filter((d) => remainingQty(d) > 0).map((d) => ({ ...d, qty: remainingQty(d) }));
   return { startOfToday, stock, openPo, boms, demand, itemRows, slots, shiftMinutes };
 }
 type Inputs = Awaited<ReturnType<typeof loadInputs>>;
@@ -109,14 +112,14 @@ export interface DemandBucket { key: string; label: string; lines: number; parts
 
 /** How the loaded customer demand is spread over time, so it is clear why a wider horizon does (or does not) add anything. */
 function spreadOf(inp: Inputs, beyond: { lines: number; parts: number }): DemandBucket[] {
-  const edges: [string, string, number, number][] = [
-    ["overdue", "Overdue", -Infinity, 0], ["week", "Next 7 days", 0, 7], ["month", "8 to 30 days", 7, 30], ["quarter", "31 to 90 days", 30, 90], ["later", "Beyond 90 days", 90, Infinity],
-  ];
-  const out: DemandBucket[] = edges.map(([key, label]) => ({ key, label, lines: 0, parts: 0 }));
+  const out: DemandBucket[] = [
+    ["overdue", "Overdue"], ["week", "Next 7 days"], ["month", "8 to 30 days"], ["quarter", "31 to 90 days"], ["later", "Beyond 90 days"],
+  ].map(([key, label]) => ({ key, label, lines: 0, parts: 0 }));
+  // Upper edges are inclusive, like the horizons themselves: a line due in exactly 7 days is inside the 7-day horizon.
   for (const d of inp.demand) {
     const age = (d.dueDate.getTime() - inp.startOfToday.getTime()) / DAY_MS;
-    const i = edges.findIndex(([, , lo, hi]) => (lo === -Infinity ? age < hi : age >= lo && age < hi) || (hi === Infinity && age >= lo));
-    if (i >= 0) { out[i].lines += 1; out[i].parts += d.qty; }
+    const i = age < 0 ? 0 : age <= 7 ? 1 : age <= 30 ? 2 : age <= 90 ? 3 : 4;
+    out[i].lines += 1; out[i].parts += d.qty;
   }
   out[4].lines += beyond.lines; out[4].parts += beyond.parts;
   return out;
@@ -128,7 +131,8 @@ export async function planMrp(opts: PlanOptions, db: Db = defaultDb): Promise<{ 
   const horizons = [...new Set<number>([...HORIZON_PRESETS.map((h) => h.days), opts.horizonDays])].sort((a, b) => a - b);
   const inp = await loadInputs(db, today, horizons[horizons.length - 1]);
   const lastEnd = new Date(inp.startOfToday.getTime() + horizons[horizons.length - 1] * DAY_MS);
-  const later = await db.demandLine.aggregate({ where: { dueDate: { gt: lastEnd } }, _count: true, _sum: { qty: true } });
+  const laterLines = (await db.demandLine.findMany({ where: { dueDate: { gt: lastEnd } }, select: { qty: true, shippedQty: true } })).filter((d) => remainingQty(d) > 0);
+  const later = { _count: laterLines.length, _sum: { qty: laterLines.reduce((a, d) => a + remainingQty(d), 0) } };
   const main = rowsFor(inp, opts.horizonDays, opts.scrapPct);
   const needByHorizon = new Map(horizons.map((h) => [h, new Map(rowsFor(inp, h, opts.scrapPct).rows.map((r) => [r.itemId, r.gross]))]));
 

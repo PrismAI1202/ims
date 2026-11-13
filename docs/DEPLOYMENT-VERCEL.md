@@ -23,7 +23,15 @@ The app runs on Vercel with a hosted Postgres and a private Vercel Blob store. `
    DATABASE_URL="<DATABASE_URL_UNPOOLED value>" npm run admin:create
    ```
 
-   For a demo, run `npm run db:seed` and then `npm run db:seed:demo` the same way. The seed creates one user per role with known passwords, so do not seed a real production database.
+   For a demo, run `npm run db:seed` (users and roles) and then `npm run db:seed:demo` the same way. The seed creates one user per role with known passwords, so do not seed a real production database.
+
+   To put a demo database back to a clean, current state (for example the day before a demo), run the reset against the direct connection string. It wipes plant data (items, orders, lots, production and so on) and reloads the demo dated from today; users, roles, API tokens, push subscriptions and settings are kept:
+
+   ```bash
+   DATABASE_URL="<DATABASE_URL_UNPOOLED value>" DEMO_RESET_HOSTED=1 npm run demo:reset -- --yes
+   ```
+
+   It prints which database it is about to wipe and refuses to run without `--yes`, or on a non-local database without `DEMO_RESET_HOSTED=1`.
 
 ## CI/CD (GitHub Actions)
 

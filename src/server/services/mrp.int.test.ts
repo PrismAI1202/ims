@@ -120,6 +120,19 @@ describe("planMrp: what is behind each row", () => {
     expect(ins.demandLines).toEqual([]);
   });
 
+  it("plans only what is still to ship: a completed order drops out and a part-shipped one counts what is left", async () => {
+    await doImport([demand({ qty: 5000, due_date: "2026-10-25" }), demand({ qty: 3000, due_date: "2026-10-26" }), demand({ qty: 2000, due_date: "2026-10-27" })]);
+    const lines = await db.demandLine.findMany({ orderBy: { qty: "desc" } });
+    await db.demandLine.update({ where: { id: lines[0].id }, data: { shippedQty: 5000 } }); // completed
+    await db.demandLine.update({ where: { id: lines[1].id }, data: { shippedQty: 1000 } }); // 2000 left
+    const { rows, demandLines, demandSpread } = await planMrp(opts, db);
+    const fg = rows.find((r) => r.code === "FG-CLIP")!;
+    expect(fg.gross).toBe(4000); // 2000 + 2000
+    expect(demandLines).toBe(2);
+    expect(fg.demandLines.map((d) => d.qty)).toEqual([2000, 2000]);
+    expect(demandSpread.find((b) => b.key === "week")).toMatchObject({ lines: 2, parts: 4000 });
+  });
+
   it("shows how demand is spread over time, with overdue lines in every horizon", async () => {
     await doImport([
       demand({ qty: 100, due_date: "2026-10-10" }),  // overdue on 20 Oct

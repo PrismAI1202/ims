@@ -44,7 +44,9 @@ const TASKS: TaskDef[] = [
   },
   {
     key: "demand-due", view: "demand", kind: "watch", href: "/demand", title: "Customer demand due this week", sub: "Firm and spot lines due in the next 7 days",
-    count: (db, { now }) => db.demandLine.count({ where: { type: { in: ["FIRM", "SPOT"] }, dueDate: { gte: now, lte: new Date(now.getTime() + WEEK) } } }),
+    count: async (db, { now }) => (await db.demandLine.findMany({
+      where: { type: { in: ["FIRM", "SPOT"] }, dueDate: { gte: now, lte: new Date(now.getTime() + WEEK) } }, select: { qty: true, shippedQty: true },
+    })).filter((d) => d.shippedQty < d.qty).length,
   },
   {
     key: "to-buy", view: "mrp", kind: "act", href: "/mrp", title: "Items to buy", sub: "At or below reorder point even after open POs and QC",

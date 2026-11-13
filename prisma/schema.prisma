@@ -622,6 +622,7 @@ model DemandLine {
   fgItem     Item          @relation(fields: [fgItemId], references: [id])
   dueDate    DateTime      @db.Date
   qty        Int
+  shippedQty Int           @default(0) // how much of a firm or spot order has gone out on completed dispatches (see allocateShipment)
   type       DemandType
   createdAt  DateTime      @default(now())
 
