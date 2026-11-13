@@ -55,3 +55,11 @@ export async function closePurchaseOrderShort(poId: string, db: Db = defaultDb) 
     return tx.purchaseOrder.update({ where: { id: poId }, data: { status: "CLOSED" } });
   });
 }
+
+/** Asks the supplier to expedite an open PO (or takes the request back). Only a PO still waiting for goods can be flagged. */
+export async function setPoExpedite(poId: string, expedite: boolean, note: string | undefined, db: Db = defaultDb) {
+  const po = await db.purchaseOrder.findUnique({ where: { id: poId } });
+  if (!po) throw new DomainError("Unknown purchase order.");
+  if (po.status !== "APPROVED" && po.status !== "PARTIAL") throw new DomainError(`${po.poNumber} is ${po.status.toLowerCase()}, so there is nothing to expedite.`);
+  return db.purchaseOrder.update({ where: { id: poId }, data: { expedite, expediteNote: expedite ? note?.trim() || null : null } });
+}

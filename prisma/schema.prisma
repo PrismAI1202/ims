@@ -339,6 +339,8 @@ model PurchaseOrder {
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
   segment     Segment             @default(NON_AUTOMOTIVE)
   status      PoStatus            @default(DRAFT)
+  expedite    Boolean             @default(false) // the supplier is asked to deliver faster than its lead time
+  expediteNote String?
   createdAt   DateTime            @default(now())
   createdById String?
   lines       PurchaseOrderLine[]
@@ -623,11 +625,13 @@ model DemandLine {
   dueDate    DateTime      @db.Date
   qty        Int
   shippedQty Int           @default(0) // how much of a firm or spot order has gone out on completed dispatches (see allocateShipment)
+  customerRef String? // the customer's own PO number, when the order was entered or loaded with one
   type       DemandType
   createdAt  DateTime      @default(now())
 
   @@index([dueDate])
   @@index([customerId, fgItemId, type])
+  @@index([customerId, customerRef])
 }
 
 // ───────── Phase 5: traceability and scrap ─────────

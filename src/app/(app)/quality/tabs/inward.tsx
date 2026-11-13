@@ -79,7 +79,7 @@ export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
       </ScrollArea>
 
       <Eyebrow>RECENTLY DECIDED</Eyebrow>
-      <SearchBar q={q} keep={{ tab: "inward" }} placeholder="Search lot or item" clearHref="/quality?tab=inward" />
+      <SearchBar q={q} keep={{ tab: "inward" }} scan={{ param: "lot", title: "Scan a lot tag", hint: "Opens that lot's card so you can inspect and count it." }} placeholder="Search lot or item" clearHref="/quality?tab=inward" />
       <DataTable scroll>
         <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
         <tbody>

@@ -76,7 +76,7 @@ describe("normalize (saving a role)", () => {
 describe("role home and tabs", () => {
   it("puts the role's first three screens in the phone tab bar", () => {
     expect(tabsFor(role("QA_INSPECTOR").views).map((t) => t.label)).toEqual(["Home", "Quality", "Trace", "BOMs", "More"]);
-    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Stores", "Scan", "Orders", "More"]);
+    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Stores", "Orders", "MRP", "More"]);
   });
   it("routes each hand-over to the role that does the next step", () => {
     expect(tasksFor(role("STORE_INCHARGE"))).toEqual(expect.arrayContaining(["gate", "putaway", "issue", "to-buy"]));
@@ -152,7 +152,7 @@ describe("Orders (Supplier PO and Dispatch merged in)", () => {
     expect(viewDef("dispatch")).toBeUndefined();
   });
   it("keeps Orders as the dispatch officer's first phone tab", () => {
-    expect(tabsFor(role("DISPATCH_OFFICER").views).map((t) => t.label)).toEqual(["Home", "Orders", "Goods", "Scan", "More"]);
+    expect(tabsFor(role("DISPATCH_OFFICER").views).map((t) => t.label)).toEqual(["Home", "Orders", "Goods", "More"]);
   });
 });
 
@@ -268,5 +268,17 @@ describe("Material requests in the menus", () => {
   it("lights Stores while on the requests page", () => {
     expect(litPath("/requests", ["/grn", "/stock"])).toBe("/stock");
     expect(litPath("/requests", ["/requests", "/stock"])).toBe("/requests");
+  });
+});
+
+describe("the scanner is a button inside steps, not a menu entry", () => {
+  it("never appears in the sidebar, More or the phone tab bar, but roles keep the right to use the offline scanner", () => {
+    for (const r of ["STORE_INCHARGE", "DISPATCH_OFFICER", "DEMO"]) {
+      expect(menuViews(role(r).views)).not.toContain("scan");
+      expect(navFor(role(r).views).flatMap((g) => g.items.map((i) => i.name))).not.toContain("Offline scanner");
+      expect(tabsFor(role(r).views).map((t) => t.href)).not.toContain("/scan");
+    }
+    expect(canView(role("STORE_INCHARGE"), "scan")).toBe(true);   // still allowed to open /scan from a step
+    expect(canView(role("PRODUCTION_LEAD"), "scan")).toBe(false);
   });
 });

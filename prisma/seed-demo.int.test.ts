@@ -45,6 +45,7 @@ describe("the demo data", () => {
     expect(n("APPROVED")).toBe(4);
     const { listOrders } = await import("../src/server/services/orders");
     expect((await listOrders(db)).filter((o) => o.type === "PO" && o.state === "overdue")).toHaveLength(2);
+    expect((await listOrders(db)).filter((o) => o.type === "PO" && o.expedite)).toHaveLength(1); // one late PO has the supplier asked to expedite
   });
 
   it("leaves work in every queue, so each role's Home has something to do", async () => {

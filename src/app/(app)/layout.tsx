@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-canvas md:flex">
-      <aside className="hidden bg-shell p-4 text-on-shell md:block md:min-h-screen md:w-64 md:flex-none print:hidden">
+      <aside className="hidden bg-shell p-4 text-on-shell md:sticky md:top-0 md:block md:h-screen md:w-64 md:flex-none md:overflow-y-auto print:hidden">
         <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">PLANT 2 · MOULDING SHOP</div>
         <div className="font-display text-xl font-extrabold">IMS · Moulding</div>
         <div className="mt-1 text-xs text-on-shell-2">{roleName}</div>

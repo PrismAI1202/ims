@@ -1,3 +1,4 @@
+import { ScanField } from "@/components/scan-button";
 import { db } from "@/server/db";
 import { can } from "@/server/auth/permissions";
 import { btnCls, btnDangerCls, btnSecondaryCls, inputCls } from "@/components/flash";
@@ -120,7 +121,7 @@ export async function CountsTab({ user }: { user: HomeUser }) {
                     </tbody>
                   </DataTable>
                   <div className="grid gap-2 sm:grid-cols-[1fr_9rem]">
-                    <label className="text-[13px]">Found a lot that isn&apos;t listed? Lot number<input name="extraLot" className={inputCls} /></label>
+                    <ScanField upper label="Found a lot that isn&apos;t listed? Lot number" name="extraLot" title="Scan the lot tag" />
                     <label className="text-[13px]">Quantity<input name="extraQty" type="number" step="any" min="0" className={inputCls} /></label>
                   </div>
                   <div className="flex flex-wrap gap-2">

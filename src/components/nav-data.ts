@@ -30,8 +30,11 @@ export const NAV_GROUPS: NavGroup[] = [
  * and does not get a second menu entry; a role without Stores (Production for requests) still gets the entry, or it could not reach it.
  */
 const STORES_TABS = ["requests", "grn"];
+// The scanner is never a menu entry: the camera is a button inside the steps that need it (searches, issue, transfer, loading).
+// The offline scanner screens at /scan are reached from those steps, and the view still controls who may use them.
+const NEVER_IN_MENUS = ["scan"];
 export function menuViews<T extends string>(views: readonly T[]): T[] {
-  return views.filter((v) => !(STORES_TABS.includes(v) && views.includes("stock" as T)));
+  return views.filter((v) => !NEVER_IN_MENUS.includes(v) && !(STORES_TABS.includes(v) && views.includes("stock" as T)));
 }
 
 /** A page that has no menu entry of its own lights the entry of the screen it lives in. */

@@ -12,7 +12,7 @@ import { INLINE_COOKIE, type FormAction } from "@/lib/action-result";
 //  - asks the server to answer a broken rule in place (the cookie below; `runAction` then returns the message instead of
 //    redirecting), so the page is never rebuilt: every field, open panel and added row stays,
 //  - highlights the fields a server rule names (`DomainError(message, [inputNames])`) and shows its message by the button, and
-//  - disables the fields while the request runs, so a double tap cannot post twice.
+//  - makes the form inert while the request runs, so a double tap cannot post twice.
 // A submit button may say which of several actions was meant: `name="intent" value="delete"` plus `intents={{ delete: … }}`.
 
 const fieldsOf = (form: HTMLFormElement) =>
@@ -26,7 +26,10 @@ const unmark = (form: HTMLFormElement) => form.querySelectorAll("[aria-invalid='
 function labelOf(el: HTMLElement): string {
   const own = el.getAttribute("aria-label");
   const label = el.closest("label") ?? el.parentElement;
-  const text = Array.from(label?.childNodes ?? []).filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(" ").trim();
+  // The label's own words: its text, and any caption span beside the control (not a span that wraps the control itself).
+  const text = Array.from(label?.childNodes ?? [])
+    .filter((n) => n.nodeType === Node.TEXT_NODE || (n instanceof HTMLElement && n.tagName === "SPAN" && !n.querySelector("input,select,textarea")))
+    .map((n) => n.textContent).join(" ").trim();
   return (own || text || humanize(el.getAttribute("name"))).replace(/[.:\s]+$/, "");
 }
 
@@ -62,6 +65,8 @@ export function Form({
       ref={ref}
       noValidate
       aria-busy={pending}
+      inert={pending}  // no fieldset around the fields (it would break `space-y` and grid layouts); inert blocks a second tap just the same
+      className={`${rest.className ?? ""} ${pending ? "opacity-70" : ""}`.trim() || undefined}
       onInput={(e) => (e.target as HTMLElement).removeAttribute?.("aria-invalid")}
       onSubmit={(e) => {
         e.preventDefault();
@@ -87,7 +92,12 @@ export function Form({
             const result = await run(data); // success redirects; a value coming back is a broken rule
             if (result && typeof result === "object" && "error" in result) {
               setProblem(result.error);
-              const hit = fieldsOf(form).filter((el) => result.fields.includes(el.name));
+              // A name shared by repeated rows (every row's price) marks only the blank ones when some are blank, not the whole column.
+              const hit = result.fields.flatMap((n) => {
+                const els = fieldsOf(form).filter((el) => el.name === n);
+                const blank = els.filter((el) => !el.value.trim());
+                return els.length > 1 && blank.length ? blank : els;
+              });
               hit.forEach(mark);
               setTimeout(() => focusFirst(hit), 60); // after the fields are enabled again
             }
@@ -97,7 +107,7 @@ export function Form({
         });
       }}
     >
-      <fieldset disabled={pending} className="contents">{children}</fieldset>
+      {children}
       {problem && <p role="alert" className="col-span-full mt-3 rounded-xl bg-danger-bg px-3 py-2.5 text-sm font-medium text-danger">{problem}</p>}
     </form>
   );

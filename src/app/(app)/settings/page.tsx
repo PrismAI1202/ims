@@ -1,3 +1,4 @@
+import { ReasonButton } from "@/components/notice";
 import { Form } from "@/components/form";
 import Link from "next/link";
 import { db } from "@/server/db";
@@ -367,9 +368,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <button className={btnCls}>Save role</button>
                 {isDefault && <button name="intent" value="reset" formNoValidate className={btnSecondaryCls}>Reset to default</button>}
                 {!role.system && (
-                  <button name="intent" value="remove" formNoValidate disabled={role.activeUsers > 0} className={`${btnDangerCls} disabled:cursor-not-allowed disabled:opacity-50`}>
+                  <ReasonButton name="intent" value="remove" formNoValidate why={role.activeUsers > 0 && `${role.activeUsers} active ${role.activeUsers === 1 ? "person has" : "people have"} this role. Move them to another role on the People tab first.`} className={`${btnDangerCls} aria-disabled:opacity-50`}>
                     Delete role
-                  </button>
+                  </ReasonButton>
                 )}
               </div>
               {!role.system && role.activeUsers > 0 && <p className="text-xs text-ink-3">Move this role&apos;s people to another role on the People tab before deleting it.</p>}

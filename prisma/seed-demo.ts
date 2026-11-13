@@ -244,14 +244,14 @@ async function loadDemo() {
   await prisma.stockTransaction.updateMany({ where: { refType: "RTV", refId: rtv.id }, data: { createdAt: ts(-5, 11) } });
 
   // ── Supplier POs still open: on time, late, and one cancelled (the grey masterbatch PO above is part-received: 95 of 200) ──
-  const onOrder = async (s: string, i: string, qty: number, due: number, ageDays: number, seg: Segment = "NON_AUTOMOTIVE") => {
-    const po = await createPurchaseOrder({ supplierId: await sup(s), segment: seg, userId: store, lines: [{ itemId: await item(i), qty, expectedDate: day(due) }] });
+  const onOrder = async (s: string, i: string, qty: number, due: number, ageDays: number, seg: Segment = "NON_AUTOMOTIVE", expedite?: string) => {
+    const po = await createPurchaseOrder({ supplierId: await sup(s), segment: seg, userId: store, expedite: !!expedite, expediteNote: expedite, lines: [{ itemId: await item(i), qty, expectedDate: day(due) }] });
     await prisma.purchaseOrder.update({ where: { id: po.id }, data: { createdAt: ts(-ageDays, 11) } });
     return po;
   };
   await onOrder("SUP-003", "RM-PP-012", 3000, 3, 5, "AUTOMOTIVE");      // on its way for the red resin
   await onOrder("SUP-009", "BOP-INS-M4K", 80000, 4, 8);                   // on its way for the red inserts
-  await onOrder("SUP-007", "RM-PA66-G30", 1000, -3, 15, "AUTOMOTIVE");   // late
+  await onOrder("SUP-007", "RM-PA66-G30", 1000, -3, 15, "AUTOMOTIVE", "Bezel line runs short of PA66 by the 20th: please send what you have first"); // late, and the supplier has been asked to expedite
   await onOrder("SUP-011", "PK-FILM-23", 10, -4, 9);                      // late
   const cancelled = await onOrder("SUP-018", "BOP-INS-M4K", 40000, 9, 12);
   await cancelPurchaseOrder(cancelled.id);

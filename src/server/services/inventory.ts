@@ -30,6 +30,8 @@ export interface CreatePoInput {
   segment: "AUTOMOTIVE" | "NON_AUTOMOTIVE";
   lines: { itemId: string; qty: number; price?: number; expectedDate?: Date }[];
   externalRef?: string; // the PO number from another tool, when POs are also tracked elsewhere
+  expedite?: boolean; // ask the supplier to deliver faster than its usual lead time
+  expediteNote?: string;
   userId?: string;
 }
 
@@ -63,6 +65,7 @@ export async function createPurchaseOrderIn(tx: Tx, input: CreatePoInput) {
     data: {
       poNumber, externalRef, supplierId: input.supplierId, segment: input.segment,
       createdById: input.userId, status: "APPROVED",
+      expedite: !!input.expedite, expediteNote: input.expedite ? input.expediteNote?.trim() || null : null,
       lines: { create: lines },
     },
     include: { lines: true },

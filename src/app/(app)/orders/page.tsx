@@ -1,6 +1,7 @@
+import { ScanSearch } from "@/components/scan-search";
 import { Form } from "@/components/form";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal, Zap } from "lucide-react";
 import { db } from "@/server/db";
 import { requirePermission, requireView, runAction } from "@/server/auth/guard";
 import { can, canView } from "@/server/auth/permissions";
@@ -17,12 +18,13 @@ import {
   type OrderFilters, type OrderKind, type OrderRow, type OrderStateFilter,
 } from "@/server/services/orders";
 import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
-import { SearchBar } from "@/components/search-bar";
-import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { SidePanel } from "@/components/side-panel";
 import { href } from "@/lib/url";
 import { DownloadLink } from "@/components/download-link";
-import { NewPickListForm, NewPoForm, type LineOption, type Suggestion } from "@/components/order-lines";
-import { Badge, Card, Chips, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
+import { NewCustomerOrderForm, NewPickListForm, NewPoForm, type LineOption, type Suggestion } from "@/components/order-lines";
+import { addCustomerOrder } from "./customer-order-actions";
+import { orderFormOptions } from "@/server/services/demand";
+import { Badge, Card, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
 export const instant = false;
 
@@ -42,6 +44,7 @@ async function createPo(formData: FormData) {
       supplierId: String(formData.get("supplierId")),
       segment: formData.get("segment") === "AUTOMOTIVE" ? "AUTOMOTIVE" : "NON_AUTOMOTIVE",
       externalRef: String(formData.get("externalRef") || "") || undefined,
+      expedite: formData.get("expedite") === "1", expediteNote: String(formData.get("expediteNote") || ""),
       lines, userId: user.id,
     });
   }, "/orders?new=po");
@@ -124,7 +127,7 @@ const TYPE_LABEL = { PO: "Supplier PO", DISPATCH: "Dispatch", DEMAND: "Customer 
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 const iso = (s: string | undefined) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
 
-const rowCls = "grid items-center gap-x-4 gap-y-1.5 p-3.5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]";
+const rowCls = "grid items-center gap-x-4 gap-y-1.5 p-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.5fr)_auto]";
 /** The row's content: a link to the order when the person can open it, plain text when they can only look. */
 function Body({ href: to, children }: { href: string | null; children: React.ReactNode }) {
   return to ? <Link href={to} className={`${rowCls} hover:bg-canvas`}>{children}</Link> : <div className={rowCls}>{children}</div>;
@@ -158,7 +161,10 @@ function Row({ o, back, canPo, linkable }: { o: OrderRow; back: string; canPo: b
           )}
           {done !== undefined && <ProgressBar value={done} max={Math.max(total, 1)} color={done >= total ? "#1E7A46" : "#1D4ED8"} />}
         </span>
-        <span className="flex md:justify-end"><Badge tone={o.tone}>{o.status}</Badge></span>
+        <span className="flex flex-wrap items-center gap-1.5 md:justify-end">
+          {o.expedite && <span title="The supplier has been asked to expedite" className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2 py-0.5 text-[11px] font-bold uppercase text-warn-ink"><Zap size={11} aria-hidden /> Expedite</span>}
+          <Badge tone={o.tone}>{o.status}</Badge>
+        </span>
       </Body>
       {actions.length > 0 && (
         <div className="flex flex-wrap gap-4 border-t border-line px-3.5">
@@ -248,175 +254,207 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const pre = poData && sp.item ? poItems.find((it) => it.code === sp.item) : undefined;
   const preSupplier = pre ? (await db.priceMaster.findFirst({ where: { itemId: pre.id, supplier: { active: true } } }))?.supplierId : undefined;
   const preQty = Number(sp.qty) > 0 ? String(Number(sp.qty)) : undefined;
-  const openPanel = pre || sp.new === "po" ? (canPo ? "po" : false) : sp.new === "dispatch" ? (canDispatch ? "dispatch" : false) : sp.new === "import" ? (canPo || canCustomerImport ? "import" : false) : false;
+  const orderForm = canCustomerImport ? await orderFormOptions() : null;
+  const panel = pre || sp.new === "po" ? (canPo ? "po" : null) : sp.new === "customer" ? (canCustomerImport ? "customer" : null) : sp.new === "dispatch" ? (canDispatch ? "dispatch" : null) : sp.new === "import" ? (canPo || canCustomerImport ? "import" : null) : null;
+  const closeHref = back;
+  const newHref = (k: string) => href("/orders", { ...params, new: k });
+
+  const btnLink = "flex min-h-10 flex-none items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-accent px-3.5 text-[13px] font-semibold text-white hover:bg-accent-hover";
+  const seg = (items: { href: string; label: string; n?: number; active: boolean }[]) => (
+    <nav className="inline-flex shrink-0 rounded-xl border border-border bg-white p-0.5">
+      {items.map((c) => (
+        <Link key={c.label} href={c.href} scroll={false} aria-current={c.active ? "true" : undefined}
+          className={`flex min-h-9 items-center whitespace-nowrap rounded-[10px] px-3 text-[13px] font-semibold ${c.active ? "bg-ink text-white" : "text-ink-2 hover:bg-canvas"}`}>
+          {c.label}{c.n !== undefined && <span className="ml-1.5 font-mono text-[11px] opacity-70">{c.n}</span>}
+        </Link>
+      ))}
+    </nav>
+  );
 
   return (
-    <CreateProvider defaultOpen={openPanel}>
-      <div className="space-y-4">
-        <PageHeader eyebrow="OVERVIEW" title="Orders" subtitle={`${nActive} active · ${nOverdue} overdue · ${all.length} in total`}>
-          {(canPo || canDispatch || canCustomerImport) && (
-            <div className="flex flex-wrap gap-2">
-              {canPo && <CreateButton id="po" label="New PO" />}
-              {canDispatch && <CreateButton id="dispatch" label="New pick list" />}
-              {(canPo || canCustomerImport) && <CreateButton id="import" label="Import from file" />}
-            </div>
-          )}
-        </PageHeader>
-        <Flash error={sp.error} ok={sp.ok} />
-
-        {poData && (
-          <CreatePanel id="po">
-            <Card className="space-y-3">
-              <Eyebrow>RAISE PURCHASE ORDER</Eyebrow>
-              <NewPoForm action={createPo} suppliers={poData[0].map((x) => ({ id: x.id, name: x.name }))} items={poItems}
-                pre={{ supplierId: preSupplier, itemId: pre?.id, qty: pre ? preQty : undefined }} />
-            </Card>
-          </CreatePanel>
-        )}
-        {dcData && (
-          <CreatePanel id="dispatch">
-            <Card className="space-y-3">
-              <Eyebrow>NEW PICK LIST</Eyebrow>
-              <NewPickListForm action={createPickList} customers={dcData[0].map((c) => ({ id: c.id, name: c.name }))} parts={dcParts} ready={ready} suggestions={suggestions} />
-            </Card>
-          </CreatePanel>
-        )}
-        {(canPo || canCustomerImport) && (
-          <CreatePanel id="import">
-            <Card className="space-y-5">
-              <div>
-                <Eyebrow>IMPORT ORDERS FROM A FILE</Eyebrow>
-                <p className="mt-1 max-w-3xl text-sm text-ink-2">
-                  For orders raised in another tool or tracked in a spreadsheet. Upload a .csv or .xlsx (up to 5 MB). A file with any bad row is rejected as a whole, so nothing half-loads,
-                  and every problem is listed with its row number.
-                </p>
-              </div>
-              <div className="grid gap-5 lg:grid-cols-2">
-                {canPo && (
-                  <Form action={importPoFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
-                    <h3 className="font-display text-[15px] font-bold">Supplier POs <span className="text-xs font-normal text-ink-3">(incoming)</span></h3>
-                    <label className="block text-[13px] font-semibold">File
-                      <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
-                    </label>
-                    <p className="text-xs text-ink-3">
-                      Columns: <b>po_ref</b>, <b>supplier_code</b>, <b>item_code</b>, <b>qty</b>, price, expected_date, segment. One row per PO line; rows with the same supplier and po_ref become one PO.
-                      Blank prices use the price master. A PO already loaded (same supplier and reference) is skipped, so re-uploading is safe.{" "}
-                      <DownloadLink href="/api/v1/po-template">Download a template</DownloadLink>
-                    </p>
-                    <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import POs</button>
-                  </Form>
-                )}
-                {canCustomerImport && (
-                  <Form action={importCustomerFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
-                    <h3 className="font-display text-[15px] font-bold">Customer orders <span className="text-xs font-normal text-ink-3">(outgoing)</span></h3>
-                    <label className="block text-[13px] font-semibold">File
-                      <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
-                    </label>
-                    <label className="flex items-start gap-2 text-[13px]">
-                      <input name="replaceForecast" type="checkbox" defaultChecked className="mt-0.5 size-5 accent-[#c2410c]" />
-                      New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
-                    </label>
-                    <p className="text-xs text-ink-3">
-                      Columns: <b>customer_code</b>, <b>part_code</b>, <b>due_date</b>, <b>qty</b>, type (FORECAST, FIRM or SPOT; blank means FIRM). Dates are read day-first.{" "}
-                      <DownloadLink href="/api/v1/demand-template">Download a template</DownloadLink>
-                    </p>
-                    <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import orders</button>
-                  </Form>
-                )}
-              </div>
-            </Card>
-          </CreatePanel>
-        )}
-
-        {/* Filters: search, direction and status are always in view; the rest open under "More filters". */}
-        <section aria-label="Filters" className="space-y-2.5">
-          <SearchBar q={f.q} placeholder="Search order no., party or part…" keep={{ ...params, q: undefined }} clearHref={u({ q: undefined })} />
-          <div className="space-y-2">
-            <Chips chips={[
-              { href: u({ dir: undefined }), label: "All orders", n: noDir.length, active: !f.dir },
-              { href: u({ dir: "buy" }), label: "Incoming (buy)", n: noDir.filter((o) => o.direction === "BUY").length, active: f.dir === "BUY" },
-              { href: u({ dir: "sell" }), label: "Outgoing (sell)", n: noDir.filter((o) => o.direction === "SELL").length, active: f.dir === "SELL" },
-            ]} />
-            <Chips chips={[
-              { href: u({ state: undefined }), label: "Active", n: nActive, active: state === "active" },
-              { href: u({ state: "overdue" }), label: "Overdue", n: nOverdue, active: state === "overdue" },
-              { href: u({ state: "closed" }), label: "Closed", n: nClosed, active: state === "closed" },
-              { href: u({ state: "all" }), label: "Everything", n: noState.length, active: !state },
-            ]} />
+    // Laptop: one screen. The header and filters stay put and only the list scrolls. Phone: the page scrolls as usual, with the filter bar pinned.
+    <div className="flex flex-col gap-3 md:h-[calc(100dvh-4rem)] md:min-h-96">
+      <PageHeader eyebrow="OVERVIEW" title="Orders" subtitle={`${nActive} active · ${nOverdue} overdue · ${all.length} in total`}>
+        {(canPo || canDispatch || canCustomerImport) && (
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 [scrollbar-width:none] md:flex-wrap">
+            {canPo && <Link href={newHref("po")} scroll={false} className={btnLink}><Plus size={16} aria-hidden /> New PO</Link>}
+            {canCustomerImport && <Link href={newHref("customer")} scroll={false} className={btnLink}><Plus size={16} aria-hidden /> New customer order</Link>}
+            {canDispatch && <Link href={newHref("dispatch")} scroll={false} className={btnLink}><Plus size={16} aria-hidden /> New pick list</Link>}
+            {(canPo || canCustomerImport) && <Link href={newHref("import")} scroll={false} className={btnLink}>Import from file</Link>}
           </div>
-          <details className="group rounded-[14px] bg-white" open={extra > 0}>
-            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-3.5 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-              <span className="flex items-center gap-2"><SlidersHorizontal size={16} aria-hidden /> More filters{extra > 0 && <Badge tone="info">{extra}</Badge>}</span>
-              <ChevronRight size={16} className="text-ink-3 transition-transform group-open:rotate-90" aria-hidden />
-            </summary>
-            <form method="get" action="/orders" className="grid gap-3 border-t border-line p-3.5 sm:grid-cols-2 lg:grid-cols-4">
-              {params.dir && <input type="hidden" name="dir" value={params.dir} />}
-              {params.state && <input type="hidden" name="state" value={params.state} />}
-              {f.q && <input type="hidden" name="q" value={f.q} />}
-              <label className="text-[13px]">Type
-                <select name="kind" defaultValue={f.kind ?? ""} className={inputCls}>
-                  <option value="">All types</option>
-                  {KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-                </select>
-              </label>
-              <label className="text-[13px]">Supplier / customer
-                <select name="party" defaultValue={f.party ?? ""} className={inputCls}>
-                  <option value="">Anyone</option>
-                  {(["BUY", "SELL"] as const).filter((d) => !f.dir || f.dir === d).map((d) => (
-                    <optgroup key={d} label={d === "BUY" ? "Suppliers" : "Customers"}>
-                      {parties.filter((p) => p.direction === d).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[13px]">Segment
-                <select name="seg" defaultValue={f.segment ?? ""} className={inputCls}>
-                  <option value="">Both</option><option value="AUTOMOTIVE">Automotive</option><option value="NON_AUTOMOTIVE">Non-automotive</option>
-                </select>
-              </label>
-              <label className="text-[13px]">Sort
-                <select name="sort" defaultValue={f.sort} className={inputCls}><option value="new">Newest first</option><option value="old">Oldest first</option></select>
-              </label>
-              <label className="text-[13px]">From date<input type="date" name="from" defaultValue={f.from ?? ""} className={inputCls} /></label>
-              <label className="text-[13px]">To date<input type="date" name="to" defaultValue={f.to ?? ""} className={inputCls} /></label>
-              <div className="flex items-end gap-2 sm:col-span-2">
-                <button className={btnCls}>Apply</button>
-                <Link href="/orders" className={btnSecondaryCls}>Clear all</Link>
-              </div>
-            </form>
-          </details>
-        </section>
+        )}
+      </PageHeader>
+      {!panel && <Flash error={sp.error} ok={sp.ok} />}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-3">
-          <span>{page.total === 0 ? "No orders" : `Showing ${page.from}–${page.to} of ${page.total.toLocaleString()}`}{filtersOn > 0 && " (filtered)"}</span>
-          {filtersOn > 0 && <Link href="/orders" className="font-semibold text-accent">Clear filters</Link>}
+      {/* Filters: one compact bar. Search, direction and status are always in view; the rest open in a popover over the list. */}
+      <section aria-label="Filters" className="sticky top-0 z-20 -mx-4 flex flex-none flex-wrap items-center gap-2 bg-canvas px-4 py-2 md:static md:mx-0 md:bg-transparent md:p-0">
+        <form method="get" action="/orders" role="search" className="order-1 flex min-w-0 flex-1 basis-40 gap-1.5 md:basis-60">
+          {Object.entries({ ...params, q: undefined }).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Search orders</span>
+            <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
+            <input type="search" name="q" defaultValue={f.q} placeholder="Search order no., party or part…" enterKeyHint="search" autoComplete="off"
+              className="min-h-11 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm" />
+          </label>
+          <ScanSearch title="Scan a part or lot" keep={{ ...params, q: undefined }} />
+          <button className="min-h-11 cursor-pointer rounded-xl bg-ink px-3 text-sm font-semibold text-white"><span className="hidden sm:inline">Search</span><Search size={16} aria-hidden className="sm:hidden" /></button>
+          {f.q && <Link href={u({ q: undefined })} className="flex min-h-11 items-center px-1 text-sm font-semibold text-accent">Clear</Link>}
+        </form>
+        <div className="order-3 -mx-1 flex w-full gap-2 overflow-x-auto px-1 [scrollbar-width:none] md:order-2 md:w-auto md:max-w-full md:flex-none">
+          {seg([
+            { href: u({ dir: undefined }), label: "All", n: noDir.length, active: !f.dir },
+            { href: u({ dir: "buy" }), label: "Buy", n: noDir.filter((o) => o.direction === "BUY").length, active: f.dir === "BUY" },
+            { href: u({ dir: "sell" }), label: "Sell", n: noDir.filter((o) => o.direction === "SELL").length, active: f.dir === "SELL" },
+          ])}
+          {seg([
+            { href: u({ state: undefined }), label: "Active", n: nActive, active: state === "active" },
+            { href: u({ state: "overdue" }), label: "Overdue", n: nOverdue, active: state === "overdue" },
+            { href: u({ state: "closed" }), label: "Closed", n: nClosed, active: state === "closed" },
+            { href: u({ state: "all" }), label: "All", n: noState.length, active: !state },
+          ])}
         </div>
+        <details className="group relative order-2 flex-none md:order-3">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-white px-3.5 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <SlidersHorizontal size={16} aria-hidden /> <span className="hidden sm:inline">Filters</span>{extra > 0 && <Badge tone="info">{extra}</Badge>}
+          </summary>
+          <form method="get" action="/orders" className="absolute right-0 top-full z-30 mt-2 grid w-[min(34rem,calc(100vw-2rem))] gap-3 rounded-2xl border border-border bg-white p-4 shadow-xl sm:grid-cols-2">
+            {params.dir && <input type="hidden" name="dir" value={params.dir} />}
+            {params.state && <input type="hidden" name="state" value={params.state} />}
+            {f.q && <input type="hidden" name="q" value={f.q} />}
+            <label className="text-[13px]">Type
+              <select name="kind" defaultValue={f.kind ?? ""} className={inputCls}>
+                <option value="">All types</option>
+                {KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
+              </select>
+            </label>
+            <label className="text-[13px]">Supplier / customer
+              <select name="party" defaultValue={f.party ?? ""} className={inputCls}>
+                <option value="">Anyone</option>
+                {(["BUY", "SELL"] as const).filter((d) => !f.dir || f.dir === d).map((d) => (
+                  <optgroup key={d} label={d === "BUY" ? "Suppliers" : "Customers"}>
+                    {parties.filter((p) => p.direction === d).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            <label className="text-[13px]">Segment
+              <select name="seg" defaultValue={f.segment ?? ""} className={inputCls}>
+                <option value="">Both</option><option value="AUTOMOTIVE">Automotive</option><option value="NON_AUTOMOTIVE">Non-automotive</option>
+              </select>
+            </label>
+            <label className="text-[13px]">Sort
+              <select name="sort" defaultValue={f.sort} className={inputCls}><option value="new">Newest first</option><option value="old">Oldest first</option></select>
+            </label>
+            <label className="text-[13px]">From date<input type="date" name="from" defaultValue={f.from ?? ""} className={inputCls} /></label>
+            <label className="text-[13px]">To date<input type="date" name="to" defaultValue={f.to ?? ""} className={inputCls} /></label>
+            <div className="flex items-end gap-2 sm:col-span-2">
+              <button className={btnCls}>Apply</button>
+              <Link href="/orders" className={btnSecondaryCls}>Clear all</Link>
+            </div>
+          </form>
+        </details>
+      </section>
 
-        <div className="space-y-2">
-          {page.rows.map((o) => (
-            <Row key={o.key} o={o} back={back} canPo={canPo}
-              linkable={o.type === "PO" ? canPo : o.type === "DISPATCH" ? canDispatch : canView(user, "demand")} />
-          ))}
-          {page.total === 0 && (
-            <Card className="space-y-1">
-              <p className="text-sm text-ink-3">{filtersOn > 0 ? "No orders match these filters." : "No orders yet."}</p>
-              {filtersOn > 0 && <Link href="/orders" className="text-sm font-semibold text-accent">Clear filters</Link>}
-            </Card>
-          )}
-        </div>
+      <div className="flex flex-none flex-wrap items-center justify-between gap-2 text-xs text-ink-3">
+        <span>{page.total === 0 ? "No orders" : `Showing ${page.from}–${page.to} of ${page.total.toLocaleString()}`}{filtersOn > 0 && " (filtered)"}</span>
+        {filtersOn > 0 && <Link href="/orders" className="font-semibold text-accent">Clear filters</Link>}
+      </div>
 
-        {page.pages > 1 && (
-          <nav aria-label="Pages" className="flex items-center justify-between gap-2">
-            {page.page > 1
-              ? <Link href={href("/orders", { ...params, page: page.page - 1 > 1 ? String(page.page - 1) : undefined })} className={`${btnSecondaryCls} gap-1`}><ChevronLeft size={16} aria-hidden /> Previous</Link>
-              : <span />}
-            <span className="text-sm text-ink-2">Page {page.page} of {page.pages}</span>
-            {page.page < page.pages
-              ? <Link href={href("/orders", { ...params, page: String(page.page + 1) })} className={`${btnSecondaryCls} gap-1`}>Next <ChevronRight size={16} aria-hidden /></Link>
-              : <span />}
-          </nav>
+      {/* The list is the only part that scrolls. */}
+      <div role="region" aria-label="Orders" tabIndex={0} className="space-y-2 md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain md:rounded-[14px] md:pr-1 md:[scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:outline-accent">
+        {page.rows.map((o) => (
+          <Row key={o.key} o={o} back={back} canPo={canPo}
+            linkable={o.type === "PO" ? canPo : o.type === "DISPATCH" ? canDispatch : canView(user, "demand")} />
+        ))}
+        {page.total === 0 && (
+          <Card className="space-y-1">
+            <p className="text-sm text-ink-3">{filtersOn > 0 ? "No orders match these filters." : "No orders yet."}</p>
+            {filtersOn > 0 && <Link href="/orders" className="text-sm font-semibold text-accent">Clear filters</Link>}
+          </Card>
         )}
       </div>
-    </CreateProvider>
+
+      {page.pages > 1 && (
+        <nav aria-label="Pages" className="flex flex-none items-center justify-between gap-2">
+          {page.page > 1
+            ? <Link href={href("/orders", { ...params, page: page.page - 1 > 1 ? String(page.page - 1) : undefined })} className={`${btnSecondaryCls} min-h-10 gap-1`}><ChevronLeft size={16} aria-hidden /> Previous</Link>
+            : <span />}
+          <span className="text-sm text-ink-2">Page {page.page} of {page.pages}</span>
+          {page.page < page.pages
+            ? <Link href={href("/orders", { ...params, page: String(page.page + 1) })} className={`${btnSecondaryCls} min-h-10 gap-1`}>Next <ChevronRight size={16} aria-hidden /></Link>
+            : <span />}
+        </nav>
+      )}
+
+      {/* Creating an order opens in its own panel over the list (a full screen on a phone), so it never pushes the list around. */}
+      {panel === "po" && poData && (
+        <SidePanel title="New purchase order" subtitle="Pick a supplier: its lead time and the earliest delivery show straight away" closeHref={closeHref}>
+          <Flash error={sp.error} />
+          <Card className="space-y-3">
+            <NewPoForm action={createPo} today={today.toISOString().slice(0, 10)} suppliers={poData[0].map((x) => ({ id: x.id, name: x.name, leadTimeDays: x.leadTimeDays }))} items={poItems}
+              pre={{ supplierId: preSupplier, itemId: pre?.id, qty: pre ? preQty : undefined }} />
+          </Card>
+        </SidePanel>
+      )}
+      {panel === "customer" && orderForm && (
+        <SidePanel title="New customer order" subtitle="The customer's PO: a line for each part, each with its own due date" closeHref={closeHref}>
+          <Flash error={sp.error} />
+          <Card className="space-y-3">
+            <NewCustomerOrderForm action={addCustomerOrder} customers={orderForm.customers} parts={orderForm.parts} today={new Date().toISOString().slice(0, 10)} back={closeHref} />
+          </Card>
+        </SidePanel>
+      )}
+      {panel === "dispatch" && dcData && (
+        <SidePanel title="New pick list" subtitle="Choose the customer, then the parts to load" closeHref={closeHref}>
+          <Flash error={sp.error} />
+          <Card className="space-y-3">
+            <NewPickListForm action={createPickList} customers={dcData[0].map((c) => ({ id: c.id, name: c.name }))} parts={dcParts} ready={ready} suggestions={suggestions} />
+          </Card>
+        </SidePanel>
+      )}
+      {panel === "import" && (canPo || canCustomerImport) && (
+        <SidePanel title="Import orders from a file" subtitle="For orders raised in another tool or tracked in a spreadsheet" closeHref={closeHref}>
+          <Flash error={sp.error} />
+          <Card className="space-y-5">
+            <p className="max-w-3xl text-sm text-ink-2">
+              Upload a .csv or .xlsx (up to 5 MB). A file with any bad row is rejected as a whole, so nothing half-loads, and every problem is listed with its row number.
+            </p>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {canPo && (
+                <Form action={importPoFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
+                  <h3 className="font-display text-[15px] font-bold">Supplier POs <span className="text-xs font-normal text-ink-3">(incoming)</span></h3>
+                  <label className="block text-[13px] font-semibold">File
+                    <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
+                  </label>
+                  <p className="text-xs text-ink-3">
+                    Columns: <b>po_ref</b>, <b>supplier_code</b>, <b>item_code</b>, <b>qty</b>, price, expected_date, segment. One row per PO line; rows with the same supplier and po_ref become one PO.
+                    Blank prices use the price master. A PO already loaded (same supplier and reference) is skipped, so re-uploading is safe.{" "}
+                    <DownloadLink href="/api/v1/po-template">Download a template</DownloadLink>
+                  </p>
+                  <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import POs</button>
+                </Form>
+              )}
+              {canCustomerImport && (
+                <Form action={importCustomerFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
+                  <h3 className="font-display text-[15px] font-bold">Customer orders <span className="text-xs font-normal text-ink-3">(outgoing)</span></h3>
+                  <label className="block text-[13px] font-semibold">File
+                    <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
+                  </label>
+                  <label className="flex items-start gap-2 text-[13px]">
+                    <input name="replaceForecast" type="checkbox" defaultChecked className="mt-0.5 size-5 accent-[#c2410c]" />
+                    New forecast replaces the old forecast for the same customer and part (firm and spot orders are kept)
+                  </label>
+                  <p className="text-xs text-ink-3">
+                    Columns: <b>customer_code</b>, <b>part_code</b>, <b>due_date</b>, <b>qty</b>, type (FORECAST, FIRM or SPOT; blank means FIRM), po_ref (the customer&apos;s own PO number, optional). Dates are read day-first.{" "}
+                    <DownloadLink href="/api/v1/demand-template">Download a template</DownloadLink>
+                  </p>
+                  <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import orders</button>
+                </Form>
+              )}
+            </div>
+          </Card>
+        </SidePanel>
+      )}
+    </div>
   );
 }

@@ -45,17 +45,58 @@ const BOUGHT = (category: string) => category !== "FG" && category !== "REGRIND"
  * Creates an item and, optionally, the supplier and buying price that make it purchasable: the price master is what MRP
  * and "Raise PO" use to pick a supplier, so an item without one can be tracked in Stores but not ordered automatically.
  */
-export async function createItemWithSupplier(raw: unknown, supplier: SupplierPriceInput | null, db: Db = defaultDb) {
-  return db.$transaction((tx) => createItemIn(tx, raw, supplier));
+export async function createItemWithSupplier(raw: unknown, suppliers: SupplierPriceInput | SupplierPriceInput[] | null, db: Db = defaultDb) {
+  return db.$transaction((tx) => createItemIn(tx, raw, suppliers));
 }
 
 /** The same, inside a transaction you already have (the BOM import creates items and BOMs together). */
-export async function createItemIn(tx: Prisma.TransactionClient, raw: unknown, supplier: SupplierPriceInput | null) {
+export async function createItemIn(tx: Prisma.TransactionClient, raw: unknown, suppliers: SupplierPriceInput | SupplierPriceInput[] | null) {
   const v = parse(itemSchema, raw);
-  if (supplier && !BOUGHT(v.category)) throw new DomainError(`${v.category === "FG" ? "Finished goods are made here" : "Regrind is made here"}, so there is no supplier to set.`);
+  const list = suppliers === null ? [] : Array.isArray(suppliers) ? suppliers : [suppliers];
+  if (list.length && !BOUGHT(v.category)) throw new DomainError(`${v.category === "FG" ? "Finished goods are made here" : "Regrind is made here"}, so there is no supplier to set.`, ["category"]);
+  checkDistinct(list.map((r) => r.supplierId), "supplierId", "A supplier is listed more than once.");
   const item = await guarded("An item", () => tx.item.create({ data: v }));
-  if (supplier) await upsertSupplierPrice(tx, item.id, supplier);
+  for (const s of list) await upsertSupplierPrice(tx, item.id, s);
   return item;
+}
+
+function checkDistinct(ids: string[], field: string, message: string) {
+  if (new Set(ids).size !== ids.length) throw new DomainError(message, [field]);
+}
+
+/**
+ * Makes the item's suppliers exactly this list: new ones are added, prices are updated, and any supplier left out is removed.
+ * A bought item can have several (MRP offers the cheapest and the buyer may pick another); finished goods and regrind have none.
+ */
+export async function syncItemSuppliers(itemId: string, rows: SupplierPriceInput[], db: Db = defaultDb) {
+  return db.$transaction((tx) => syncItemSuppliersIn(tx, itemId, rows));
+}
+
+export async function syncItemSuppliersIn(tx: Prisma.TransactionClient, itemId: string, rows: SupplierPriceInput[]) {
+  const item = await tx.item.findUnique({ where: { id: itemId } });
+  if (!item) throw new DomainError("That item doesn't exist any more.");
+  if (rows.length && !BOUGHT(item.category)) throw new DomainError(`${item.code} is made here, so it has no supplier.`);
+  checkDistinct(rows.map((r) => r.supplierId), "supplierId", "A supplier is listed more than once.");
+  for (const r of rows) await upsertSupplierPrice(tx, itemId, r);
+  await tx.priceMaster.deleteMany({ where: { itemId, supplierId: { notIn: rows.map((r) => r.supplierId) } } });
+}
+
+/**
+ * The same link from the supplier's side: makes the products this supplier supplies exactly this list (with prices). A supplier is
+ * usually specific to a few products, so this is where a purchaser keeps that list.
+ */
+export async function syncSupplierCatalogue(supplierId: string, rows: { itemId: string; price: number }[], db: Db = defaultDb) {
+  const supplier = await db.supplier.findUnique({ where: { id: supplierId } });
+  if (!supplier) throw new DomainError("That supplier doesn't exist any more.");
+  checkDistinct(rows.map((r) => r.itemId), "itemId", "A product is listed more than once.");
+  const items = await db.item.findMany({ where: { id: { in: rows.map((r) => r.itemId) } } });
+  if (items.length !== rows.length) throw new DomainError("A listed product doesn't exist any more.");
+  const made = items.find((i) => !BOUGHT(i.category));
+  if (made) throw new DomainError(`${made.code} is made here, so no supplier can supply it.`, ["itemId"]);
+  return db.$transaction(async (tx) => {
+    for (const r of rows) await upsertSupplierPrice(tx, r.itemId, { supplierId, price: r.price });
+    await tx.priceMaster.deleteMany({ where: { supplierId, itemId: { notIn: rows.map((r) => r.itemId) } } });
+  });
 }
 
 async function upsertSupplierPrice(db: Db | Prisma.TransactionClient, itemId: string, s: SupplierPriceInput) {
@@ -79,6 +120,15 @@ export async function setSupplierPrice(itemId: string, s: SupplierPriceInput, db
 export async function removeSupplierPrice(itemId: string, supplierId: string, db: Db = defaultDb) {
   const r = await db.priceMaster.deleteMany({ where: { itemId, supplierId } });
   if (r.count === 0) throw new DomainError("That supplier isn't listed for this item.");
+}
+
+/** Saves the item's details and its supplier list together, so a half-saved item can't happen. */
+export async function saveItemWithSuppliers(id: string, raw: unknown, suppliers: SupplierPriceInput[] | null, db: Db = defaultDb) {
+  return db.$transaction(async (tx) => {
+    const item = await updateItem(id, raw, tx as unknown as Db);
+    if (suppliers !== null) await syncItemSuppliersIn(tx, id, suppliers);
+    return item;
+  });
 }
 
 export async function updateItem(id: string, raw: unknown, db: Db = defaultDb) {

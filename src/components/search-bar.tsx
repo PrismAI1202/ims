@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
+import { ScanSearch } from "@/components/scan-search";
 
 /**
  * A search box for list pages. It is a plain GET form, so it works without JavaScript and the result is a
  * shareable URL. `keep` carries the other filters (tab, status…) through the search; `clearHref` resets it.
+ * `scan` adds a camera button beside Search, for searches where a product is looked up (a lot tag, box label, bin label or part
+ * code): see ScanSearch. Leave it off for searches of people, suppliers and the like.
  */
 export function SearchBar({
-  q, placeholder, keep = {}, clearHref,
-}: { q?: string; placeholder: string; keep?: Record<string, string | undefined>; clearHref: string }) {
+  q, placeholder, keep = {}, clearHref, scan,
+}: {
+  q?: string; placeholder: string; keep?: Record<string, string | undefined>; clearHref: string;
+  scan?: { mode?: "text" | "locate"; param?: string; title?: string; hint?: string };
+}) {
   return (
     <form method="get" role="search" className="flex gap-2">
       {Object.entries(keep).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
@@ -19,6 +25,7 @@ export function SearchBar({
           className="min-h-12 w-full rounded-xl border border-border bg-white pl-10 pr-3 text-base"
         />
       </label>
+      {scan && <ScanSearch {...scan} keep={keep} />}
       <button className="min-h-12 cursor-pointer rounded-xl bg-ink px-4 text-sm font-semibold text-white">Search</button>
       {q && <Link href={clearHref} className="flex min-h-12 items-center rounded-xl px-2 text-sm font-semibold text-accent">Clear</Link>}
     </form>

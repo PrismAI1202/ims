@@ -1,7 +1,9 @@
+import Link from "next/link";
+import { ScanField } from "@/components/scan-button";
 import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView } from "@/server/auth/guard";
-import { can } from "@/server/auth/permissions";
+import { can, canView } from "@/server/auth/permissions";
 import { pickableLots } from "@/server/services/inventory";
 import { sortForPicking } from "@/server/services/fifo";
 import { returnableLots } from "@/server/services/returns";
@@ -80,7 +82,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
           <section className="space-y-3">
             <div>
               <Eyebrow>TO ISSUE · {toIssue.length}</Eyebrow>
-              <p className="mt-1 text-sm text-ink-2">Pick in the order shown. Scanning a newer lot while an older one has stock is blocked unless you give a reason.</p>
+              <p className="mt-1 text-sm text-ink-2">Pick in the order shown. Scanning a newer lot while an older one has stock is blocked unless you give a reason.{canView(user, "scan") && <> Out on the floor with no signal? <Link href="/scan/issue" className="font-semibold text-accent">Issue with the offline scanner</Link>.</>}</p>
             </div>
             {toIssue.length === 0 && <Card><p className="text-sm text-ink-3">No open material requests.</p></Card>}
             {toIssue.map(({ request, line, remaining, lots }) => (
@@ -98,8 +100,8 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                     )}
                   </div>
                   <div className="grid gap-3 md:grid-cols-5">
-                    <label className="text-[13px]">Lot<input name="lotNumber" required defaultValue={lots[0]?.lotNumber} className={inputCls} /></label>
-                    <label className="text-[13px]">Bin<input name="locationCode" required defaultValue={lots[0]?.locations[0]?.code} className={inputCls} /></label>
+                    <ScanField upper label="Lot" name="lotNumber" required defaultValue={lots[0]?.lotNumber} title="Scan the lot tag" hint="Check it is the lot shown first (FIFO)." />
+                    <ScanField upper label="Bin" name="locationCode" required defaultValue={lots[0]?.locations[0]?.code} title="Scan the bin label" />
                     <label className="text-[13px]">Qty<input name="qty" type="number" step="any" min="0" required defaultValue={lots[0] ? Math.min(remaining, lots[0].available) : ""} className={inputCls} /></label>
                     <label className="text-[13px] md:col-span-2">FIFO override reason (only if skipping)<input name="override" className={inputCls} /></label>
                   </div>
@@ -120,7 +122,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
               <Card className="space-y-3">
                 <Eyebrow>RETURN ANOTHER LOT</Eyebrow>
                 <Form action={giveBack} className="grid gap-3 md:grid-cols-5">
-                  <label className="text-[13px]">Lot number<input name="lot" required className={inputCls} /></label>
+                  <ScanField upper label="Lot number" name="lot" required title="Scan the lot tag" hint="The tag on the bag or box you are returning." />
                   <label className="text-[13px]">Quantity<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
                   <label className="text-[13px]">Bin<select name="bin" required className={inputCls}>{binOptions}</select></label>
                   <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
@@ -160,7 +162,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
 
         <section className="space-y-2">
           <Eyebrow>REQUISITIONS</Eyebrow>
-          <SearchBar q={q} placeholder="Search request no., item or status" clearHref="/requests" />
+          <SearchBar q={q} scan={{ title: "Scan an item or lot" }} placeholder="Search request no., item or status" clearHref="/requests" />
           <DataTable>
             <thead><tr><th>Request</th><th>Lines (issued / requested)</th><th>Status</th></tr></thead>
             <tbody>

@@ -1,8 +1,10 @@
+import { LoadByCamera } from "@/components/load-by-camera";
 import { Form } from "@/components/form";
 import Link from "next/link";
 import { DownloadLink } from "@/components/download-link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
+import { canView } from "@/server/auth/permissions";
 import { requireViewWith, requirePermission, runAction } from "@/server/auth/guard";
 import { cancelDispatch, completeDispatch, dispatchProgress, scanBox, unscanBox, updateTransport } from "@/server/services/dispatch";
 import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
@@ -60,7 +62,7 @@ async function cancel(formData: FormData) {
 export default async function DispatchDetail({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requireViewWith("orders", "dispatch.manage");
+  const user = await requireViewWith("orders", "dispatch.manage");
   const [{ id }, { error, ok }] = await Promise.all([params, searchParams]);
   const d = await db.dispatch.findUnique({ where: { id }, include: { customer: true } });
   if (!d) notFound();
@@ -104,8 +106,10 @@ export default async function DispatchDetail({
             <label className="flex-1 text-[13px] font-semibold">Scan box label
               <input name="scan" autoFocus required autoComplete="off" autoCapitalize="characters" spellCheck={false} className={inputCls} />
             </label>
+            <LoadByCamera dispatchId={d.id} />
             <button className={btnCls}>Load box</button>
           </Form>
+          {canView(user, "scan") && <p className="mt-2 text-xs text-ink-3">No signal at the dock? <Link href="/scan/dispatch" className="font-semibold text-accent">Load with the offline scanner</Link>: scans are kept on the phone and sent when it reconnects.</p>}
         </Card>
       )}
 

@@ -1,3 +1,4 @@
+import { ScanField } from "@/components/scan-button";
 import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
@@ -123,7 +124,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
                   <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
                     <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
                   <div className="text-[13px]"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
-                  <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
+                  <ScanField label="Mfr lot / heat no." name={`lot_${l.id}`} title="Scan the supplier's lot or heat number" hint="The barcode on the supplier's bag, box or certificate." />
                   <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
                 </div>
               ))}
@@ -135,7 +136,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
       </CreatePanel>
 
       <Eyebrow>RECENT GRNs</Eyebrow>
-      <SearchBar q={q} placeholder="Search GRN, PO, vehicle, invoice or lot" clearHref="/grn" />
+      <SearchBar q={q} scan={{ title: "Scan a lot tag" }} placeholder="Search GRN, PO, vehicle, invoice or lot" clearHref="/grn" />
       <DataTable>
         <thead><tr>
           <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>COA</th><th>Lots (pending QC → QC queue)</th>

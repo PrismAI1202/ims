@@ -59,7 +59,7 @@ export async function PackTab({ q, status }: { q?: string; status?: string }) {
       )}
 
       <Eyebrow>BOXES</Eyebrow>
-      <SearchBar q={q} placeholder="Search box, part, customer or batch" keep={{ tab: "pack", status: view === "ALL" ? undefined : view }} clearHref={href("/fg", { tab: "pack", status: view === "ALL" ? undefined : view })} />
+      <SearchBar q={q} scan={{ title: "Scan a box label" }} placeholder="Search box, part, customer or batch" keep={{ tab: "pack", status: view === "ALL" ? undefined : view }} clearHref={href("/fg", { tab: "pack", status: view === "ALL" ? undefined : view })} />
       <Chips chips={(["ALL", "IN_STOCK", "DISPATCHED"] as const).map((k) => ({ href: href("/fg", { tab: "pack", q, status: k === "ALL" ? undefined : k }), label: k === "ALL" ? "All" : k === "IN_STOCK" ? "In stock" : "Dispatched", active: view === k }))} />
       <DataTable>
         <thead><tr>

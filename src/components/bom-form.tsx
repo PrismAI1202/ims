@@ -3,6 +3,7 @@
 import type { FormAction } from "@/lib/action-result";
 import { Form } from "@/components/form";
 import { useState } from "react";
+import { ReasonButton } from "@/components/notice";
 import { AlertTriangle, Check, Minus, Plus } from "lucide-react";
 import { btnCls, inputCls } from "@/components/flash";
 import { NewItemCard } from "@/components/new-item-card";
@@ -144,11 +145,10 @@ export function BomForm({ action, fgItems: fgProp, moulds, items: itemsProp, sup
                       <span className="flex size-7 flex-none items-center justify-center rounded-full bg-ink font-mono text-xs font-bold text-white md:mt-2.5" aria-hidden>{i + 1}</span>
                       <span className="rounded-md px-2 py-0.5 text-[11px] font-bold text-white md:hidden" style={{ background: k?.color ?? "#6B7280" }}>{k?.label ?? "Material"}</span>
                     </span>
-                    <button type="button" onClick={() => remove(r.key)} disabled={rows.length === 1} aria-label={`Remove material ${i + 1}`}
-                      title={rows.length === 1 ? "A BOM needs at least one material" : `Remove material ${i + 1}`}
-                      className="flex size-8 flex-none cursor-pointer items-center justify-center rounded-full bg-danger text-white hover:bg-[#8f1a10] disabled:cursor-not-allowed disabled:bg-border disabled:text-ink-3 md:order-last md:mt-1.5">
+                    <ReasonButton type="button" onClick={() => remove(r.key)} why={rows.length === 1 && "A BOM needs at least one material."} aria-label={`Remove material ${i + 1}`}
+                      className="flex size-8 flex-none cursor-pointer items-center justify-center rounded-full bg-danger text-white hover:bg-[#8f1a10] aria-disabled:bg-border aria-disabled:text-ink-3 md:order-last md:mt-1.5">
                       <Minus size={16} strokeWidth={3} aria-hidden />
-                    </button>
+                    </ReasonButton>
                   </div>
 
                   <label className="block min-w-0 text-[13px]">

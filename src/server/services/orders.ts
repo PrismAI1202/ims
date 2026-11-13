@@ -15,6 +15,7 @@ export type OrderRow = {
   id: string; // the PO, dispatch or demand line behind the row
   type: OrderType;
   ref?: string; // a PO's number from another system, when it has one
+  expedite?: boolean; // a PO whose supplier has been asked to deliver faster
   direction: OrderDirection;
   partyId: string;
   segment: Segment;
@@ -61,7 +62,7 @@ export async function listOrders(db: Db = defaultDb): Promise<OrderRow[]> {
     const active = p.status === "APPROVED" || p.status === "PARTIAL";
     const late = active && p.lines.some((l) => l.expectedDate && l.expectedDate < today && Number(l.receivedQty) < Number(l.qty));
     rows.push({
-      key: `po-${p.id}`, id: p.id, type: "PO", partyId: p.supplierId, segment: p.segment, searchText: [p.externalRef, p.segment === "AUTOMOTIVE" ? "automotive" : "non-automotive"].filter(Boolean).join(" "), ref: p.externalRef ?? undefined,
+      key: `po-${p.id}`, id: p.id, type: "PO", expedite: p.expedite && active, partyId: p.supplierId, segment: p.segment, searchText: [p.externalRef, p.segment === "AUTOMOTIVE" ? "automotive" : "non-automotive"].filter(Boolean).join(" "), ref: p.externalRef ?? undefined,
       actions: p.status === "PARTIAL" ? ["closeShort"] : p.status === "APPROVED" && p.lines.every((l) => Number(l.receivedQty) === 0) ? ["edit", "cancel"] : [],
       direction: "BUY", number: p.poNumber, party: p.supplier.name,
       kind: p.segment === "AUTOMOTIVE" ? "Automotive PO" : "PO",
@@ -76,7 +77,8 @@ export async function listOrders(db: Db = defaultDb): Promise<OrderRow[]> {
     const done = d.shippedQty >= d.qty;
     const late = !done && d.dueDate < today;
     rows.push({
-      key: `dl-${d.id}`, id: d.id, type: "DEMAND", partyId: d.customerId, segment: d.customer.segment, searchText: d.customer.segment === "AUTOMOTIVE" ? "automotive" : "non-automotive", actions: [],
+      key: `dl-${d.id}`, id: d.id, type: "DEMAND", partyId: d.customerId, segment: d.customer.segment, ref: d.customerRef ?? undefined,
+      searchText: [d.customerRef, d.customer.segment === "AUTOMOTIVE" ? "automotive" : "non-automotive"].filter(Boolean).join(" "), actions: [],
       direction: "SELL", number: `${d.type} · ${d.fgItem.code}`, party: d.customer.name,
       kind: d.type === "FIRM" ? "Firm order" : "Spot order",
       status: done ? "SHIPPED" : late ? "PAST DUE" : d.shippedQty > 0 ? "PART SHIPPED" : "OPEN",

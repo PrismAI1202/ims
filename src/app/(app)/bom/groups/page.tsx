@@ -200,7 +200,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
             )}
           </Card>
         </CreatePanel>
-        <SearchBar q={q} placeholder="Search group, item, grade or vendor" clearHref="/bom/groups" />
+        <SearchBar q={q} scan={{ title: "Scan a material" }} placeholder="Search group, item, grade or vendor" clearHref="/bom/groups" />
         <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((g) => {
             const low = g.onHand < g.min;

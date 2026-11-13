@@ -1,6 +1,7 @@
+import { ScanSearch } from "@/components/scan-search";
 import { Form } from "@/components/form";
 import Link from "next/link";
-import { Check, Pencil, Plus, ScanLine } from "lucide-react";
+import { Check, Pencil, Plus } from "lucide-react";
 import { db } from "@/server/db";
 import { can, canView } from "@/server/auth/permissions";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
@@ -16,7 +17,7 @@ import { MoveLotForm } from "@/components/move-lot-form";
 import { Drawer, dotted, field, RemoveButton } from "@/components/edit-mode";
 import { X } from "lucide-react";
 import {
-  Badge, Card, Chip, Chips, Eyebrow, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
+  Badge, Card, Chip, Chips, Eyebrow, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
 } from "@/components/ui";
 
 export const instant = false;
@@ -152,7 +153,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     <PageHeader
       eyebrow={`STORES · ${user.role.replace("_", " ")}`}
       title="Stores"
-      right={canMove && canView(user, "scan") ? <Link href="/scan" className={headerBtnCls}><ScanLine size={16} aria-hidden /> Scan</Link> : undefined}
     >
       <StoresTabs active={view} user={user} />
     </PageHeader>
@@ -216,7 +216,8 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             {counting && totals.approve > 0 && <a href="#counts" className={`${pill} ${TAG.approve}`}>{totals.approve} count{totals.approve === 1 ? "" : "s"} to approve ↓</a>}
           </div>
         )}
-        <div className="flex flex-wrap gap-3 text-xs text-ink-2">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-ink-2">
+          <ScanSearch mode="locate" title="Scan a lot, box or bin" hint="A bin label opens that bin; a lot tag or box label opens the bin it is in." />
           <LegendDot color="#1D4ED8" label="Full" />
           <LegendDot color="#8FAEF0" label="Part" />
           <LegendDot color="#FFFFFF" label="Empty" border />
@@ -417,6 +418,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     <button className="min-h-10 w-full cursor-pointer rounded-lg border border-shell-line bg-shell-2 text-[13px] font-semibold">Count this bin</button>
                   </Form>
                 )}
+                {canMove && canView(user, "scan") && <p className="text-xs text-on-shell-2">No signal? <Link href="/scan/transfer" className="font-semibold underline">Move stock with the offline scanner</Link>.</p>}
                 {selBalances.length === 0 ? (
                   <p className="text-sm">Empty bin. Open another bin and choose this one as the destination.</p>
                 ) : (
@@ -480,7 +482,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     <div className="space-y-4">
       {header}
       <Flash error={sp.error} ok={sp.ok} />
-      <SearchBar q={search} placeholder="Search item code or name" keep={{ status: st === "ALL" ? undefined : st, cat: catKey === "all" ? undefined : catKey }} clearHref={q({})} />
+      <SearchBar q={search} scan={{ mode: "locate", title: "Scan a lot, box or bin", hint: "A bin label opens that bin; a lot tag or box label opens the bin it is in." }} placeholder="Search item code or name" keep={{ status: st === "ALL" ? undefined : st, cat: catKey === "all" ? undefined : catKey }} clearHref={q({})} />
       <Chips
         chips={[
           { href: q({ status: "" }), label: "All", n: inCat.length, active: st === "ALL" },

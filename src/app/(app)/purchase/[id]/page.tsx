@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
 import { requireViewWith, requirePermission, runAction } from "@/server/auth/guard";
-import { updatePurchaseOrder } from "@/server/services/purchase";
-import { Flash } from "@/components/flash";
+import { setPoExpedite, updatePurchaseOrder } from "@/server/services/purchase";
+import { Form } from "@/components/form";
+import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
 import { EditPoLines, type LineOption } from "@/components/order-lines";
 import { dateField, readLines } from "@/server/line-form";
 import { Badge, Card, Eyebrow, Mono, PageHeader } from "@/components/ui";
@@ -24,6 +25,15 @@ async function save(formData: FormData) {
   }, `/purchase/${id}`);
 }
 
+async function expedite(formData: FormData) {
+  "use server";
+  await requirePermission("po.manage");
+  const id = String(formData.get("id")), on = formData.get("on") === "1";
+  return runAction(`/purchase/${id}`, on ? "The supplier is now marked as asked to expedite." : "The expedite request was taken back.", async () => {
+    await setPoExpedite(id, on, String(formData.get("note") || ""));
+  });
+}
+
 export default async function EditPo({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   await requireViewWith("orders", "po.manage");
   const [{ id }, { error }] = await Promise.all([params, searchParams]);
@@ -42,6 +52,23 @@ export default async function EditPo({ params, searchParams }: { params: Promise
         <Link href="/orders?kind=po" className="text-sm font-semibold">← Orders</Link>
       </PageHeader>
       <Flash error={error} />
+      {(po.status === "APPROVED" || po.status === "PARTIAL") && (
+        po.expedite ? (
+          <Form action={expedite} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn-ink bg-warn-bg p-3.5 text-sm">
+            <input type="hidden" name="id" value={po.id} /><input type="hidden" name="on" value="0" />
+            <span><strong className="text-warn-ink">Supplier asked to expedite.</strong> {po.expediteNote ?? "No note was left."} <span className="text-ink-3">Lead time {po.supplier.leadTimeDays} days.</span></span>
+            <button className={btnSecondaryCls}>Take the request back</button>
+          </Form>
+        ) : (
+          <Form action={expedite} className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-3.5 text-sm">
+            <input type="hidden" name="id" value={po.id} /><input type="hidden" name="on" value="1" />
+            <label className="min-w-56 flex-1 text-[13px]">Need it sooner? Ask {po.supplier.name} to expedite <span className="text-ink-3">(lead time {po.supplier.leadTimeDays} days)</span>
+              <input name="note" maxLength={200} placeholder="Reason for the supplier, e.g. line stops on the 30th" className={inputCls} />
+            </label>
+            <button className={btnCls}>Ask to expedite</button>
+          </Form>
+        )
+      )}
       {locked && <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">This order can no longer be edited (goods have been received, or it is {po.status.toLowerCase()}).</p>}
       <Card className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

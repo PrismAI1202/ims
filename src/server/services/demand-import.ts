@@ -6,6 +6,7 @@ export type DemandKind = "FORECAST" | "FIRM" | "SPOT";
 export interface DemandRow {
   row: number; // spreadsheet row number (the header is row 1)
   customerCode: string; partCode: string; dueDate: Date; qty: number; type: DemandKind;
+  customerRef?: string; // the customer's own PO number, when the file has a po_ref column
 }
 export interface RowError { row: number; message: string }
 
@@ -15,6 +16,7 @@ const HEADERS: Record<string, string[]> = {
   date: ["duedate", "date", "deliverydate", "requireddate", "needdate"],
   qty: ["qty", "quantity", "requiredqty", "orderqty"],
   type: ["type", "demandtype", "scheduletype", "ordertype"],
+  ref: ["poref", "poreference", "customerpo", "customerref", "ponumber", "pono", "orderref"],
 };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -70,7 +72,7 @@ export function parseDemandRows(rows: Record<string, unknown>[]): { ok: DemandRo
     if (qty === null) problems.push("quantity must be a whole number above 0");
     if (!["FORECAST", "FIRM", "SPOT"].includes(type)) problems.push(`type "${typeRaw}" must be FORECAST, FIRM or SPOT`);
     if (problems.length) errors.push({ row, message: problems.join("; ") });
-    else ok.push({ row, customerCode: customer, partCode: part, dueDate: date!, qty: qty!, type });
+    else ok.push({ row, customerCode: customer, partCode: part, dueDate: date!, qty: qty!, type, customerRef: String(field(raw, "ref") ?? "").trim().slice(0, 40) || undefined });
   });
   return { ok, errors };
 }

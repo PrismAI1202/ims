@@ -9,6 +9,11 @@ import { Drawer, dotted, field, RemoveButton } from "@/components/edit-mode";
 import { btnCls } from "@/components/flash";
 import { Flash } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
+import { CatalogueRows } from "@/components/catalogue-rows";
+import { itemType } from "@/lib/item-types";
+import { TypeTag } from "@/components/mrp-table";
+import { PartnerTimeline, type TimelineOrder } from "@/components/partner-timeline";
+import { saveSupplierCatalogue } from "../masters/actions";
 import { matches } from "@/lib/url";
 import { Badge, Card, Chips, Mono, PageHeader, SegmentedTabs } from "@/components/ui";
 
@@ -16,7 +21,7 @@ export const instant = false;
 
 type Row = {
   id: string; name: string; code: string; sub: string; tag: string; tagTone: "info" | "warn" | "neutral";
-  facts: [string, string][]; orders: { id: string; what: string; meta: string; status: string; open: boolean }[];
+  facts: [string, string][]; orders: TimelineOrder[];
   active: boolean;
   locked: string | null; // why it can't be removed right now
   form: { leadTimeDays?: number; segment?: string; labelFormat?: string; gstin?: string; address?: string };
@@ -69,7 +74,7 @@ async function reactivatePartner(f: FormData) {
 
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 
-export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ tab?: string; filter?: string; id?: string; q?: string; edit?: string; error?: string; ok?: string }> }) {
+export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ v?: string; tab?: string; filter?: string; id?: string; q?: string; edit?: string; error?: string; ok?: string }> }) {
   const user = await requireView("partners");
   const sp = await searchParams;
   const canEdit = can(user, "partners.manage");
@@ -85,6 +90,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
           locked: s.pos.some((p) => p.status === "APPROVED" || p.status === "PARTIAL") ? "Has open POs: close or cancel them first" : null,
           facts: [["Supplies", s.prices.map((p) => p.item.code).join(", ") || "—"], ["Lead time", `${s.leadTimeDays} days`], ["Purchase orders", String(s.pos.length)], ["Status", s.active ? "Active" : "Inactive"]],
           orders: s.pos.map((p) => ({
+            key: p.id, href: `/purchase/${p.id}`, date: p.createdAt.toISOString(),
+            until: p.lines.map((l) => l.expectedDate).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0]?.toISOString(),
             id: p.poNumber, what: p.lines.map((l) => l.item.name).join(", "),
             meta: `${p.lines.map((l) => `${Number(l.qty).toLocaleString()} ${l.item.uom}`).join(" + ")} · ${day(p.createdAt)}`,
             status: p.status, open: p.status === "APPROVED" || p.status === "PARTIAL",
@@ -101,8 +108,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
             tag: c.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto", tagTone: c.segment === "AUTOMOTIVE" ? "info" as const : "warn" as const,
             facts: [["Segment", c.segment === "AUTOMOTIVE" ? "Automotive (IATF rules)" : "Non-automotive"], ["Label", c.labelFormat === "OEM" ? "OEM QR format" : "Internal label"], ["GSTIN", c.gstin ?? "—"], ["Address", c.address ?? "—"], ["Returnables out", String(Math.max(out, 0))]],
             orders: [
-              ...c.demandLines.map((d) => ({ id: `${d.type} · ${d.fgItem.code}`, what: d.fgItem.name, meta: `${d.qty.toLocaleString()} pcs · due ${day(d.dueDate)}`, status: d.dueDate >= today ? "Open" : "Past due", open: d.dueDate >= today })),
-              ...c.dispatches.map((x) => ({ id: x.dcNumber, what: x.lines.map((l) => l.item.name).join(", ") || "Dispatch", meta: `${x.lines.reduce((a, l) => a + l.qty, 0).toLocaleString()} pcs · ${day(x.createdAt)}`, status: x.status, open: x.status === "LOADING" })),
+              ...c.demandLines.map((d) => ({ key: d.id, date: d.dueDate.toISOString(), id: `${d.type} · ${d.fgItem.code}`, what: d.fgItem.name, meta: `${d.qty.toLocaleString()} pcs · due ${day(d.dueDate)}`, status: d.dueDate >= today ? "Open" : "Past due", open: d.dueDate >= today })),
+              ...c.dispatches.map((x) => ({ key: x.id, href: `/dispatch/${x.id}`, date: x.createdAt.toISOString(), id: x.dcNumber, what: x.lines.map((l) => l.item.name).join(", ") || "Dispatch", meta: `${x.lines.reduce((a, l) => a + l.qty, 0).toLocaleString()} pcs · ${day(x.createdAt)}`, status: x.status, open: x.status === "LOADING" })),
             ],
           };
         });
@@ -116,26 +123,81 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   const sel = !editing && sp.id ? rows.find((r) => r.id === sp.id) : undefined;
   const oneLabel = sup ? "supplier" : "customer";
 
+  // A supplier is specific to the products it supplies: the same price list that sits on each item, from the supplier's side.
+  const canCatalogue = can(user, "masters.manage");
+  const catalogue = sup && sel ? await Promise.all([
+    db.priceMaster.findMany({ where: { supplierId: sel.id }, include: { item: true }, orderBy: { item: { code: "asc" } } }),
+    canCatalogue ? db.item.findMany({ where: { active: true, category: { notIn: ["FG", "REGRIND"] } }, orderBy: { code: "asc" } }) : Promise.resolve([]),
+  ]) : null;
+
   if (sel) {
     return (
       <div className="space-y-4">
         <PageHeader eyebrow={sel.code} title={sel.name} subtitle={sel.sub}>
           <Link href={link({})} className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> {sup ? "Suppliers" : "Customers"}</Link>
         </PageHeader>
-        <Card><dl className="grid gap-2 text-sm">{sel.facts.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt className="text-ink-3">{k}</dt><dd className="text-right font-semibold">{v}</dd></div>)}</dl></Card>
-        <div className="flex items-baseline justify-between"><h2 className="font-display text-[15px] font-bold text-ink-3">Orders</h2><span className="text-xs text-ink-3">{sel.orders.length} total · {openN(sel)} open</span></div>
+        <Flash error={sp.error} ok={sp.ok} />
+        <div className={sup ? "grid items-start gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]" : ""}>
+        <Card className="space-y-2">
+          <h2 className="font-mono text-[11px] font-bold uppercase tracking-wide text-ink-3">Details</h2>
+          <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2 lg:grid-cols-1">{sel.facts.filter(([k]) => !(sup && k === "Supplies")).map(([k, v]) => <div key={k} className="flex justify-between gap-3 border-b border-line py-1 last:border-0"><dt className="text-ink-3">{k}</dt><dd className="text-right font-semibold">{v}</dd></div>)}</dl>
+        </Card>
+        {catalogue && (
+          <Card className="min-w-0 space-y-3">
+            <div>
+              <h2 className="font-mono text-[11px] font-bold uppercase tracking-wide text-ink-3">Products this supplier supplies</h2>
+              <p className="mt-1 text-[13px] text-ink-3">
+                {canCatalogue ? "With this supplier's price for each. The PO form and MRP offer it for these." : "What it supplies, and its price for each."}
+              </p>
+            </div>
+            {canCatalogue ? (
+              <Form action={saveSupplierCatalogue} className="space-y-3">
+                <input type="hidden" name="supplierId" value={sel.id} />
+                <input type="hidden" name="back" value={`/partners?tab=suppliers&id=${sel.id}`} />
+                <CatalogueRows compact kind="item" options={catalogue[1].map((i) => ({ id: i.id, label: `${i.code} · ${i.name}`, hint: `${itemType(i.category).name}, priced per ${i.uom}`, category: i.category, unit: i.uom }))}
+                  initial={catalogue[0].map((p) => ({ id: p.itemId, price: String(Number(p.price)) }))} emptyNote="No products listed yet. Add the ones this supplier provides." />
+                <button className={btnCls}>Save products</button>
+              </Form>
+            ) : catalogue[0].length === 0 ? <p className="text-sm text-ink-3">No products listed.</p> : (
+              <ul className="divide-y divide-line text-sm">
+                {catalogue[0].map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-3 py-2"><span className="flex items-center gap-2"><TypeTag category={p.item.category} /><span><b>{p.item.code}</b> <span className="text-ink-3">{p.item.name}</span></span></span><Mono className="text-xs">₹{Number(p.price)} / {p.item.uom}</Mono></li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-[15px] font-bold text-ink-3">Orders <span className="ml-1 text-xs font-normal">{sel.orders.length} total · {openN(sel)} open</span></h2>
+          {sel.orders.length > 0 && (
+            <nav aria-label="Orders view" className="grid grid-cols-2 gap-1 rounded-xl bg-canvas p-1 text-[13px] font-semibold">
+              {(["list", "timeline"] as const).map((m) => (
+                <Link key={m} href={link({ id: sel.id, v: m })} aria-current={(sp.v === "timeline" ? "timeline" : "list") === m} className={`flex min-h-9 items-center justify-center rounded-lg px-4 ${(sp.v === "timeline" ? "timeline" : "list") === m ? "bg-white shadow-sm" : "text-ink-3"}`}>{m === "list" ? "List" : "Timeline"}</Link>
+              ))}
+            </nav>
+          )}
+        </div>
         {sel.orders.length === 0 && (
           <Card className="space-y-1"><p className="text-sm text-ink-3">No orders yet from this {oneLabel}.</p>
             <Link href={sup ? "/orders?new=po" : "/demand"} className="text-sm font-semibold text-accent">{sup ? "Raise first PO" : "Import first demand"}</Link></Card>
         )}
-        <div className="grid gap-2 md:grid-cols-2">
-          {sel.orders.map((o, i) => (
-            <div key={`${o.id}-${i}`} className="flex items-center gap-3 rounded-xl bg-white px-3.5 py-3">
-              <span className="flex min-w-0 flex-1 flex-col"><Mono className="text-[13px] font-semibold">{o.id}</Mono><span className="truncate text-sm">{o.what}</span><span className="text-xs text-ink-3">{o.meta}</span></span>
-              <Badge tone={o.open ? "info" : "neutral"}>{o.status}</Badge>
-            </div>
-          ))}
-        </div>
+        {sel.orders.length > 0 && sp.v === "timeline" ? (
+          <PartnerTimeline orders={[...sel.orders].sort((x, y) => x.date.localeCompare(y.date))} today={new Date().toISOString()} />
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {sel.orders.map((o) => {
+              const inner = (
+                <>
+                  <span className="flex min-w-0 flex-1 flex-col"><Mono className="text-[13px] font-semibold">{o.id}</Mono><span className="truncate text-sm">{o.what}</span><span className="text-xs text-ink-3">{o.meta}</span></span>
+                  <Badge tone={o.open ? "info" : "neutral"}>{o.status}</Badge>
+                </>
+              );
+              const cls = "flex items-center gap-3 rounded-xl bg-white px-3.5 py-3";
+              return o.href ? <Link key={o.key} href={o.href} className={`${cls} hover:ring-1 hover:ring-accent`}>{inner}</Link> : <div key={o.key} className={cls}>{inner}</div>;
+            })}
+          </div>
+        )}
       </div>
     );
   }

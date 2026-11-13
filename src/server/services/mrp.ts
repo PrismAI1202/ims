@@ -5,6 +5,7 @@ import { orderByDate, runMrp, type MrpBom, type MrpRow } from "./mrp-engine";
 import { stockByItem } from "./stock";
 import { partsPerDay } from "./planning";
 import { remainingQty } from "./demand";
+import { groupForPos } from "@/lib/po-groups";
 import { getShiftMinutes } from "./settings";
 
 type Db = PrismaClient;
@@ -12,15 +13,17 @@ type Db = PrismaClient;
 export interface PlanOptions { horizonDays: number; scrapPct: number; today?: Date }
 
 
-// Cheapest supplier that has a price on file for the item.
-async function bestSuppliers(db: Db, itemIds: string[]) {
+// Every active supplier with a price on file for each item, cheapest first. The first is the default; the buyer may pick another.
+async function suppliersFor(db: Db, itemIds: string[]) {
   const prices = await db.priceMaster.findMany({ where: { itemId: { in: itemIds }, supplier: { active: true } }, include: { supplier: true } });
-  const best = new Map<string, (typeof prices)[number]>();
+  const by = new Map<string, { id: string; name: string; price: number; leadTimeDays: number }[]>();
   for (const p of prices) {
-    const cur = best.get(p.itemId);
-    if (!cur || Number(p.price) < Number(cur.price)) best.set(p.itemId, p);
+    const list = by.get(p.itemId) ?? [];
+    list.push({ id: p.supplierId, name: p.supplier.name, price: Number(p.price), leadTimeDays: p.supplier.leadTimeDays });
+    by.set(p.itemId, list);
   }
-  return best;
+  for (const list of by.values()) list.sort((x, y) => x.price - y.price || x.leadTimeDays - y.leadTimeDays);
+  return by;
 }
 
 /** The horizons the MRP screen offers by default; a custom number of days sits beside them. */
@@ -36,7 +39,8 @@ export interface OpenPo { poId: string; poNumber: string; supplier: string; qty:
 
 export interface PlanRow extends MrpRow {
   buyable: boolean;
-  supplier: { id: string; name: string; price: number; leadTimeDays: number } | null;
+  supplier: { id: string; name: string; price: number; leadTimeDays: number } | null; // the cheapest, used unless another is chosen
+  options: { id: string; name: string; price: number; leadTimeDays: number }[]; // every active supplier with a price for it, cheapest first
   orderBy: Date | null;
   late: boolean;
   /** `incoming` split by where it comes from: open POs for materials, machine-plan output for a finished good. */
@@ -137,7 +141,7 @@ export async function planMrp(opts: PlanOptions, db: Db = defaultDb): Promise<{ 
   const needByHorizon = new Map(horizons.map((h) => [h, new Map(rowsFor(inp, h, opts.scrapPct).rows.map((r) => [r.itemId, r.gross]))]));
 
   const needBuy = main.rows.filter((r) => r.suggested > 0 && r.role !== "FG" && !r.inHouse);
-  const suppliers = await bestSuppliers(db, needBuy.map((r) => r.itemId));
+  const suppliers = await suppliersFor(db, needBuy.map((r) => r.itemId));
   const stockOf = new Map(inp.stock.map((s) => [s.itemId, s]));
   const levels = new Map(inp.itemRows.map((i) => [i.id, i]));
   const itemOf = new Map(inp.itemRows.map((i) => [i.id, i]));
@@ -160,13 +164,13 @@ export async function planMrp(opts: PlanOptions, db: Db = defaultDb): Promise<{ 
 
   const planned: PlanRow[] = main.rows.map((r) => {
     const buyable = r.role !== "FG" && !r.inHouse && r.suggested > 0;
-    const s = suppliers.get(r.itemId);
-    const supplier = buyable && s ? { id: s.supplierId, name: s.supplier.name, price: Number(s.price), leadTimeDays: s.supplier.leadTimeDays } : null;
+    const options = buyable ? suppliers.get(r.itemId) ?? [] : [];
+    const supplier = options[0] ?? null;
     const ob = supplier ? orderByDate(r.earliestDue, supplier.leadTimeDays, today) : null;
     const inProduction = r.role === "FG" ? main.made.get(r.itemId)?.parts ?? 0 : 0;
     const lv = levels.get(r.itemId);
     return {
-      ...r, buyable, supplier, orderBy: ob?.orderBy ?? null, late: ob?.late ?? false,
+      ...r, buyable, supplier, options, orderBy: ob?.orderBy ?? null, late: ob?.late ?? false,
       onOrder: main.onOrder.get(r.itemId) ?? 0, inProduction, plannedDays: r.role === "FG" ? main.made.get(r.itemId)?.days ?? 0 : 0,
       pendingQc: stockOf.get(r.itemId)?.pendingQc ?? 0,
       minStock: Number(lv?.minStock ?? 0), maxStock: Number(lv?.maxStock ?? 0), reorderPointLevel: Number(lv?.reorderPoint ?? 0), safetyStock: Number(lv?.safetyStock ?? 0),
@@ -182,33 +186,38 @@ export async function planMrp(opts: PlanOptions, db: Db = defaultDb): Promise<{ 
   return { rows: planned, horizonEnd: main.horizonEnd, demandLines: main.demand.length, demandSpread: spreadOf(inp, { lines: later._count, parts: later._sum.qty ?? 0 }) };
 }
 
-// Turns chosen suggestions into approved POs, one per supplier and segment. Quantities and prices are
-// recomputed on the server; the client only says which items, and optionally a larger or smaller quantity.
+// Turns chosen suggestions into approved POs. Quantities and prices are recomputed on the server; the client says which items, and
+// optionally a different quantity, supplier or expected date. A supplier other than the cheapest must have a price on file for the
+// item. Lines for the same supplier go on one PO unless `club` is false (see lib/po-groups).
 export async function createPosFromPlan(
-  input: { selections: { itemId: string; qty?: number }[]; opts: PlanOptions; userId?: string },
+  input: {
+    selections: { itemId: string; qty?: number; supplierId?: string; expectedDate?: Date }[];
+    opts: PlanOptions; club?: boolean; expedite?: boolean; expediteNote?: string; userId?: string;
+  },
   db: Db = defaultDb,
 ) {
   if (input.selections.length === 0) throw new DomainError("Select at least one item to order.");
   const { rows } = await planMrp(input.opts, db);
   const byItem = new Map(rows.map((r) => [r.itemId, r]));
 
-  const groups = new Map<string, { supplierId: string; segment: "AUTOMOTIVE" | "NON_AUTOMOTIVE"; lines: { itemId: string; qty: number; price: number; expectedDate?: Date }[] }>();
+  const lines: { itemId: string; supplierId: string; policy: "KANBAN" | "ROP"; qty: number; price: number; expectedDate?: Date }[] = [];
   for (const sel of input.selections) {
     const r = byItem.get(sel.itemId);
     if (!r || !r.buyable) throw new DomainError("One of the selected items no longer needs ordering. Refresh the plan.");
-    if (!r.supplier) throw new DomainError(`${r.code} has no supplier price on file. Add one in Masters first.`);
+    if (r.options.length === 0) throw new DomainError(`${r.code} has no supplier price on file. Add one on the item first.`);
+    const chosen = sel.supplierId ? r.options.find((o) => o.id === sel.supplierId) : r.options[0];
+    if (!chosen) throw new DomainError(`That supplier has no price on file for ${r.code}. Choose one of its suppliers, or add the price on the item.`);
     const qty = sel.qty ?? r.suggested;
     if (!(qty > 0)) throw new DomainError(`Quantity for ${r.code} must be above 0.`);
-    const segment = r.policy === "KANBAN" ? "AUTOMOTIVE" : "NON_AUTOMOTIVE";
-    const key = `${r.supplier.id}:${segment}`;
-    const g = groups.get(key) ?? { supplierId: r.supplier.id, segment, lines: [] };
-    g.lines.push({ itemId: r.itemId, qty, price: r.supplier.price, expectedDate: r.earliestDue ?? undefined });
-    groups.set(key, g);
+    lines.push({ itemId: r.itemId, supplierId: chosen.id, policy: r.policy, qty, price: chosen.price, expectedDate: sel.expectedDate ?? r.earliestDue ?? undefined });
   }
 
   const created = [];
-  for (const g of groups.values()) {
-    created.push(await createPurchaseOrder({ supplierId: g.supplierId, segment: g.segment, lines: g.lines, userId: input.userId }, db));
+  for (const g of groupForPos(lines, input.club ?? true)) {
+    created.push(await createPurchaseOrder({
+      supplierId: g.supplierId, segment: g.segment, userId: input.userId, expedite: input.expedite, expediteNote: input.expediteNote,
+      lines: g.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, price: l.price, expectedDate: l.expectedDate })),
+    }, db));
   }
   return created;
 }

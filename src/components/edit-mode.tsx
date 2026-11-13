@@ -1,5 +1,3 @@
-import { Minus } from "lucide-react";
-
 // Pieces shared by the screens that have an "Edit layout" / "Edit list" mode (Stores bins, Customers & suppliers):
 // dotted tiles that open a form in place, and the red circled minus in a corner.
 
@@ -21,12 +19,4 @@ export function Drawer({ label, tile, tileClass, className = "", children }: {
   );
 }
 
-/** The red circled minus at a corner. Greyed out, with the reason on hover, while the thing can't be removed. */
-export function RemoveButton({ label, busy, why }: { label: string; busy: boolean; why: string }) {
-  return (
-    <button aria-label={label} title={busy ? why : label} disabled={busy}
-      className="absolute -right-1.5 -top-1.5 z-10 flex size-5 cursor-pointer items-center justify-center rounded-full bg-danger text-white shadow-sm ring-2 ring-white hover:bg-[#8f1a10] disabled:cursor-not-allowed disabled:bg-border disabled:text-ink-3">
-      <Minus size={12} strokeWidth={3.5} aria-hidden />
-    </button>
-  );
-}
+export { RemoveButton } from "@/components/remove-button";

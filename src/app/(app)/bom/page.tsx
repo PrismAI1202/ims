@@ -167,7 +167,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No finished-goods items yet. Create one from New BOM (&ldquo;New part…&rdquo;), by importing a file with new parts, or in Masters → Items.</p>
       )}
 
-      <SearchBar q={q} placeholder="Search part, mould or material" clearHref="/bom" />
+      <SearchBar q={q} scan={{ title: "Scan a part or material" }} placeholder="Search part, mould or material" clearHref="/bom" />
       <div className="flex flex-wrap gap-3 text-xs text-ink-2">
         <LegendDot color={BLEND_COLORS.virgin} label="Virgin" /><LegendDot color={BLEND_COLORS.regrind} label="Regrind" /><LegendDot color={BLEND_COLORS.masterbatch} label="Masterbatch" />
       </div>

@@ -90,7 +90,7 @@ export const VIEWS: ViewDef[] = [
     { tab: "issue", label: "Issue FIFO to machines", what: "Pick the oldest lot and issue it against a requisition (stores)", permission: "stock.issue" },
     { tab: "return", label: "Return unused material", what: "Put leftover material back into the same lot (production, stores)", permission: "material.return" },
   ] },
-  { key: "scan", href: "/scan", name: "Scanner", what: "Scan to issue, transfer or load, works offline", group: "STORE & SHOP FLOOR", bar: "#15171A" },
+  { key: "scan", href: "/scan", name: "Offline scanner", what: "Scan to issue, transfer or load with no signal; reached from the steps that scan, never from the menu", group: "STORE & SHOP FLOOR", bar: "#15171A" },
   { key: "production", href: "/production", name: "Production", what: "Hourly booking, downtime with reason codes, runner and regrind", group: "STORE & SHOP FLOOR", bar: "#6B4FB0", requires: "production.book", actions: ["downtime.log"] },
   { key: "fg", href: "/fg", name: "Finished goods", what: "Pack finished goods and print box labels, keep the returnable crate ledger, and jump to Dispatch", group: "STORE & SHOP FLOOR", bar: "#6B4FB0", tabs: [
     { tab: "pack", label: "Pack & label", what: "Pack good parts into customer boxes and print the labels", permission: "fg.pack" },

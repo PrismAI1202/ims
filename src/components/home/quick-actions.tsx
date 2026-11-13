@@ -15,7 +15,6 @@ const ACTIONS: { href: string; label: string; sub: string; view: ViewKey; perm?:
   { href: "/orders?new=dispatch", label: "Dispatch", sub: "Pick, load, DC", view: "orders", perm: "dispatch.manage" },
   { href: "/orders?new=po", label: "Supplier PO", sub: "Raise / receive", view: "orders", perm: "po.manage" },
   { href: "/stock", label: "Bin transfer", sub: "Move between bins", view: "stock" },
-  { href: "/scan", label: "Scanner", sub: "Works offline", view: "scan" },
 ];
 
 export function QuickActions({ user }: HomeProps) {

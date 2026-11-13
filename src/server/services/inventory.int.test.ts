@@ -6,6 +6,7 @@ import {
 } from "./inventory";
 import { stockByItem } from "./stock";
 import { decideCount } from "./stockcount";
+import { setPoExpedite } from "./purchase";
 
 // Runs against the dedicated ims_test database, never the dev database.
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://ims:ims@localhost:5433/ims_test?schema=public";
@@ -72,6 +73,28 @@ describe("GRN", () => {
     const row = (await stockByItem(db)).find((r) => r.code === "RM1");
     expect(row?.onHand).toBe(0);
     expect(row?.pendingQc).toBe(500);
+  });
+});
+
+describe("asking a supplier to expedite", () => {
+  const make = (extra: Record<string, unknown> = {}) =>
+    createPurchaseOrder({ supplierId, segment: "NON_AUTOMOTIVE", lines: [{ itemId: resinId, qty: 100, price: 10 }], ...extra }, db);
+
+  it("is off by default, can be set when the PO is raised, and can be changed while goods are still expected", async () => {
+    const plain = await make();
+    expect(plain).toMatchObject({ expedite: false, expediteNote: null });
+    const urgent = await make({ expedite: true, expediteNote: "  Line stops on the 30th  " });
+    expect(urgent).toMatchObject({ expedite: true, expediteNote: "Line stops on the 30th" });
+
+    expect(await setPoExpedite(plain.id, true, "Customer pulled the date in", db)).toMatchObject({ expedite: true, expediteNote: "Customer pulled the date in" });
+    expect(await setPoExpedite(plain.id, false, "ignored when switching off", db)).toMatchObject({ expedite: false, expediteNote: null });
+  });
+
+  it("can't be set on a PO that is closed or cancelled", async () => {
+    const po = await make();
+    await db.purchaseOrder.update({ where: { id: po.id }, data: { status: "CANCELLED" } });
+    await expect(setPoExpedite(po.id, true, undefined, db)).rejects.toThrow(/nothing to expedite/);
+    await expect(setPoExpedite("nope", true, undefined, db)).rejects.toThrow(/Unknown purchase order/);
   });
 });
 

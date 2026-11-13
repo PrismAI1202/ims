@@ -6,7 +6,7 @@ import { logDowntime } from "./downtime";
 import { saveBom } from "./production";
 import {
   addBin, removeMachine, removeMould, reactivateEquipment, updateMachine, updateMould, removeBin, removeCustomer, removeSupplier, updateCustomer, updateSupplier, removeRack, renameBin, renameRack, renameShelf, createCustomer, createItem, createLocation, createMachine, createMould, createSupplier,
-  setActive, updateItem,
+  setActive, updateItem, createItemWithSupplier, saveItemWithSuppliers, syncItemSuppliers, syncSupplierCatalogue,
 } from "./masters";
 import { DomainError } from "./inventory";
 
@@ -359,5 +359,91 @@ describe("other masters", () => {
     expect(mould.machineId).toBe(m.id);
     expect(mould.cavities).toBe(4);
     await expect(createMould({ code: "mld-x", name: "Bad", cavities: "0" }, db)).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("suppliers and products, from both ends", () => {
+  let a: string, b: string, c: string;
+  beforeEach(async () => {
+    const mk = (code: string) => createSupplier({ code, name: `Supplier ${code}`, leadTimeDays: "7" }, db).then((x) => x.id);
+    [a, b, c] = [await mk("SA"), await mk("SB"), await mk("SC")];
+  });
+  const prices = async (code: string) => (await db.priceMaster.findMany({ where: { item: { code } }, orderBy: { price: "asc" } })).map((p) => [p.supplierId, Number(p.price)]);
+
+  it("creates an item with several suppliers, each with its own price", async () => {
+    await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }, { supplierId: b, price: 110 }, { supplierId: c, price: 130 }], db);
+    expect(await prices("RM-PP-9")).toEqual([[b, 110], [a, 120], [c, 130]]);
+  });
+
+  it("refuses a duplicate supplier, a supplier on a made-here item, and rolls back so no half-made item is left", async () => {
+    await expect(createItemWithSupplier(item(), [{ supplierId: a, price: 1 }, { supplierId: a, price: 2 }], db)).rejects.toThrow(/more than once/);
+    expect(await db.item.count()).toBe(0);
+    await expect(createItemWithSupplier(item({ code: "FG-1", category: "FG" }), [{ supplierId: a, price: 1 }], db)).rejects.toThrow(/made here/);
+    expect(await db.item.count()).toBe(0);
+    await expect(createItemWithSupplier(item(), [{ supplierId: a, price: -1 }], db)).rejects.toThrow(/negative/);
+    expect(await db.item.count()).toBe(0);
+  });
+
+  it("makes an item's suppliers exactly the list given: add, re-price and remove in one save", async () => {
+    const i = await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }, { supplierId: b, price: 110 }], db);
+    await syncItemSuppliers(i.id, [{ supplierId: b, price: 105 }, { supplierId: c, price: 99 }], db);
+    expect(await prices("RM-PP-9")).toEqual([[c, 99], [b, 105]]); // a removed, b re-priced, c added
+    await syncItemSuppliers(i.id, [], db);
+    expect(await prices("RM-PP-9")).toEqual([]);
+  });
+
+  it("saves the details and the suppliers together, or neither", async () => {
+    const i = await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }], db);
+    await saveItemWithSuppliers(i.id, item({ name: "PP renamed" }), [{ supplierId: b, price: 90 }], db);
+    expect((await db.item.findUniqueOrThrow({ where: { id: i.id } })).name).toBe("PP renamed");
+    expect(await prices("RM-PP-9")).toEqual([[b, 90]]);
+    // a bad supplier list rolls the rename back too
+    await expect(saveItemWithSuppliers(i.id, item({ name: "Should not stick" }), [{ supplierId: b, price: 1 }, { supplierId: b, price: 2 }], db)).rejects.toThrow(/more than once/);
+    expect((await db.item.findUniqueOrThrow({ where: { id: i.id } })).name).toBe("PP renamed");
+    // null leaves the supplier list alone (an item that shows none)
+    await saveItemWithSuppliers(i.id, item({ name: "Again" }), null, db);
+    expect(await prices("RM-PP-9")).toEqual([[b, 90]]);
+  });
+
+  it("makes a supplier's products exactly the list given, and the item side sees the same prices", async () => {
+    const x = await createItem(item({ code: "RM-X" }), db), y = await createItem(item({ code: "RM-Y" }), db), z = await createItem(item({ code: "PK-Z", category: "PACKAGING" }), db);
+    await syncSupplierCatalogue(a, [{ itemId: x.id, price: 10 }, { itemId: y.id, price: 20 }], db);
+    expect(await prices("RM-X")).toEqual([[a, 10]]);
+    await syncSupplierCatalogue(b, [{ itemId: x.id, price: 8 }], db);
+    expect(await prices("RM-X")).toEqual([[b, 8], [a, 10]]); // two suppliers for one product
+    await syncSupplierCatalogue(a, [{ itemId: z.id, price: 5 }, { itemId: y.id, price: 22 }], db);
+    expect(await prices("RM-X")).toEqual([[b, 8]]);   // a no longer lists X
+    expect(await prices("RM-Y")).toEqual([[a, 22]]);
+    expect(await prices("PK-Z")).toEqual([[a, 5]]);
+    expect(await db.priceMaster.count({ where: { supplierId: b } })).toBe(1); // b untouched by a's edits
+  });
+
+  it("refuses a made-here product, a duplicate, or a product that doesn't exist on a supplier's list", async () => {
+    const fg = await createItem(item({ code: "FG-1", category: "FG" }), db), x = await createItem(item({ code: "RM-X" }), db);
+    await expect(syncSupplierCatalogue(a, [{ itemId: fg.id, price: 1 }], db)).rejects.toThrow(/made here/);
+    await expect(syncSupplierCatalogue(a, [{ itemId: x.id, price: 1 }, { itemId: x.id, price: 2 }], db)).rejects.toThrow(/more than once/);
+    await expect(syncSupplierCatalogue(a, [{ itemId: "nope", price: 1 }], db)).rejects.toThrow(/doesn't exist/);
+    await expect(syncSupplierCatalogue("nope", [], db)).rejects.toThrow(/doesn't exist/);
+    expect(await db.priceMaster.count()).toBe(0);
+  });
+});
+
+describe("locating a scanned code", () => {
+  it("tells a bin, a lot, a box and an item apart, and where the stock is", async () => {
+    const { locateCode } = await import("./locate");
+    const wh = await db.warehouse.create({ data: { code: "WH", name: "Main" } });
+    const bin = await db.location.create({ data: { code: "A-01-01", rack: "A", shelf: "01", bin: "01", type: "STORAGE", warehouseId: wh.id } });
+    const it = await createItem(item({ code: "RM-LOC" }), db);
+    const lot = await db.lot.create({ data: { lotNumber: "LOT-LOC-1", itemId: it.id, supplierLotNo: "heat-77", receivedQty: 50, qcStatus: "APPROVED" } });
+    await db.stockBalance.create({ data: { lotId: lot.id, locationId: bin.id, qty: 50 } });
+
+    expect(await locateCode(" a-01-01 \n", db)).toEqual({ kind: "bin", bin: "A-01-01" });
+    expect(await locateCode("lot-loc-1", db)).toMatchObject({ kind: "lot", lotNumber: "LOT-LOC-1", itemCode: "RM-LOC", bins: ["A-01-01"] });
+    expect(await locateCode("HEAT-77", db)).toMatchObject({ kind: "lot", lotNumber: "LOT-LOC-1" }); // the supplier's own heat number finds it too
+    expect(await locateCode("rm-loc", db)).toEqual({ kind: "item", itemCode: "RM-LOC" });
+    expect(await locateCode("nothing-like-this", db)).toEqual({ kind: "none" });
+    expect(await locateCode("   ", db)).toEqual({ kind: "none" });
+    await db.location.update({ where: { id: bin.id }, data: { active: false } });
+    expect(await locateCode("A-01-01", db)).toEqual({ kind: "none" }); // a retired bin is not a destination
   });
 });

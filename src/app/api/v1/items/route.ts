@@ -5,7 +5,7 @@ import { createItemWithSupplier } from "@/server/services/masters";
 
 // POST /api/v1/items — creates an item (part, resin, masterbatch, insert, packaging...) and, optionally, the supplier and buying
 // price that make it orderable. The BOM editor calls this so a new part or material can be added without leaving the form.
-// Body: the item fields (code, name, category, uom, minStock, reorderPoint, maxStock, polymerGrade, maxRegrindPct...) plus optional supplierId and price.
+// Body: the item fields (code, name, category, uom, minStock, reorderPoint, maxStock, polymerGrade, maxRegrindPct...) plus optional supplierId and price, or a suppliers list.
 export async function POST(req: Request) {
   const user = await getApiUser(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -13,13 +13,23 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return Response.json({ error: "Invalid request" }, { status: 400 });
-  const { supplierId, price, ...fields } = body;
-  const supplier = typeof supplierId === "string" && supplierId ? { supplierId, price: Number(price) } : null;
-  if (supplier && (price === "" || price === null || price === undefined)) return Response.json({ error: "Enter the buying price for that supplier." }, { status: 400 });
+  const { supplierId, price, suppliers: many, ...fields } = body;
+  // One supplier (supplierId + price) or several (suppliers: [{ supplierId, price }]).
+  const list: { supplierId: string; price: number }[] = [];
+  if (Array.isArray(many)) {
+    for (const r of many as { supplierId?: unknown; price?: unknown }[]) {
+      if (typeof r?.supplierId !== "string" || !r.supplierId) continue;
+      if (r.price === "" || r.price === null || r.price === undefined) return Response.json({ error: "Enter the buying price for every supplier." }, { status: 400 });
+      list.push({ supplierId: r.supplierId, price: Number(r.price) });
+    }
+  } else if (typeof supplierId === "string" && supplierId) {
+    if (price === "" || price === null || price === undefined) return Response.json({ error: "Enter the buying price for that supplier." }, { status: 400 });
+    list.push({ supplierId, price: Number(price) });
+  }
 
   try {
     // Resin is COA-controlled by default, as it is when materials come in through a BOM import.
-    const item = await createItemWithSupplier({ requiresCoa: fields.category === "RM_RESIN", ...fields }, supplier);
+    const item = await createItemWithSupplier({ requiresCoa: fields.category === "RM_RESIN", ...fields }, list);
     return Response.json({
       item: { id: item.id, code: item.code, name: item.name, uom: item.uom, category: item.category, polymerGrade: item.polymerGrade, maxRegrindPct: item.maxRegrindPct === null ? null : Number(item.maxRegrindPct) },
     }, { status: 201 });

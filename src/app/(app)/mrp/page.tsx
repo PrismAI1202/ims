@@ -3,6 +3,7 @@ import { DownloadLink } from "@/components/download-link";
 import { DomainError } from "@/server/services/inventory";
 import { createPosFromPlan, HORIZON_PRESETS, planMrp } from "@/server/services/mrp";
 import { canView } from "@/server/auth/permissions";
+import { dateField } from "@/server/line-form";
 import { MrpWorkspace, type MrpRowView } from "@/components/mrp-table";
 import { TYPE_GROUPS } from "@/lib/item-types";
 import { Flash } from "@/components/flash";
@@ -24,14 +25,18 @@ async function order(formData: FormData) {
   // Come back to the same horizon and the same filters, with only the numbers changed.
   const type = String(formData.get("type") || ""), onlyAction = formData.get("action") === "1";
   const back = `/mrp?horizon=${horizonDays}&scrap=${scrapPct}${TYPE_GROUPS.some((g) => g.key === type) ? `&type=${type}` : ""}${onlyAction ? "&action=1" : ""}`;
-  let count = 0;
-  return runAction(back, () => `Created ${count} purchase order${count === 1 ? "" : "s"}. Find them under Orders.`, async () => {
+  let made: { poNumber: string }[] = [];
+  return runAction(back, () => `Created ${made.map((p) => p.poNumber).join(", ")}. Find ${made.length === 1 ? "it" : "them"} under Orders.`, async () => {
+    const expectedDate = dateField(formData.get("expected"));
     const selections = formData.getAll("item").map(String).map((itemId) => {
       const q = String(formData.get(`qty_${itemId}`) || "");
-      return { itemId, qty: q === "" ? undefined : Number(q) };
+      return { itemId, qty: q === "" ? undefined : Number(q), supplierId: String(formData.get(`supplier_${itemId}`) || "") || undefined, expectedDate };
     });
     if (selections.some((s) => s.qty !== undefined && !Number.isFinite(s.qty))) throw new DomainError("A quantity isn't a number.");
-    count = (await createPosFromPlan({ selections, opts: { horizonDays, scrapPct }, userId: user.id })).length;
+    made = await createPosFromPlan({
+      selections, opts: { horizonDays, scrapPct }, userId: user.id,
+      club: formData.get("club") === "1", expedite: formData.get("expedite") === "1", expediteNote: String(formData.get("expediteNote") || ""),
+    });
   });
 }
 
@@ -54,7 +59,7 @@ export default async function MrpPage({
     gross: r.gross, onHand: r.onHand, onOrder: r.onOrder, inProduction: r.inProduction, plannedDays: r.plannedDays, pendingQc: r.pendingQc,
     projected: r.projected, suggested: r.suggested, reason: r.reason, inHouse: r.inHouse, buyable: r.buyable,
     supplier: r.supplier ? { name: r.supplier.name, price: r.supplier.price, leadTimeDays: r.supplier.leadTimeDays } : null,
-    orderBy: r.orderBy ? r.orderBy.toISOString() : null, late: r.late,
+    orderBy: r.orderBy ? r.orderBy.toISOString() : null, late: r.late, options: r.options, earliestDue: r.earliestDue ? r.earliestDue.toISOString() : null,
     minStock: r.minStock, reorderPointLevel: r.reorderPointLevel, maxStock: r.maxStock, safetyStock: r.safetyStock,
     needBy: r.needBy,
     demandLines: r.demandLines.map((d) => ({ ...d, dueDate: d.dueDate.toISOString() })),
@@ -70,9 +75,7 @@ export default async function MrpPage({
     <div className="space-y-4">
       <PageHeader eyebrow="BUY & RECEIVE" title="MRP plan" subtitle={`Planning to ${date(horizonEnd)} · ${demandLines} demand line${demandLines === 1 ? "" : "s"} in range`} />
       <p className="max-w-3xl text-sm text-ink-2">
-        Demand in the horizon is netted against stock, open purchase orders and what the machine plan will make, then exploded through each part&apos;s BOM.
-        Parts wanted by an automotive customer follow the strict Kanban minimum; everything else follows its reorder point.
-        Open a row to see what is behind it. Quantities and prices are recalculated when you create orders.
+        What the plan needs in the window, less stock, open POs and the machine plan, worked back through each BOM. Automotive parts hold a strict Kanban minimum; the rest reorder at their reorder point. Open a row to see why.
       </p>
       <Flash error={sp.error} ok={sp.ok} />
 

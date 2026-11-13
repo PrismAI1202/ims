@@ -1,3 +1,4 @@
+import { ScanSearch } from "@/components/scan-search";
 import Link from "next/link";
 import { requireView } from "@/server/auth/guard";
 import { traceQuery, type FgTrace, type MaterialOrigin, type MaterialTrace } from "@/server/services/trace";
@@ -125,7 +126,7 @@ export default async function TracePage({ searchParams }: { searchParams: Promis
       </p>
       <form method="get" className="flex max-w-xl gap-3">
         <input name="q" defaultValue={q ?? ""} autoFocus placeholder="BX-…, LOT-…, heat number or booking no." className={inputCls} aria-label="Search" />
-        <button className={`${btnCls} mt-1`}>Trace</button>
+        <span className="mt-1 flex gap-2"><ScanSearch title="Scan a box or lot" hint="A box label, a lot tag or a supplier's heat number." /><button className={btnCls}>Trace</button></span>
       </form>
       {result?.kind === "NONE" && <p className="rounded bg-warn-bg p-3 text-sm text-warn-ink">Nothing found for “{result.query}”. Check the code, or try the supplier heat number.</p>}
       {result?.kind === "FG" && <Fg t={result} />}

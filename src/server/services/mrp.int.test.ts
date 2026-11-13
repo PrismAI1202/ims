@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { importDemand, undoImport } from "./demand";
+import { createCustomerOrder, importDemand, removeOrderLine, undoImport } from "./demand";
 import { parseDemandRows } from "./demand-import";
 import { createPosFromPlan, planMrp } from "./mrp";
 
@@ -102,6 +102,62 @@ describe("importDemand", () => {
   });
 });
 
+describe("entering a customer order by hand", () => {
+  const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
+  const order = (over: Record<string, unknown> = {}) => createCustomerOrder({
+    customerId: ids.ind, type: "FIRM", ref: "CPO-7731", lines: [{ fgItemId: ids.fg, qty: 4000, dueDate: d("2026-11-05") }, { fgItemId: ids.fg, qty: 2000, dueDate: d("2026-11-20") }], ...over,
+  } as never, db);
+
+  it("adds each line as ordinary demand with the customer's PO number, and the plan counts it", async () => {
+    expect(await order()).toEqual({ lines: 2, ref: "CPO-7731" });
+    const lines = await db.demandLine.findMany({ orderBy: { dueDate: "asc" } });
+    expect(lines.map((l) => [l.type, l.qty, l.customerRef, l.importId])).toEqual([["FIRM", 4000, "CPO-7731", null], ["FIRM", 2000, "CPO-7731", null]]);
+    const fg = (await planMrp(opts, db)).rows.find((r) => r.code === "FG-CLIP")!;
+    expect(fg.gross).toBe(6000);
+    expect(fg.demandLines).toHaveLength(2);
+  });
+
+  it("refuses a bad order, naming the field, and adds nothing", async () => {
+    const fails = async (over: Record<string, unknown>, msg: RegExp, field?: string) => {
+      const e = await order(over).catch((x) => x);
+      expect(e.message).toMatch(msg);
+      if (field) expect(e.fields).toContain(field);
+    };
+    await fails({ lines: [] }, /at least one line/);
+    await fails({ type: "FORECAST" }, /firm or spot/, "type");
+    await fails({ customerId: "nope" }, /active customer/, "customerId");
+    await fails({ lines: [{ fgItemId: ids.pp, qty: 5, dueDate: d("2026-11-05") }] }, /isn't a finished part/, "itemId");
+    await fails({ lines: [{ fgItemId: ids.fg, qty: 0, dueDate: d("2026-11-05") }] }, /whole number above 0/, "qty");
+    await fails({ lines: [{ fgItemId: ids.fg, qty: 1.5, dueDate: d("2026-11-05") }] }, /whole number/, "qty");
+    await fails({ lines: [{ fgItemId: ids.fg, qty: 5, dueDate: new Date("nope") }] }, /due date/, "date");
+    await fails({ lines: [{ fgItemId: ids.fg, qty: 5, dueDate: d("2026-11-05") }, { fgItemId: ids.fg, qty: 6, dueDate: d("2026-11-05") }] }, /listed twice/);
+    await db.customer.update({ where: { id: ids.ind }, data: { active: false } });
+    await fails({}, /active customer/, "customerId");
+    expect(await db.demandLine.count()).toBe(0);
+  });
+
+  it("enters a customer's PO number only once, but lets two customers use the same number", async () => {
+    await order();
+    const again = await order().catch((e) => e);
+    expect(again.message).toMatch(/already has an order with PO number CPO-7731 \(2 lines\)/);
+    expect(again.fields).toEqual(["customerRef"]);
+    await order({ customerId: ids.auto }); // another customer, same number: fine
+    await order({ ref: "" }); // no number: no clash
+    await order({ ref: undefined });
+    expect(await db.demandLine.count()).toBe(2 + 2 + 2 + 2);
+  });
+
+  it("takes a po_ref column from a file too, and removes a line nothing has shipped against", async () => {
+    await doImport([demand({ po_ref: "FILE-1" })]);
+    expect((await db.demandLine.findFirstOrThrow()).customerRef).toBe("FILE-1");
+    const [a, b] = [await db.demandLine.findFirstOrThrow(), await db.demandLine.create({ data: { customerId: ids.ind, fgItemId: ids.fg, qty: 10, dueDate: d("2026-12-01"), type: "SPOT", shippedQty: 4 } })];
+    await removeOrderLine(a.id, db);
+    expect(await db.demandLine.count()).toBe(1);
+    await expect(removeOrderLine(b.id, db)).rejects.toThrow(/already shipped 4/);
+    await expect(removeOrderLine("nope", db)).rejects.toThrow(/doesn't exist/);
+  });
+});
+
 describe("planMrp: what is behind each row", () => {
   it("lists the customer demand behind a part and the parts behind a material, and gives each preset horizon its own need", async () => {
     await doImport([demand({ qty: 5000, due_date: "2026-10-25" }), demand({ qty: 3000, due_date: "2026-12-10" })]);
@@ -172,6 +228,52 @@ describe("planMrp: what is behind each row", () => {
     const pp = (await planMrp(opts, db)).rows.find((r) => r.code === "RM-PP")!;
     expect(pp.openPos).toMatchObject([{ poNumber: "PO-T-1", supplier: "Cheap Poly", qty: 300 }]);
     expect(pp.onOrder).toBe(300);
+  });
+});
+
+describe("createPosFromPlan: choosing the supplier and clubbing items", () => {
+  const sel = (itemId: string, extra: Record<string, unknown> = {}) => ({ itemId, ...extra });
+  // An order we raise counts as on order, so the item stops needing one; clear them between steps of a test.
+  const clear = () => db.$executeRawUnsafe(`TRUNCATE TABLE "PurchaseOrderLine", "PurchaseOrder" RESTART IDENTITY CASCADE`);
+  beforeEach(async () => {
+    await doImport([demand({ qty: 5000, due_date: "2026-10-25" })]);
+    await db.priceMaster.create({ data: { itemId: ids.ins, supplierId: ids.cheap, price: 3.5 } }); // Cheap Poly also supplies the inserts
+  });
+
+  it("offers every priced supplier, cheapest first, and the cheapest is the default", async () => {
+    const pp = (await planMrp(opts, db)).rows.find((r) => r.code === "RM-PP")!;
+    expect(pp.options.map((o) => [o.name, o.price, o.leadTimeDays])).toEqual([["Cheap Poly", 100, 14], ["Dear Poly", 120, 3]]);
+    expect(pp.supplier?.name).toBe("Cheap Poly");
+  });
+
+  it("orders from the supplier the buyer picked, at that supplier's price, and refuses one with no price on file", async () => {
+    await expect(createPosFromPlan({ selections: [sel(ids.pp, { supplierId: ids.ins1 })], opts }, db)).rejects.toThrow(/no price on file for RM-PP/);
+    const [po] = await createPosFromPlan({ selections: [sel(ids.pp, { supplierId: ids.dear })], opts }, db);
+    expect(po.supplierId).toBe(ids.dear);
+    expect(Number(po.lines[0].price)).toBe(120);
+  });
+
+  it("clubs items for the same supplier on one PO, or raises one each when clubbing is off", async () => {
+    const both = [sel(ids.pp, { supplierId: ids.cheap }), sel(ids.ins, { supplierId: ids.cheap })];
+    const clubbed = await createPosFromPlan({ selections: both, opts }, db);
+    expect(clubbed).toHaveLength(1);
+    expect(clubbed[0].lines.map((l) => l.itemId).sort()).toEqual([ids.pp, ids.ins].sort());
+    await clear();
+    const apart = await createPosFromPlan({ selections: both, opts, club: false }, db);
+    expect(apart).toHaveLength(2);
+    await clear();
+    // different suppliers never share a PO
+    expect(await createPosFromPlan({ selections: [sel(ids.pp, { supplierId: ids.cheap }), sel(ids.ins, { supplierId: ids.ins1 })], opts }, db)).toHaveLength(2);
+  });
+
+  it("flags a PO as expedite, with the note, and takes a chosen expected date", async () => {
+    const date = new Date("2026-10-30");
+    const [po] = await createPosFromPlan({ selections: [sel(ids.pp, { supplierId: ids.cheap, expectedDate: date })], opts, expedite: true, expediteNote: "Line stops on 30 Oct" }, db);
+    expect(po).toMatchObject({ expedite: true, expediteNote: "Line stops on 30 Oct" });
+    expect(po.lines[0].expectedDate?.toISOString().slice(0, 10)).toBe("2026-10-30");
+    await clear();
+    const [plain] = await createPosFromPlan({ selections: [sel(ids.ins)], opts }, db);
+    expect(plain).toMatchObject({ expedite: false, expediteNote: null });
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateField, readLines } from "./line-form";
+import { dateField, readLines, readPriceRows } from "./line-form";
 
 const form = (pairs: [string, string][]) => { const f = new FormData(); for (const [k, v] of pairs) f.append(k, v); return f; };
 
@@ -31,5 +31,18 @@ describe("dateField", () => {
   it("accepts YYYY-MM-DD as UTC midnight and rejects everything else", () => {
     expect(dateField("2026-12-15")?.toISOString()).toBe("2026-12-15T00:00:00.000Z");
     for (const bad of ["", "  ", "15/12/2026", "2026-13-40", "soon", null, undefined]) expect(dateField(bad)).toBeUndefined();
+  });
+});
+
+describe("readPriceRows (the supplier / product price list)", () => {
+  it("reads rows in order and skips blank ones", () => {
+    const f = form([["supplierId", "a"], ["price", "12.5"], ["supplierId", ""], ["price", ""], ["supplierId", "b"], ["price", "10"]]);
+    expect(readPriceRows(f, "supplierId")).toEqual([{ id: "a", price: 12.5 }, { id: "b", price: 10 }]);
+    expect(readPriceRows(form([["itemId", "x"], ["price", "3"]]), "itemId")).toEqual([{ id: "x", price: 3 }]);
+  });
+  it("refuses a row with a supplier but no price, naming the field", () => {
+    const f = form([["supplierId", "a"], ["price", " "]]);
+    expect(() => readPriceRows(f, "supplierId")).toThrow(/Enter a price/);
+    try { readPriceRows(f, "supplierId"); } catch (e) { expect((e as { fields: string[] }).fields).toEqual(["price"]); }
   });
 });
