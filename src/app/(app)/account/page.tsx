@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { requireUser, runAction } from "@/server/auth/guard";
 import { changeOwnPassword } from "@/server/services/users";
 import { DomainError } from "@/server/services/inventory";
@@ -11,9 +12,9 @@ export const instant = false;
 async function change(formData: FormData) {
   "use server";
   const user = await requireUser(); // any signed-in role
-  await runAction("/account", "Password changed.", async () => {
+  return runAction("/account", "Password changed.", async () => {
     const next = String(formData.get("next") || "");
-    if (next !== String(formData.get("confirm") || "")) throw new DomainError("The new passwords don't match.");
+    if (next !== String(formData.get("confirm") || "")) throw new DomainError("The new passwords don't match.", ["next", "confirm"]);
     await changeOwnPassword(user.id, String(formData.get("current") || ""), next);
   });
 }
@@ -31,13 +32,13 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <Card><PushToggle /></Card>
         </div>
         <Card>
-          <form action={change} className="space-y-3">
+          <Form action={change} className="space-y-3">
             <h2 className="font-display text-base font-bold">Change password</h2>
             <label className="block text-[13px]">Current password<input name="current" type="password" required autoComplete="current-password" className={inputCls} /></label>
             <label className="block text-[13px]">New password (at least 8 characters)<input name="next" type="password" required minLength={8} autoComplete="new-password" className={inputCls} /></label>
             <label className="block text-[13px]">Confirm new password<input name="confirm" type="password" required autoComplete="new-password" className={inputCls} /></label>
             <button className={`${btnCls} w-full`}>Change password</button>
-          </form>
+          </Form>
         </Card>
       </div>
     </div>

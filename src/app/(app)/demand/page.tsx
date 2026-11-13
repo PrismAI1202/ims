@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { DownloadLink } from "@/components/download-link";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
@@ -16,9 +17,9 @@ async function upload(formData: FormData) {
   "use server";
   const user = await requirePermission("mrp.plan");
   let msg = "";
-  await runAction("/demand", () => msg, async () => {
+  return runAction("/demand", () => msg, async () => {
     const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.");
+    if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.", ["file"]);
     if (file.size > MAX_UPLOAD_BYTES) throw new DomainError("File is larger than 5 MB.");
     let rows;
     try {
@@ -38,7 +39,7 @@ async function undo(formData: FormData) {
   "use server";
   await requirePermission("mrp.plan");
   let n = 0;
-  await runAction("/demand", () => `Removed ${n} line${n === 1 ? "" : "s"} from that upload.`, async () => {
+  return runAction("/demand", () => `Removed ${n} line${n === 1 ? "" : "s"} from that upload.`, async () => {
     n = await undoImport(String(formData.get("importId")));
   });
 }
@@ -67,7 +68,7 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
       <Flash error={error} ok={ok} />
       <CreatePanel>
         <Card>
-          <form action={upload} className="space-y-3">
+          <Form action={upload} className="space-y-3">
             <label className="block text-[13px] font-semibold">Schedule file (.csv or .xlsx, up to 5 MB)
               <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} py-2.5 file:mr-3`} />
             </label>
@@ -77,7 +78,7 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
             </label>
             <p className="text-xs text-ink-3">Columns: customer_code, part_code, due_date, qty, type (FORECAST, FIRM or SPOT; blank means FIRM). <DownloadLink href={"/api/v1/demand-template"}>Download a template</DownloadLink>.</p>
             <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
-          </form>
+          </Form>
         </Card>
       </CreatePanel>
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">
@@ -120,7 +121,7 @@ export default async function DemandPage({ searchParams }: { searchParams: Promi
             <tr key={i.id}>
               <td><Mono className="text-xs">{i.createdAt.toISOString().slice(0, 16).replace("T", " ")}</Mono></td><td>{i.fileName}</td>
               <td className="text-right"><Mono>{i.rowCount}</Mono></td><td className="text-right"><Mono>{i.replaced}</Mono></td>
-              <td><form action={undo}><input type="hidden" name="importId" value={i.id} /><button className="min-h-9 cursor-pointer text-xs font-semibold text-danger">Remove this upload</button></form></td>
+              <td><Form action={undo}><input type="hidden" name="importId" value={i.id} /><button className="min-h-9 cursor-pointer text-xs font-semibold text-danger">Remove this upload</button></Form></td>
             </tr>
           ))}
           {imports.length === 0 && <tr><td className="text-ink-3" colSpan={5}>No uploads yet.</td></tr>}

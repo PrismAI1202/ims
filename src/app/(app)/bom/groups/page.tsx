@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { ChevronLeft, FileText } from "lucide-react";
 import { db } from "@/server/db";
@@ -17,7 +18,7 @@ async function create(formData: FormData) {
   "use server";
   await requirePermission("equivalents.manage");
   let id = "";
-  await runAction(() => `/bom/groups?id=${id}`, "Group created. Add its first grade.", async () => {
+  return runAction(() => `/bom/groups?id=${id}`, "Group created. Add its first grade.", async () => {
     id = (await createGroup({ name: String(formData.get("name") || ""), itemId: String(formData.get("itemId") || ""), spec: String(formData.get("spec") || "") })).id;
   }, "/bom/groups");
 }
@@ -26,7 +27,7 @@ async function add(formData: FormData) {
   "use server";
   const user = await requirePermission("equivalents.manage");
   const groupId = String(formData.get("groupId"));
-  await runAction(`/bom/groups?id=${groupId}`, "Grade sent to QA for approval. It can be used once QA approves it.", async () => {
+  return runAction(`/bom/groups?id=${groupId}`, "Grade sent to QA for approval. It can be used once QA approves it.", async () => {
     const days = String(formData.get("leadTimeDays") || "");
     await addGrade({
       groupId, gradeName: String(formData.get("gradeName") || ""), supplierId: String(formData.get("supplierId") || ""),
@@ -41,7 +42,7 @@ async function decide(formData: FormData) {
   const user = await requirePermission("qc.inspect");
   const groupId = String(formData.get("groupId"));
   const decision = String(formData.get("decision")) as "APPROVE_ALL" | "APPROVE_NON_AUTO" | "REJECT";
-  await runAction(`/bom/groups?id=${groupId}`, decision === "REJECT" ? "Grade rejected." : "Grade approved.", async () => {
+  return runAction(`/bom/groups?id=${groupId}`, decision === "REJECT" ? "Grade rejected." : "Grade approved.", async () => {
     await decideGrade({ gradeId: String(formData.get("gradeId")), decision, userId: user.id });
   });
 }
@@ -50,7 +51,7 @@ async function moveUp(formData: FormData) {
   "use server";
   await requirePermission("equivalents.manage");
   const groupId = String(formData.get("groupId"));
-  await runAction(`/bom/groups?id=${groupId}`, "Priority updated.", async () => { await moveGradeUp(String(formData.get("gradeId"))); });
+  return runAction(`/bom/groups?id=${groupId}`, "Priority updated.", async () => { await moveGradeUp(String(formData.get("gradeId"))); });
 }
 
 const COLORS = ["#1D4ED8", "#6E95E8", "#E98A3E", "#1E7A46"];
@@ -92,7 +93,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
           <CreatePanel>
             <Card className="space-y-3">
               <Eyebrow>ADD EQUIVALENT GRADE TO {sel.code}</Eyebrow>
-              <form action={add} className="grid gap-3 md:grid-cols-3">
+              <Form action={add} className="grid gap-3 md:grid-cols-3">
                 <input type="hidden" name="groupId" value={sel.id} />
                 <label className="text-[13px]">Vendor grade name<input name="gradeName" required placeholder="e.g. HP-500N" className={inputCls} /></label>
                 <label className="text-[13px]">Vendor
@@ -102,7 +103,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
                 <label className="text-[13px] md:col-span-1">Datasheet (PDF / photo, required)<input name="datasheet" type="file" accept=".pdf,.png,.jpg,.jpeg" required className={`${inputCls} py-2.5 text-xs`} /></label>
                 <label className="text-[13px] md:col-span-1">Trial report (optional)<input name="trial" type="file" accept=".pdf,.png,.jpg,.jpeg" className={`${inputCls} py-2.5 text-xs`} /></label>
                 <div className="flex items-end"><button className={`${btnCls} w-full`}>Send to QA for approval</button></div>
-              </form>
+              </Form>
               <p className="text-xs text-ink-3">Snap datasheet → check spec window → attach trial report → QA approves.</p>
             </Card>
           </CreatePanel>
@@ -134,8 +135,8 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
                 <div className="flex items-center justify-between gap-2 text-xs text-ink-2">
                   <span className="flex items-center gap-1.5"><FileText size={13} aria-hidden />{x.evidence}</span>
                   {canManage && (x.rank ?? 1) > 1 && (
-                    <form action={moveUp}><input type="hidden" name="groupId" value={sel.id} /><input type="hidden" name="gradeId" value={x.id} />
-                      <button className="min-h-9 cursor-pointer rounded-lg border border-border bg-canvas px-3 text-xs font-semibold">Move up</button></form>
+                    <Form action={moveUp}><input type="hidden" name="groupId" value={sel.id} /><input type="hidden" name="gradeId" value={x.id} />
+                      <button className="min-h-9 cursor-pointer rounded-lg border border-border bg-canvas px-3 text-xs font-semibold">Move up</button></Form>
                   )}
                 </div>
               </article>
@@ -154,12 +155,12 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
                       <Badge tone={x.status === "PENDING_QA" ? "warn" : "danger"}>{x.status === "PENDING_QA" ? "Pending QA" : "Rejected"}</Badge>
                     </div>
                     {x.status === "PENDING_QA" && canDecide && (
-                      <form action={decide} className="grid gap-2 sm:grid-cols-3">
+                      <Form action={decide} className="grid gap-2 sm:grid-cols-3">
                         <input type="hidden" name="groupId" value={sel.id} /><input type="hidden" name="gradeId" value={x.id} />
                         <button name="decision" value="APPROVE_ALL" className={btnOkCls}>Approve for all parts</button>
                         <button name="decision" value="APPROVE_NON_AUTO" className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-xl border border-border bg-white px-4 text-[15px] font-semibold">Non-auto only</button>
                         <button name="decision" value="REJECT" className={btnDangerCls}>Reject</button>
-                      </form>
+                      </Form>
                     )}
                     {x.status === "PENDING_QA" && !canDecide && <p className="text-xs text-ink-3">QA will review the datasheet and trial report.</p>}
                   </article>
@@ -188,14 +189,14 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
           <Card className="space-y-3">
             <Eyebrow>NEW EQUIVALENT GROUP</Eyebrow>
             {eligible.length === 0 ? <p className="text-sm text-ink-3">Every resin, masterbatch, insert and packaging item already has a group. Add the item in Masters first.</p> : (
-              <form action={create} className="grid gap-3 md:grid-cols-3">
+              <Form action={create} className="grid gap-3 md:grid-cols-3">
                 <label className="text-[13px]">Group name<input name="name" required placeholder="e.g. PC/ABS FR V0" className={inputCls} /></label>
                 <label className="text-[13px]">Stock item it covers
                   <select name="itemId" required className={inputCls}>{eligible.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}</select>
                 </label>
                 <label className="text-[13px]">Key spec values (comma separated)<input name="spec" placeholder="MFI 10–14, UL94 V0, H₂O ≤ 0.02%" className={inputCls} /></label>
                 <div className="md:col-span-3"><button className={`${btnCls} w-full md:w-auto`}>Create group</button></div>
-              </form>
+              </Form>
             )}
           </Card>
         </CreatePanel>

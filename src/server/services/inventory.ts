@@ -6,7 +6,8 @@ type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
 
 export class DomainError extends Error {
-  constructor(message: string) {
+  /** `fields`: names of the form inputs the message is about, so the page can highlight them. */
+  constructor(message: string, public fields: string[] = []) {
     super(message);
     this.name = "DomainError";
   }
@@ -164,6 +165,8 @@ export interface QcInput {
   mfi?: number; moisturePct?: number; density?: number; tensile?: number;
   remarks?: string; coaUrl?: string;
   putawayLocationCode?: string; // required to move an approved lot out of staging
+  /** The quantity counted in staging while inspecting. A difference from the GRN goes for approval and keeps the lot in staging. */
+  countedQty?: number;
   userId?: string;
 }
 
@@ -175,16 +178,32 @@ export async function recordQc(input: QcInput, db: Db = defaultDb) {
       throw new DomainError("A deviation needs remarks.");
     }
 
+    if (input.countedQty !== undefined && (!Number.isFinite(input.countedQty) || input.countedQty < 0)) throw new DomainError("The counted quantity can't be negative.");
     await tx.qcInspection.create({
       data: {
         lotId: lot.id, decision: input.decision, mfi: input.mfi, moisturePct: input.moisturePct,
         density: input.density, tensile: input.tensile, remarks: input.remarks, coaUrl: input.coaUrl,
-        inspectedById: input.userId,
+        countedQty: input.countedQty, inspectedById: input.userId,
       },
     });
     await tx.lot.update({ where: { id: lot.id }, data: { qcStatus: input.decision } });
 
-    if (input.decision !== "REJECTED" && input.putawayLocationCode) {
+    // The count and the inspection are one visit to the pallet. A difference from the GRN is a stock adjustment, so it goes to the
+    // same approver as any other count; until it is decided the lot stays in staging, so nothing is stored on a quantity nobody agreed.
+    const inStaging = lot.balances.filter((x) => x.location.type === "STAGING" && Number(x.qty) > 0);
+    const system = inStaging.reduce((a, b) => a + Number(b.qty), 0);
+    const differs = input.countedQty !== undefined && inStaging.length > 0 && Math.abs(input.countedQty - system) > 1e-9;
+    if (differs) {
+      await tx.stockCount.create({
+        data: {
+          countNumber: await nextNumber(tx, "SC", "stockCount"), locationId: inStaging[0].locationId, status: "SUBMITTED",
+          countedById: input.userId, submittedAt: new Date(),
+          lines: { create: [{ lotId: lot.id, systemQty: system, countedQty: input.countedQty! }] },
+        },
+      });
+    }
+
+    if (input.decision !== "REJECTED" && input.putawayLocationCode && !differs) {
       const dest = await tx.location.findFirst({ where: { code: input.putawayLocationCode, active: true } });
       if (!dest) throw new DomainError(`Unknown bin ${input.putawayLocationCode}.`);
       if (dest.type !== "STORAGE") throw new DomainError("Put-away bin must be a storage location.");
@@ -194,7 +213,8 @@ export async function recordQc(input: QcInput, db: Db = defaultDb) {
         });
       }
     }
-    return tx.lot.findUniqueOrThrow({ where: { id: lot.id } });
+    const done = await tx.lot.findUniqueOrThrow({ where: { id: lot.id } });
+    return Object.assign(done, { countDifference: differs ? Math.round((input.countedQty! - system) * 1000) / 1000 : null });
   });
 }
 

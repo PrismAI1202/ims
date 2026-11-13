@@ -4,7 +4,7 @@ import { assertCan, can, canView, ForbiddenError, resolveAccess, SYSTEM_ROLES } 
 import { normalize } from "@/server/services/roles";
 import { hubTabs, levelOf, levelPermissions, VIEW_KEYS, viewDef } from "@/lib/views";
 import { tasksFor } from "@/server/services/inbox";
-import { tabsFor } from "@/components/nav-data";
+import { litPath, menuViews, navFor, tabsFor } from "@/components/nav-data";
 
 
 const role = (key: string) => resolveAccess(SYSTEM_ROLES.find((r) => r.key === key)!);
@@ -76,7 +76,7 @@ describe("normalize (saving a role)", () => {
 describe("role home and tabs", () => {
   it("puts the role's first three screens in the phone tab bar", () => {
     expect(tabsFor(role("QA_INSPECTOR").views).map((t) => t.label)).toEqual(["Home", "Quality", "Trace", "BOMs", "More"]);
-    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Receive", "Stores", "Requests", "More"]);
+    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Stores", "Scan", "Orders", "More"]);
   });
   it("routes each hand-over to the role that does the next step", () => {
     expect(tasksFor(role("STORE_INCHARGE"))).toEqual(expect.arrayContaining(["gate", "putaway", "issue", "to-buy"]));
@@ -251,5 +251,22 @@ describe("merged screens: what each role does in them", () => {
   });
   it("the retired screens are gone from the catalog", () => {
     for (const k of ["count", "approvals", "issue", "returns", "returnables", "equivalents", "variance"]) expect(viewDef(k)).toBeUndefined();
+  });
+});
+
+describe("Material requests in the menus", () => {
+  const names = (r: string) => navFor(role(r).views).flatMap((g) => g.items.map((i) => i.name));
+  it("is only a Stores tab (like Gate entry & GRN) for a role that has Stores, and a menu entry for one that does not", () => {
+    expect(names("STORE_INCHARGE")).toContain("Stores");
+    expect(names("STORE_INCHARGE")).not.toContain("Material requests");
+    expect(names("PRODUCTION_LEAD")).toContain("Material requests"); // no Stores to reach it from
+    expect(menuViews(["stock", "requests", "grn"])).toEqual(["stock"]); // Gate entry & GRN is a Stores tab too
+    expect(menuViews(["grn", "trace"])).toEqual(["grn", "trace"]); // without Stores it keeps its own entry
+    expect(names("STORE_INCHARGE")).not.toContain("Gate entry & GRN");
+    expect(role("STORE_INCHARGE").views).toContain("requests"); // access itself is unchanged
+  });
+  it("lights Stores while on the requests page", () => {
+    expect(litPath("/requests", ["/grn", "/stock"])).toBe("/stock");
+    expect(litPath("/requests", ["/requests", "/stock"])).toBe("/requests");
   });
 });

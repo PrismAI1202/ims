@@ -16,7 +16,7 @@ beforeEach(async () => {
   expect(url).toContain("ims_test");
   for (const t of [
     "DemandLine", "DemandImport", "PurchaseOrderLine", "PurchaseOrder", "PriceMaster", "BomLine", "Bom", "StockTransaction",
-    "StockBalance", "Lot", "Mould", "Location", "Warehouse", "Customer", "Supplier", "Item",
+    "StockBalance", "Lot", "PlanSlot", "Mould", "Machine", "Location", "Warehouse", "Customer", "Supplier", "Item",
   ]) await db.$executeRawUnsafe(`TRUNCATE TABLE "${t}" RESTART IDENTITY CASCADE`);
 
   const mk = async (code: string, category: string, extra: Record<string, unknown> = {}) =>
@@ -99,6 +99,66 @@ describe("importDemand", () => {
     expect(await undoImport(r.importId, db)).toBe(2);
     expect(await db.demandLine.count()).toBe(0);
     await expect(undoImport(r.importId, db)).rejects.toThrow(/Unknown import/);
+  });
+});
+
+describe("planMrp: what is behind each row", () => {
+  it("lists the customer demand behind a part and the parts behind a material, and gives each preset horizon its own need", async () => {
+    await doImport([demand({ qty: 5000, due_date: "2026-10-25" }), demand({ qty: 3000, due_date: "2026-12-10" })]);
+    const { rows } = await planMrp({ horizonDays: 90, scrapPct: 0, today: TODAY }, db);
+    const by = (code: string) => rows.find((r) => r.code === code)!;
+
+    const fg = by("FG-CLIP");
+    expect(fg.demandLines.map((d) => [d.customer, d.type, d.qty])).toEqual([["Ind Co", "FIRM", 5000], ["Ind Co", "FIRM", 3000]]);
+    // 5000 is due inside the first week, 3000 only inside the quarter
+    expect([fg.needBy[7], fg.needBy[30], fg.needBy[90]]).toEqual([5000, 5000, 8000]);
+
+    const ins = by("INS");
+    expect(ins.partDrivers).toHaveLength(1);
+    expect(ins.partDrivers[0]).toMatchObject({ code: "FG-CLIP", customers: ["Ind Co"] });
+    expect(ins.partDrivers[0].qty).toBe(ins.gross);
+    expect(ins.demandLines).toEqual([]);
+  });
+
+  it("shows how demand is spread over time, with overdue lines in every horizon", async () => {
+    await doImport([
+      demand({ qty: 100, due_date: "2026-10-10" }),  // overdue on 20 Oct
+      demand({ qty: 5000, due_date: "2026-10-25" }), // within a week
+      demand({ qty: 2000, due_date: "2026-11-10" }), // within a month
+      demand({ qty: 3000, due_date: "2026-12-10" }), // within a quarter
+      demand({ qty: 700, due_date: "2027-03-01" }),  // beyond
+    ]);
+    const { rows, demandSpread } = await planMrp({ horizonDays: 30, scrapPct: 0, today: TODAY }, db);
+    expect(demandSpread.map((b) => [b.key, b.lines, b.parts])).toEqual([
+      ["overdue", 1, 100], ["week", 1, 5000], ["month", 1, 2000], ["quarter", 1, 3000], ["later", 1, 700],
+    ]);
+    const fg = rows.find((r) => r.code === "FG-CLIP")!;
+    expect([fg.needBy[7], fg.needBy[30], fg.needBy[90]]).toEqual([5100, 7100, 10100]); // the overdue 100 counts in all three
+    expect(fg.gross).toBe(7100);
+  });
+
+  it("counts what the machine plan will make as already coming, so a planned part is not asked for again", async () => {
+    await doImport([demand({ qty: 5000, due_date: "2026-10-25" })]);
+    const before = (await planMrp(opts, db)).rows.find((r) => r.code === "FG-CLIP")!;
+    expect(before).toMatchObject({ inProduction: 0, suggested: 15000 });
+
+    const machine = await db.machine.create({ data: { code: "M1", name: "Press 1" } });
+    await db.mould.update({ where: { id: ids.mouldId }, data: { idealCycleSec: 20 } });
+    await db.planSlot.create({ data: { machineId: machine.id, day: new Date("2026-10-22"), kind: "JOB", mouldId: ids.mouldId, fgItemId: ids.fg } });
+    const after = (await planMrp(opts, db)).rows.find((r) => r.code === "FG-CLIP")!;
+    expect(after.plannedDays).toBe(1);
+    expect(after.inProduction).toBeGreaterThan(5000); // one machine-day on a 4-cavity mould at a 20 s cycle
+    expect(after.suggested).toBeLessThan(before.suggested);
+    expect(after.incoming).toBe(after.inProduction);
+  });
+
+  it("lists the open POs for a material and the stock waiting for QC", async () => {
+    await doImport([demand({ qty: 5000, due_date: "2026-10-25" })]);
+    const po = await db.purchaseOrder.create({ data: { poNumber: "PO-T-1", supplierId: ids.cheap, segment: "NON_AUTOMOTIVE", status: "APPROVED" } });
+    await db.purchaseOrderLine.create({ data: { poId: po.id, itemId: ids.pp, qty: 400, receivedQty: 100, price: 100 } });
+    const pp = (await planMrp(opts, db)).rows.find((r) => r.code === "RM-PP")!;
+    expect(pp.openPos).toMatchObject([{ poNumber: "PO-T-1", supplier: "Cheap Poly", qty: 300 }]);
+    expect(pp.onOrder).toBe(300);
   });
 });
 

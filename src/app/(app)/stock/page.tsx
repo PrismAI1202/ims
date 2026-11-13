@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { Check, Pencil, Plus, ScanLine } from "lucide-react";
 import { db } from "@/server/db";
@@ -15,7 +16,7 @@ import { MoveLotForm } from "@/components/move-lot-form";
 import { Drawer, dotted, field, RemoveButton } from "@/components/edit-mode";
 import { X } from "lucide-react";
 import {
-  Badge, Card, Chip, Chips, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
+  Badge, Card, Chip, Chips, Eyebrow, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
 } from "@/components/ui";
 
 export const instant = false;
@@ -24,7 +25,7 @@ async function transfer(formData: FormData) {
   "use server";
   const user = await requirePermission("stock.transfer");
   const back = String(formData.get("back") || "/stock");
-  await runAction(back, "Stock moved.", async () => {
+  return runAction(back, "Stock moved.", async () => {
     await transferStock({
       lotNumber: String(formData.get("lotNumber")).trim(),
       fromCode: String(formData.get("fromCode")).trim(),
@@ -64,11 +65,19 @@ const BIN_STYLE: Record<BinState, string> = {
 
 const EDIT = "/stock?view=bins&edit=1";
 
+// The small tags on a bin tile and in the summary strip.
+const TAG = {
+  qc: "bg-[#FDF0D5] text-[#7A4E14]", ready: "bg-[#DDF3E4] text-[#1E7A46]",
+  counting: "bg-[#E0E9FF] text-[#1D4ED8]", approve: "bg-[#FDE4E1] text-[#B42318]",
+} as const;
+const pill = "flex min-h-8 items-center rounded-full px-3 text-xs font-semibold";
+const tag = "rounded px-1 text-[9px] font-bold uppercase leading-4";
+
 // Adds a shelf/bin to an existing rack, or starts a new rack with its first bin.
 async function addBinAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
-  await runAction(EDIT, "Bin added. Print its label from Print bin labels.", async () => {
+  return runAction(EDIT, "Bin added. Print its label from Print bin labels.", async () => {
     await addBin({ rack: formData.get("rack"), shelf: formData.get("shelf"), bin: formData.get("bin") });
   });
 }
@@ -79,32 +88,32 @@ const text = (f: FormData, k: string) => String(f.get(k) ?? "");
 async function removeBinAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
-  await runAction(EDIT, "Bin removed.", async () => { await removeBin(text(formData, "id")); });
+  return runAction(EDIT, "Bin removed.", async () => { await removeBin(text(formData, "id")); });
 }
 
 async function removeRackAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
   const rack = text(formData, "rack");
-  await runAction(EDIT, `Rack ${rack} removed.`, async () => { await removeRack(rack); });
+  return runAction(EDIT, `Rack ${rack} removed.`, async () => { await removeRack(rack); });
 }
 
 async function renameBinAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
-  await runAction(EDIT, "Bin renamed." + RELABEL, async () => { await renameBin(text(formData, "id"), text(formData, "to")); });
+  return runAction(EDIT, "Bin renamed." + RELABEL, async () => { await renameBin(text(formData, "id"), text(formData, "to")); });
 }
 
 async function renameShelfAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
-  await runAction(EDIT, "Shelf renamed." + RELABEL, async () => { await renameShelf(text(formData, "rack"), text(formData, "shelf"), text(formData, "to")); });
+  return runAction(EDIT, "Shelf renamed." + RELABEL, async () => { await renameShelf(text(formData, "rack"), text(formData, "shelf"), text(formData, "to")); });
 }
 
 async function renameRackAction(formData: FormData) {
   "use server";
   await requirePermission("bins.manage");
-  await runAction(EDIT, "Rack renamed." + RELABEL, async () => { await renameRack(text(formData, "rack"), text(formData, "to")); });
+  return runAction(EDIT, "Rack renamed." + RELABEL, async () => { await renameRack(text(formData, "rack"), text(formData, "to")); });
 }
 
 type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string; q?: string; edit?: string };
@@ -112,8 +121,8 @@ type Search = { error?: string; ok?: string; view?: string; status?: string; cat
 export default async function StockPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireView("stock");
   const sp = await searchParams;
-  const countsOpen = can(user, "stock.count") || can(user, "stock.adjust");
-  const view = sp.view === "bins" ? "bins" : sp.view === "counts" && countsOpen ? "counts" : "stock";
+  const counting = can(user, "stock.count") || can(user, "stock.adjust");
+  const view = sp.view === "bins" || sp.view === "counts" ? "bins" : "stock"; // counts are part of the bin map now; old links still land here
   const canMove = can(user, "stock.transfer");
   // Layout editing is its own switch: only roles ticked for "edit the store layout" see it.
   const canEdit = can(user, "bins.manage");
@@ -149,16 +158,6 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     </PageHeader>
   );
 
-  if (view === "counts") {
-    return (
-      <div className="space-y-4">
-        {header}
-        <Flash error={sp.error} ok={sp.ok} />
-        <CountsTab user={user} />
-      </div>
-    );
-  }
-
   if (view === "bins") {
     const byLoc = new Map<string, typeof balances>();
     for (const b of balances) byLoc.set(b.locationId, [...(byLoc.get(b.locationId) ?? []), b]);
@@ -167,6 +166,29 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       if (bs.length === 0) return "empty";
       if (bs.some((b) => b.lot.qcStatus === "PENDING_QC")) return "hold";
       return bs.some((b) => Number(b.qty) < Number(b.lot.receivedQty)) ? "part" : "full";
+    };
+    // What is pending in each bin: QC on a lot, a count being done or waiting for approval, an approved lot waiting to be put away.
+    const openCounts = await db.stockCount.findMany({ where: { status: { in: ["OPEN", "SUBMITTED"] } }, select: { locationId: true, status: true } });
+    const countOf = new Map<string, "OPEN" | "SUBMITTED">();
+    for (const c of openCounts) if (countOf.get(c.locationId) !== "SUBMITTED") countOf.set(c.locationId, c.status as "OPEN" | "SUBMITTED");
+    const infoOf = (locId: string) => {
+      const bs = byLoc.get(locId) ?? [];
+      return {
+        items: [...new Set(bs.map((b) => b.lot.item.code))],
+        qc: bs.filter((b) => b.lot.qcStatus === "PENDING_QC").length,
+        ready: bs.filter((b) => b.location.type === "STAGING" && (b.lot.qcStatus === "APPROVED" || b.lot.qcStatus === "DEVIATED")).length,
+        count: countOf.get(locId),
+      };
+    };
+    const canQc = can(user, "qc.inspect") && canView(user, "quality");
+    const qcHref = (lot: string) => `/quality?tab=inward&lot=${encodeURIComponent(lot)}#lot-${lot}`;
+    const stagingIds = new Set(locations.filter((l) => l.type === "STAGING").map((l) => l.id));
+    const stagingCode = locations.find((l) => l.type === "STAGING")?.code ?? "";
+    const totals = {
+      qc: balances.filter((b) => b.lot.qcStatus === "PENDING_QC").length,
+      ready: balances.filter((b) => stagingIds.has(b.locationId) && (b.lot.qcStatus === "APPROVED" || b.lot.qcStatus === "DEVIATED")).length,
+      counting: openCounts.filter((c) => c.status === "OPEN").length,
+      approve: openCounts.filter((c) => c.status === "SUBMITTED").length,
     };
     const racks = [...new Set(locations.map((l) => l.rack))];
     const highlight = new Set(sp.item ? (rows.find((r) => r.code === sp.item) ? [...(where.get(rows.find((r) => r.code === sp.item)!.itemId) ?? [])] : []) : []);
@@ -184,6 +206,16 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       <div className="space-y-4">
         {header}
         {!selected && !editing && <Flash error={sp.error} ok={sp.ok} />}
+        {!editing && (totals.qc + totals.ready + totals.counting + totals.approve > 0) && (
+          <div className="flex flex-wrap gap-2">
+            {totals.qc > 0 && (canQc
+              ? <Link href="/quality?tab=inward" className={`${pill} ${TAG.qc}`}>{totals.qc} lot{totals.qc === 1 ? "" : "s"} waiting for QC →</Link>
+              : <span className={`${pill} ${TAG.qc}`}>{totals.qc} lot{totals.qc === 1 ? "" : "s"} waiting for QC</span>)}
+            {totals.ready > 0 && <Link href={`/stock?view=bins&bin=${stagingCode}`} className={`${pill} ${TAG.ready}`}>{totals.ready} released, to put away →</Link>}
+            {counting && totals.counting > 0 && <a href="#counts" className={`${pill} ${TAG.counting}`}>{totals.counting} count{totals.counting === 1 ? "" : "s"} in progress ↓</a>}
+            {counting && totals.approve > 0 && <a href="#counts" className={`${pill} ${TAG.approve}`}>{totals.approve} count{totals.approve === 1 ? "" : "s"} to approve ↓</a>}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3 text-xs text-ink-2">
           <LegendDot color="#1D4ED8" label="Full" />
           <LegendDot color="#8FAEF0" label="Part" />
@@ -215,10 +247,10 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             return (
               <Card key={rack} className="relative space-y-2">
                 {layoutRack && (
-                  <form action={removeRackAction}>
+                  <Form action={removeRackAction}>
                     <input type="hidden" name="rack" value={rack} />
                     <RemoveButton label={`Remove rack ${rack}`} busy={rackBusy} why="Empty every bin in this rack first" />
-                  </form>
+                  </Form>
                 )}
                 {layoutRack ? (
                   <details className="group">
@@ -227,26 +259,53 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <span className="flex items-center gap-1 text-xs font-semibold text-ink-3 group-open:text-accent"><Pencil size={13} aria-hidden /> Rename</span>
                     </summary>
                     <div className="mt-2 space-y-3 rounded-lg bg-canvas p-2.5">
-                      <form action={renameRackAction} className="flex items-end gap-2">
+                      <Form action={renameRackAction} className="flex items-end gap-2">
                         <input type="hidden" name="rack" value={rack} />
                         <label className="flex-1 text-xs">Rack name<input name="to" required maxLength={10} defaultValue={rack} className={field} /></label>
                         <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename rack</button>
-                      </form>
-                      <form action={renameShelfAction} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                      </Form>
+                      <Form action={renameShelfAction} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
                         <input type="hidden" name="rack" value={rack} />
                         <label className="text-xs">Shelf<select name="shelf" className={field}>{shelves.map((sh) => <option key={sh}>{sh}</option>)}</select></label>
                         <label className="text-xs">New name<input name="to" required maxLength={10} className={field} /></label>
                         <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename</button>
-                      </form>
+                      </Form>
                       <p className="text-xs text-ink-3">Renaming changes the scan code of every bin it touches. Stock stays where it is.</p>
                     </div>
                   </details>
                 ) : (
                   <h2 className="font-display text-sm font-bold">{rack === "STG" ? "Staging (awaiting QC)" : `Rack ${rack}`}</h2>
                 )}
-                <div className="grid grid-cols-4 gap-1.5">
+                {rack === "STG" && !editing ? (
+                  <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-white text-[13px]">
+                    {rackBins.flatMap((l) => byLoc.get(l.id) ?? []).map((b) => {
+                      const ready = b.lot.qcStatus === "APPROVED" || b.lot.qcStatus === "DEVIATED";
+                      return (
+                        <li key={b.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2">
+                          <span className="min-w-0">
+                            <Mono className="text-xs font-semibold">{b.lot.lotNumber}</Mono>
+                            <span className="ml-2">{b.lot.item.code}</span>
+                            <span className="ml-2 text-ink-3">{Number(b.qty).toLocaleString()} {b.lot.item.uom}</span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {b.lot.qcStatus === "PENDING_QC" && <span className={`${tag} ${TAG.qc}`}>Waiting for QC</span>}
+                            {ready && <span className={`${tag} ${TAG.ready}`}>Released</span>}
+                            {b.lot.qcStatus === "REJECTED" && <span className={`${tag} ${TAG.approve}`}>Rejected</span>}
+                            {countOf.get(b.locationId) === "SUBMITTED" && <span className={`${tag} ${TAG.approve}`}>Count to approve</span>}
+                            {b.lot.qcStatus === "PENDING_QC" && canQc && <Link href={qcHref(b.lot.lotNumber)} className="text-xs font-semibold text-accent">Do QC →</Link>}
+                            {ready && canMove && <Link href={`/stock?view=bins&bin=${b.location.code}`} className="text-xs font-semibold text-accent">Put away →</Link>}
+                            {b.lot.qcStatus === "REJECTED" && can(user, "rtv.manage") && canView(user, "quality") && <Link href="/quality?tab=rtv" className="text-xs font-semibold text-accent">Send back →</Link>}
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {rackBins.every((l) => (byLoc.get(l.id)?.length ?? 0) === 0) && <li className="px-3 py-2 text-ink-3">Nothing in staging. Received lots wait here for QC, then move to a rack.</li>}
+                  </ul>
+                ) : (
+                <div className={`grid gap-1.5 ${editing ? "grid-cols-4" : "grid-cols-3"}`}>
                   {rackBins.map((l) => {
                     const st = stateOf(l.id);
+                    const info = infoOf(l.id);
                     const on = l.code === sp.bin;
                     const hi = highlight.has(l.code);
                     const cls = `flex h-11 items-center justify-center rounded-lg border font-mono text-[11px] ${BIN_STYLE[st]} ${on ? "outline-[3px] outline-offset-2 outline-ink" : ""} ${hi ? "ring-[3px] ring-accent ring-offset-1" : ""}`;
@@ -256,8 +315,16 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                         <span key={l.id} className={cls}>{l.code}</span>
                       ) : (
                         <Link key={l.id} href={`/stock?view=bins&bin=${l.code}${sp.item ? `&item=${sp.item}` : ""}`} scroll={false}
-                          aria-label={`${l.code}, ${st === "hold" ? "QC hold" : st}`} aria-pressed={on} className={cls}>
-                          {l.code}
+                          aria-label={`${l.code}, ${st === "hold" ? "QC hold" : st}${info.items.length ? `, holds ${info.items.join(", ")}` : ""}`} aria-pressed={on}
+                          className={`flex min-h-[4.5rem] flex-col justify-between gap-1 rounded-lg border p-1.5 text-left ${BIN_STYLE[st]} ${on ? "outline-[3px] outline-offset-2 outline-ink" : ""} ${hi ? "ring-[3px] ring-accent ring-offset-1" : ""}`}>
+                          <span className="font-mono text-[11px] font-semibold">{l.code}</span>
+                          <span className="truncate text-[10px] leading-tight opacity-90">{info.items.length ? info.items.slice(0, 2).join(", ") + (info.items.length > 2 ? ` +${info.items.length - 2}` : "") : "empty"}</span>
+                          <span className="flex flex-wrap gap-0.5">
+                            {info.qc > 0 && <span className={`${tag} ${TAG.qc}`}>QC</span>}
+                            {info.ready > 0 && <span className={`${tag} ${TAG.ready}`}>Put away</span>}
+                            {info.count === "OPEN" && <span className={`${tag} ${TAG.counting}`}>Counting</span>}
+                            {info.count === "SUBMITTED" && <span className={`${tag} ${TAG.approve}`}>Approve</span>}
+                          </span>
                         </Link>
                       );
                     }
@@ -265,26 +332,26 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     return (
                       <div key={l.id} className="group/b relative has-[details[open]]:col-span-4">
                         <Drawer label={`Rename bin ${l.code}`} tile={l.code} tileClass={cls} >
-                          <form action={renameBinAction} className="space-y-2 rounded-lg border border-border bg-canvas p-2.5">
+                          <Form action={renameBinAction} className="space-y-2 rounded-lg border border-border bg-canvas p-2.5">
                             <input type="hidden" name="id" value={l.id} />
                             <p className="text-xs text-ink-2">Rename bin <b className="font-mono">{l.code}</b>. Its scan code changes with it.</p>
                             <div className="flex items-end gap-2">
                               <label className="flex-1 text-xs">Bin name<input name="to" required maxLength={10} defaultValue={l.bin} className={field} /></label>
                               <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename</button>
                             </div>
-                          </form>
+                          </Form>
                         </Drawer>
-                        <form action={removeBinAction} className="group-has-[details[open]]/b:hidden">
+                        <Form action={removeBinAction} className="group-has-[details[open]]/b:hidden">
                           <input type="hidden" name="id" value={l.id} />
                           <RemoveButton label={`Remove bin ${l.code}`} busy={busy} why="Holds stock: move it out first" />
-                        </form>
+                        </Form>
                       </div>
                     );
                   })}
                   {layoutRack && (
                     <Drawer label={`Add a shelf and bin to rack ${rack}`} className="col-span-1 open:col-span-4"
                       tileClass={`flex h-11 items-center justify-center rounded-lg ${dotted}`} tile={<Plus size={18} aria-hidden />}>
-                      <form action={addBinAction} className="space-y-2 rounded-lg border-2 border-dashed border-accent p-2.5">
+                      <Form action={addBinAction} className="space-y-2 rounded-lg border-2 border-dashed border-accent p-2.5">
                         <input type="hidden" name="rack" value={rack} />
                         <p className="text-xs text-ink-2">New bin in rack {rack}</p>
                         <div className="grid grid-cols-2 gap-2">
@@ -293,10 +360,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                         </div>
                         <datalist id={`shelves-${rack}`}>{shelves.map((sh) => <option key={sh} value={sh} />)}</datalist>
                         <button className="min-h-10 w-full cursor-pointer rounded-lg bg-accent text-sm font-semibold text-white">Add bin</button>
-                      </form>
+                      </Form>
                     </Drawer>
                   )}
                 </div>
+                )}
               </Card>
             );
           })}
@@ -304,7 +372,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             <Drawer label="Add a new rack" className="open:md:col-span-2 open:xl:col-span-1"
               tileClass={`flex h-full min-h-32 flex-col items-center justify-center gap-1 rounded-[14px] ${dotted}`}
               tile={<><Plus size={26} aria-hidden /><span className="text-sm font-semibold">Add rack</span></>}>
-              <form action={addBinAction} className="space-y-2 rounded-[14px] border-2 border-dashed border-accent bg-white p-4">
+              <Form action={addBinAction} className="space-y-2 rounded-[14px] border-2 border-dashed border-accent bg-white p-4">
                 <h2 className="font-display text-sm font-bold">New rack</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <label className="text-xs">Rack<input name="rack" required maxLength={10} placeholder="e.g. D" className={field} /></label>
@@ -313,10 +381,17 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                 </div>
                 <p className="text-xs text-ink-3">A rack exists once it has a bin. Add more shelves and bins to it afterwards with its + tile.</p>
                 <button className="min-h-10 w-full cursor-pointer rounded-lg bg-accent text-sm font-semibold text-white">Create rack</button>
-              </form>
+              </Form>
             </Drawer>
           )}
         </div>
+
+        {counting && !editing && (
+          <section id="counts" className="scroll-mt-4 space-y-2 pt-2">
+            <Eyebrow>STOCK COUNTS</Eyebrow>
+            <CountsTab user={user} />
+          </section>
+        )}
 
         {selected && (
           <div className="fixed inset-0 z-50 print:hidden" role="dialog" aria-modal="true" aria-label={`Bin ${selected.code}`}>
@@ -331,11 +406,16 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
               </div>
               <div className="space-y-3 overflow-y-auto p-4">
                 <Flash error={sp.error} ok={sp.ok} />
-                {can(user, "stock.count") && (
-                  <form action={startSheet}>
+                {countOf.get(selected.id) && (
+                  <p className="rounded-lg bg-shell-2 px-3 py-2 text-xs">
+                    {countOf.get(selected.id) === "OPEN" ? "A count of this bin is in progress." : "A count of this bin is waiting for approval."} <a href="#counts" className="font-semibold underline">See Counts</a>
+                  </p>
+                )}
+                {can(user, "stock.count") && !countOf.get(selected.id) && (
+                  <Form action={startSheet}>
                     <input type="hidden" name="bin" value={selected.code} />
                     <button className="min-h-10 w-full cursor-pointer rounded-lg border border-shell-line bg-shell-2 text-[13px] font-semibold">Count this bin</button>
-                  </form>
+                  </Form>
                 )}
                 {selBalances.length === 0 ? (
                   <p className="text-sm">Empty bin. Open another bin and choose this one as the destination.</p>
@@ -353,6 +433,9 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                         <div className="text-xs text-on-shell-2">
                           {b.lot.item.name} · received {b.lot.receivedAt.toISOString().slice(0, 10)} · {b.lot.qcStatus.replace("_", " ")}
                         </div>
+                        {b.lot.qcStatus === "PENDING_QC" && (canQc
+                          ? <Link href={qcHref(b.lot.lotNumber)} className="inline-block text-xs font-semibold underline">Do QC and count for this lot →</Link>
+                          : <p className="text-xs text-on-shell-2">Waiting for QC. QA counts and inspects it, then it can be put away.</p>)}
                         {onBox > 0 && <div className="text-xs text-on-shell-2">{onBox.toLocaleString()} {b.lot.item.uom} are in labelled boxes and stay here.</div>}
                         {!canMove ? null : blocked ? (
                           <p className="text-xs text-on-shell-2">This lot is {b.lot.qcStatus.replace("_", " ").toLowerCase()} and cannot be moved.</p>

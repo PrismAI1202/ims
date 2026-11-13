@@ -1,7 +1,8 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { pendingScrap } from "@/server/services/scrap";
 import { btnDangerCls, btnOkCls, inputCls } from "@/components/flash";
-import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono, ScrollArea } from "@/components/ui";
 import { decideScrap } from "../actions";
 
 export async function ScrapTab() {
@@ -18,9 +19,10 @@ export async function ScrapTab() {
         <b> Waste</b> records them as scrapped.
       </p>
       {pending.length === 0 && <Card><p className="text-sm text-ink-3">No rejected parts waiting for a decision.</p></Card>}
+      <ScrollArea label="Rejects waiting for a decision">
       <div className="grid gap-3 lg:grid-cols-2">
         {pending.map((p) => (
-          <form key={p.bookingId} action={decideScrap}>
+          <Form key={p.bookingId} action={decideScrap}>
             <Card className="space-y-3">
               <input type="hidden" name="bookingId" value={p.bookingId} />
               <div className="flex flex-wrap items-start justify-between gap-2 text-sm">
@@ -40,12 +42,13 @@ export async function ScrapTab() {
                 <button name="kind" value="WASTE" className={btnDangerCls}>Scrap as waste</button>
               </div>
             </Card>
-          </form>
+          </Form>
         ))}
       </div>
+      </ScrollArea>
 
       <Eyebrow>RECENT DECISIONS</Eyebrow>
-      <DataTable>
+      <DataTable scroll>
         <thead><tr><th>When</th><th>Booking</th><th>Part</th><th className="text-right!">Parts</th><th className="text-right!">Weight kg</th><th>Decision</th></tr></thead>
         <tbody>
           {history.map((h) => (

@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { db } from "@/server/db";
@@ -34,7 +35,7 @@ const safeBack = (v: FormDataEntryValue | null) => {
 async function createPo(formData: FormData) {
   "use server";
   const user = await requirePermission("po.manage");
-  await runAction("/orders?kind=po", "Purchase order created and approved.", async () => {
+  return runAction("/orders?kind=po", "Purchase order created and approved.", async () => {
     const expected = dateField(formData.get("expected"));
     const lines = readLines(formData).map((l) => ({ itemId: l.itemId, qty: l.qty, price: l.price, expectedDate: expected }));
     await createPurchaseOrder({
@@ -49,20 +50,20 @@ async function createPo(formData: FormData) {
 async function cancelPo(formData: FormData) {
   "use server";
   await requirePermission("po.manage");
-  await runAction(safeBack(formData.get("back")), "Purchase order cancelled.", async () => { await cancelPurchaseOrder(String(formData.get("id"))); });
+  return runAction(safeBack(formData.get("back")), "Purchase order cancelled.", async () => { await cancelPurchaseOrder(String(formData.get("id"))); });
 }
 
 async function closePoShort(formData: FormData) {
   "use server";
   await requirePermission("po.manage");
-  await runAction(safeBack(formData.get("back")), "Purchase order closed. The balance is no longer expected.", async () => { await closePurchaseOrderShort(String(formData.get("id"))); });
+  return runAction(safeBack(formData.get("back")), "Purchase order closed. The balance is no longer expected.", async () => { await closePurchaseOrderShort(String(formData.get("id"))); });
 }
 
 async function createPickList(formData: FormData) {
   "use server";
   const user = await requirePermission("dispatch.manage");
   let id = "";
-  await runAction(() => `/dispatch/${id}`, "Pick list created. Scan the boxes to load.", async () => {
+  return runAction(() => `/dispatch/${id}`, "Pick list created. Scan the boxes to load.", async () => {
     const d = await createDispatch({
       customerId: String(formData.get("customerId")),
       lines: readLines(formData).map((l) => ({ itemId: l.itemId, qty: l.qty })), userId: user.id,
@@ -75,7 +76,7 @@ async function createPickList(formData: FormData) {
 // rejected as a whole, so nothing half-loads.
 async function readUpload(formData: FormData) {
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.");
+  if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.", ["file"]);
   if (file.size > MAX_UPLOAD_BYTES) throw new DomainError("File is larger than 5 MB.");
   try {
     return { name: file.name, rows: await readSpreadsheet(Buffer.from(await file.arrayBuffer()), file.name) };
@@ -88,7 +89,7 @@ async function importPoFile(formData: FormData) {
   "use server";
   const user = await requirePermission("po.manage");
   let msg = "";
-  await runAction("/orders?kind=po", () => msg, async () => {
+  return runAction("/orders?kind=po", () => msg, async () => {
     const { rows } = await readUpload(formData);
     const parsed = parsePoRows(rows);
     const r = await importPurchaseOrders({ groups: parsed.groups, rowErrors: parsed.errors, userId: user.id });
@@ -102,7 +103,7 @@ async function importCustomerFile(formData: FormData) {
   "use server";
   const user = await requirePermission("mrp.plan");
   let msg = "";
-  await runAction("/orders?kind=demand", () => msg, async () => {
+  return runAction("/orders?kind=demand", () => msg, async () => {
     const { name, rows } = await readUpload(formData);
     const parsed = parseDemandRows(rows);
     const r = await importDemand({ fileName: name, rows: parsed.ok, rowErrors: parsed.errors, replaceForecast: formData.get("replaceForecast") === "on", userId: user.id });
@@ -163,10 +164,10 @@ function Row({ o, back, canPo, linkable }: { o: OrderRow; back: string; canPo: b
         <div className="flex flex-wrap gap-4 border-t border-line px-3.5">
           {actions.includes("edit") && <Link className="flex min-h-10 items-center text-[13px] font-semibold text-accent" href={`/purchase/${o.id}`}>Edit</Link>}
           {actions.includes("cancel") && (
-            <form action={cancelPo}><input type="hidden" name="id" value={o.id} /><input type="hidden" name="back" value={back} /><button className="min-h-10 cursor-pointer text-[13px] font-semibold text-danger">Cancel</button></form>
+            <Form action={cancelPo}><input type="hidden" name="id" value={o.id} /><input type="hidden" name="back" value={back} /><button className="min-h-10 cursor-pointer text-[13px] font-semibold text-danger">Cancel</button></Form>
           )}
           {actions.includes("closeShort") && (
-            <form action={closePoShort}><input type="hidden" name="id" value={o.id} /><input type="hidden" name="back" value={back} /><button className="min-h-10 cursor-pointer text-[13px] font-semibold text-ink-2">Close short</button></form>
+            <Form action={closePoShort}><input type="hidden" name="id" value={o.id} /><input type="hidden" name="back" value={back} /><button className="min-h-10 cursor-pointer text-[13px] font-semibold text-ink-2">Close short</button></Form>
           )}
         </div>
       )}
@@ -292,7 +293,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
               </div>
               <div className="grid gap-5 lg:grid-cols-2">
                 {canPo && (
-                  <form action={importPoFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
+                  <Form action={importPoFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
                     <h3 className="font-display text-[15px] font-bold">Supplier POs <span className="text-xs font-normal text-ink-3">(incoming)</span></h3>
                     <label className="block text-[13px] font-semibold">File
                       <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
@@ -303,10 +304,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       <DownloadLink href="/api/v1/po-template">Download a template</DownloadLink>
                     </p>
                     <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import POs</button>
-                  </form>
+                  </Form>
                 )}
                 {canCustomerImport && (
-                  <form action={importCustomerFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
+                  <Form action={importCustomerFile} className="space-y-3 rounded-xl border border-border bg-canvas p-3.5">
                     <h3 className="font-display text-[15px] font-bold">Customer orders <span className="text-xs font-normal text-ink-3">(outgoing)</span></h3>
                     <label className="block text-[13px] font-semibold">File
                       <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
@@ -320,7 +321,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       <DownloadLink href="/api/v1/demand-template">Download a template</DownloadLink>
                     </p>
                     <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import orders</button>
-                  </form>
+                  </Form>
                 )}
               </div>
             </Card>

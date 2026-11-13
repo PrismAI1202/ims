@@ -26,6 +26,12 @@ export function daysNeeded(qty: number, cavities: number, cycleSec: number | nul
   return Math.max(1, Math.ceil(qty / (cavities * shotsPerDay)));
 }
 
+/** Parts one machine-day makes on this mould at the target OEE (the other way round from `daysNeeded`). null without a cycle time. */
+export function partsPerDay(cavities: number, cycleSec: number | null, shiftMinutes: number): number | null {
+  if (!cycleSec || cycleSec <= 0 || cavities <= 0) return null;
+  return Math.floor(cavities * ((3 * shiftMinutes * 60 * PLAN_OEE) / cycleSec));
+}
+
 /** Why a mould can't go on a machine, or null when it can. */
 export function placementError(machine: { code: string; tonnage: number | null }, mould: { code: string; minTonnage: number | null }): string | null {
   if (mould.minTonnage && (machine.tonnage ?? 0) < mould.minTonnage) {

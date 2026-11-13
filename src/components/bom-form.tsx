@@ -1,5 +1,7 @@
 "use client";
 
+import type { FormAction } from "@/lib/action-result";
+import { Form } from "@/components/form";
 import { useState } from "react";
 import { AlertTriangle, Check, Minus, Plus } from "lucide-react";
 import { btnCls, inputCls } from "@/components/flash";
@@ -28,7 +30,7 @@ const g = (n: number) => `${(Math.round(n * 1000) / 1000).toLocaleString()} g`;
 const pct = (n: number) => `${Math.round(n * 1000) / 1000}%`;
 
 export function BomForm({ action, fgItems: fgProp, moulds, items: itemsProp, suppliers, canAddItems, initial, back }: {
-  action: (f: FormData) => void | Promise<void>;
+  action: FormAction;
   fgItems: { id: string; code: string; name: string }[];
   moulds: { id: string; code: string; cavities: number }[];
   items: BomItem[];
@@ -94,7 +96,7 @@ export function BomForm({ action, fgItems: fgProp, moulds, items: itemsProp, sup
   const gap = Math.round((100 - total) * 1000) / 1000;
 
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} className="space-y-4">
       <input type="hidden" name="back" value={back} />
       <div className="grid gap-3 md:grid-cols-3">
         <label className="text-[13px]">
@@ -230,6 +232,6 @@ export function BomForm({ action, fgItems: fgProp, moulds, items: itemsProp, sup
         <button className={`${btnCls} w-full disabled:cursor-not-allowed disabled:opacity-50 md:w-auto`} disabled={fgItems.length === 0 || !ready}>Save BOM</button>
         {!ready && <span className="text-xs text-ink-3">{w > 0 ? "Fix the points above to save." : "Enter the net part weight and a blend that adds up to 100%."}</span>}
       </div>
-    </form>
+    </Form>
   );
 }

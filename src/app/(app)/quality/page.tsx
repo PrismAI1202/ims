@@ -16,9 +16,9 @@ export const instant = false;
 
 export default async function Quality({
   searchParams,
-}: { searchParams: Promise<{ tab?: string; q?: string; error?: string; ok?: string }> }) {
+}: { searchParams: Promise<{ tab?: string; q?: string; lot?: string; error?: string; ok?: string }> }) {
   const user = await requireView("quality");
-  const { tab, q, error, ok } = await searchParams;
+  const { tab, q, lot, error, ok } = await searchParams;
   const allowed = qualityTabs(user.permissions);
   const active: QualityTab | undefined = isQualityTab(tab) && allowed.includes(tab) ? tab : allowed[0];
 
@@ -39,7 +39,7 @@ export default async function Quality({
       {allowed.length > 1 && (
         <Chips chips={allowed.map((t, i) => ({ href: qualityHref(t), label: QUALITY_TAB_LABEL[t], active: t === active, n: n[i] }))} />
       )}
-      {active === "inward" && <InwardTab q={q} />}
+      {active === "inward" && <InwardTab q={q} lot={lot} />}
       {active === "scrap" && <ScrapTab />}
       {active === "pdi" && <PdiTab />}
       {active === "firstoff" && <FirstOffTab user={user} />}

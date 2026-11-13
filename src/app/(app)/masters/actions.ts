@@ -15,8 +15,8 @@ export async function addItem(f: FormData) {
   // The supplier and buying price are optional extras on the new-item form; they are what lets MRP and "Raise PO" order the item.
   const { supplierId, buyPrice, ...item } = raw(f);
   const supplier = supplierId ? { supplierId: String(supplierId), price: Number(buyPrice) } : null;
-  await runAction("/masters?tab=items", supplier ? "Item created, with its supplier price." : "Item created. Add a supplier price on the item so it can be ordered.", async () => {
-    if (supplier && String(buyPrice ?? "") === "") throw new DomainError("Enter the buying price for that supplier.");
+  return runAction("/masters?tab=items", supplier ? "Item created, with its supplier price." : "Item created. Add a supplier price on the item so it can be ordered.", async () => {
+    if (supplier && String(buyPrice ?? "") === "") throw new DomainError("Enter the buying price for that supplier.", ["buyPrice"]);
     await createItemWithSupplier(item, supplier);
   });
 }
@@ -24,8 +24,8 @@ export async function addItem(f: FormData) {
 export async function addSupplierPrice(f: FormData) {
   await requirePermission("masters.manage");
   const id = String(f.get("itemId"));
-  await runAction(`/masters/items/${id}`, "Supplier price saved.", async () => {
-    if (String(f.get("price") ?? "") === "") throw new DomainError("Enter the buying price.");
+  return runAction(`/masters/items/${id}`, "Supplier price saved.", async () => {
+    if (String(f.get("price") ?? "") === "") throw new DomainError("Enter the buying price.", ["price"]);
     await setSupplierPrice(id, { supplierId: String(f.get("supplierId") || ""), price: Number(f.get("price")) });
   });
 }
@@ -33,20 +33,20 @@ export async function addSupplierPrice(f: FormData) {
 export async function dropSupplierPrice(f: FormData) {
   await requirePermission("masters.manage");
   const id = String(f.get("itemId"));
-  await runAction(`/masters/items/${id}`, "Supplier removed from this item.", async () => { await removeSupplierPrice(id, String(f.get("supplierId"))); });
+  return runAction(`/masters/items/${id}`, "Supplier removed from this item.", async () => { await removeSupplierPrice(id, String(f.get("supplierId"))); });
 }
 
 export async function saveItem(f: FormData) {
   await requirePermission("masters.manage");
   const id = String(f.get("id"));
-  await runAction("/masters?tab=items", "Item updated.", async () => { await updateItem(id, raw(f)); }, `/masters/items/${id}`);
+  return runAction("/masters?tab=items", "Item updated.", async () => { await updateItem(id, raw(f)); }, `/masters/items/${id}`);
 }
 
 export async function toggleActive(f: FormData) {
   await requirePermission("masters.manage");
   const kind = String(f.get("kind")) as "item" | "supplier" | "customer";
   const tab = kind === "item" ? "items" : kind === "supplier" ? "suppliers" : "customers";
-  await runAction(`/masters?tab=${tab}`, "Status changed.", async () => {
+  return runAction(`/masters?tab=${tab}`, "Status changed.", async () => {
     await setActive(kind, String(f.get("id")), f.get("active") === "true");
   });
 }

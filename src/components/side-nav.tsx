@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { NavGroup } from "./nav-data";
+import { litPath, type NavGroup } from "./nav-data";
 
 /** Desktop sidebar; groups arrive already filtered to the user's views. */
 export function SideNav({ groups }: { groups: NavGroup[] }) {
   const pathname = usePathname();
-  // The longest matching link wins, so /qc/scrap lights Scrap approval rather than Inward QC.
-  const best = groups.flatMap((g) => g.items.map((n) => n.href)).filter((h) => pathname.startsWith(h)).sort((a, b) => b.length - a.length)[0];
+  // The longest matching link wins; a page with no entry of its own (Material requests) lights the screen it lives in (Stores).
+  const best = litPath(pathname, groups.flatMap((g) => g.items.map((n) => n.href)));
   return (
     <nav aria-label="Modules" className="mt-5 flex flex-col gap-4 text-sm">
       <Link

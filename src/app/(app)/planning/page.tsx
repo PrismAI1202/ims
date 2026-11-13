@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { can, canView } from "@/server/auth/permissions";
@@ -22,7 +23,7 @@ async function place(formData: FormData) {
   const user = await requirePermission("plan.manage");
   const week = String(formData.get("week")), job = String(formData.get("job"));
   let warning = "";
-  await runAction(() => `/planning?week=${week}&job=${job}`, () => warning || "Slot booked. It shows on the shop-floor screens at the next sync.", async () => {
+  return runAction(() => `/planning?week=${week}&job=${job}`, () => warning || "Slot booked. It shows on the shop-floor screens at the next sync.", async () => {
     warning = (await placeJob({ machineId: String(formData.get("machineId")), day: String(formData.get("day")), fgItemId: job, userId: user.id })).warning;
   }, `/planning?week=${week}&job=${job}`);
 }
@@ -31,7 +32,7 @@ async function block(formData: FormData) {
   "use server";
   const user = await requirePermission("plan.manage");
   const week = String(formData.get("week"));
-  await runAction(`/planning?week=${week}`, "Blocked.", async () => {
+  return runAction(`/planning?week=${week}`, "Blocked.", async () => {
     await blockSlot({ machineId: String(formData.get("machineId")), day: String(formData.get("day")), kind: String(formData.get("kind")) === "TRIAL" ? "TRIAL" : "PM", note: String(formData.get("note") || ""), userId: user.id });
   });
 }
@@ -40,7 +41,7 @@ async function clear(formData: FormData) {
   "use server";
   await requirePermission("plan.manage");
   const week = String(formData.get("week"));
-  await runAction(`/planning?week=${week}`, "Slot freed.", async () => { await clearSlot(String(formData.get("slotId"))); });
+  return runAction(`/planning?week=${week}`, "Slot freed.", async () => { await clearSlot(String(formData.get("slotId"))); });
 }
 
 export default async function PlanningPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; week?: string; job?: string; slot?: string }> }) {
@@ -75,14 +76,14 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
         <CreatePanel>
           <Card className="space-y-3">
             <Eyebrow>BLOCK A MACHINE-DAY FOR PM OR A TRIAL</Eyebrow>
-            <form action={block} className="grid gap-3 md:grid-cols-5">
+            <Form action={block} className="grid gap-3 md:grid-cols-5">
               <input type="hidden" name="week" value={wk} />
               <label className="text-[13px]">Machine<select name="machineId" className={inputCls}>{week.machines.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.tonnage ?? "?"} T</option>)}</select></label>
               <label className="text-[13px]">Day<select name="day" className={inputCls}>{days.map((d) => <option key={d} value={d}>{label(d)}</option>)}</select></label>
               <label className="text-[13px]">Block as<select name="kind" className={inputCls}><option value="PM">Mould / machine PM</option><option value="TRIAL">Trial</option></select></label>
               <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
               <div className="flex items-end"><button className={`${btnCls} w-full`}>Block</button></div>
-            </form>
+            </Form>
           </Card>
         </CreatePanel>
 
@@ -127,11 +128,11 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
                       }
                       if (job && manage) {
                         return (
-                          <form key={d} action={place} className="contents">
+                          <Form key={d} action={place} className="contents">
                             <input type="hidden" name="week" value={wk} /><input type="hidden" name="job" value={job.fgItemId} />
                             <input type="hidden" name="machineId" value={m.id} /><input type="hidden" name="day" value={d} />
                             <button aria-label={`${m.code} ${label(d)}: place ${job.part} here`} className="h-12 cursor-pointer rounded-md border-[1.5px] border-dashed border-accent bg-[#f4f3ef] text-[10px] font-semibold text-accent">+</button>
-                          </form>
+                          </Form>
                         );
                       }
                       return <span key={d} aria-label={`${m.code} ${label(d)}: free`} className="h-12 rounded-md border border-dashed border-[#C9C5BC] bg-[#f4f3ef]" />;
@@ -149,8 +150,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
                 <span className="block text-[13px] text-ink-3">{slot.kind === "JOB" ? `Colour ${slot.colour}` : slot.note || (slot.kind === "PM" ? "Preventive maintenance" : "Trial")}</span>
                 {slot.kind === "JOB" && canView(user, "bom") && <Link href="/bom" className="inline-block pt-1 text-[13px] font-semibold text-accent">View BOM</Link>}
                 {manage && (
-                  <form action={clear} className="pt-1"><input type="hidden" name="week" value={wk} /><input type="hidden" name="slotId" value={slot.id} />
-                    <button className={`${btnDangerCls} min-h-10 px-4 text-[13px]`}>Unschedule this day</button></form>
+                  <Form action={clear} className="pt-1"><input type="hidden" name="week" value={wk} /><input type="hidden" name="slotId" value={slot.id} />
+                    <button className={`${btnDangerCls} min-h-10 px-4 text-[13px]`}>Unschedule this day</button></Form>
                 )}
               </Card>
             )}

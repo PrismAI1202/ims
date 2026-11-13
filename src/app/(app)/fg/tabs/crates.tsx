@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { DownloadLink } from "@/components/download-link";
 import { returnableBalances } from "@/server/services/dispatch";
@@ -30,7 +31,7 @@ export async function CratesTab({ q }: { q?: string }) {
       <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>RECORD A MOVEMENT</Eyebrow>
-          <form action={recordCrates} className="grid gap-3 md:grid-cols-6">
+          <Form action={recordCrates} className="grid gap-3 md:grid-cols-6">
             <label className="text-[13px]">Customer
               <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             </label>
@@ -46,7 +47,7 @@ export async function CratesTab({ q }: { q?: string }) {
               <select name="binCode" className={inputCls}><option value="">First storage bin</option>{bins.map((b) => <option key={b.id} value={b.code}>{b.code}</option>)}</select>
             </label>
             <div className="md:col-span-6"><button className={`${btnCls} w-full md:w-auto`}>Record</button></div>
-          </form>
+          </Form>
         </Card>
       </CreatePanel>
       <p className="flex flex-wrap gap-4 text-sm font-semibold text-accent print:hidden">

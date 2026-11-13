@@ -11,7 +11,7 @@ const BACK = "/requests";
 
 export async function raiseRequest(formData: FormData) {
   const user = await requirePermission("request.create");
-  await runAction(BACK, "Material request sent to store.", async () => {
+  return runAction(BACK, "Material request sent to store.", async () => {
     const req = await createMaterialRequest({
       machineId: String(formData.get("machineId") || "") || undefined,
       lines: [{ itemId: String(formData.get("itemId")), qty: Number(formData.get("qty")) }],
@@ -23,7 +23,7 @@ export async function raiseRequest(formData: FormData) {
 
 export async function issueLine(formData: FormData) {
   const user = await requirePermission("stock.issue");
-  await runAction(BACK, "Issued to shop floor.", async () => {
+  return runAction(BACK, "Issued to shop floor.", async () => {
     await issueStock({
       requestLineId: String(formData.get("requestLineId")),
       lotNumber: String(formData.get("lotNumber")).trim(),
@@ -37,7 +37,7 @@ export async function issueLine(formData: FormData) {
 
 export async function giveBack(formData: FormData) {
   const user = await requirePermission("material.return");
-  await runAction(BACK, "Material returned to stores.", async () => {
+  return runAction(BACK, "Material returned to stores.", async () => {
     await returnMaterial({
       lotNumber: String(formData.get("lot") || ""), locationCode: String(formData.get("bin") || ""),
       qty: Number(formData.get("qty") || 0), note: String(formData.get("note") || ""), userId: user.id,

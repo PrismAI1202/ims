@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { Check, ChevronLeft, Pencil, Plus } from "lucide-react";
 import { db } from "@/server/db";
@@ -19,7 +20,7 @@ async function completeAction(formData: FormData) {
   "use server";
   const user = await requirePermission("maintenance.manage");
   const id = String(formData.get("mouldId"));
-  await runAction(`/maintenance?id=${id}`, "PM recorded. The PM counter was reset.", async () => {
+  return runAction(`/maintenance?id=${id}`, "PM recorded. The PM counter was reset.", async () => {
     await completePm({ mouldId: id, checks: formData.getAll("check").map(String), photoRef: await uploadFrom(formData, "photo"), note: String(formData.get("note") || ""), userId: user.id });
   });
 }
@@ -28,7 +29,7 @@ async function repairAction(formData: FormData) {
   "use server";
   const user = await requirePermission("maintenance.manage");
   const id = String(formData.get("mouldId"));
-  await runAction(`/maintenance?id=${id}`, "Logged.", async () => {
+  return runAction(`/maintenance?id=${id}`, "Logged.", async () => {
     const mins = String(formData.get("downtimeMin") || "");
     await logRepair({
       mouldId: id, kind: String(formData.get("kind")) === "TRIAL" ? "TRIAL" : "REPAIR", summary: String(formData.get("summary") || ""),
@@ -42,7 +43,7 @@ async function settingsAction(formData: FormData) {
   await requirePermission("maintenance.manage");
   const id = String(formData.get("mouldId"));
   const opt = (k: string) => { const v = String(formData.get(k) || "").trim(); return v === "" ? null : Number(v); };
-  await runAction(`/maintenance?id=${id}`, "Mould settings saved.", async () => {
+  return runAction(`/maintenance?id=${id}`, "Mould settings saved.", async () => {
     await updateMouldSettings({
       mouldId: id, idealCycleSec: opt("idealCycleSec"), minTonnage: opt("minTonnage"),
       pmIntervalShots: Number(formData.get("pmIntervalShots")), lifeShots: Number(formData.get("lifeShots")), openingShots: Number(formData.get("openingShots") || 0),
@@ -57,36 +58,36 @@ const backOf = (tab: string) => `/maintenance?tab=${tab}&edit=1`;
 async function addMachineAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
-  await runAction(backOf("machines"), "Machine added.", async () => { await createMachine(rawOf(f)); });
+  return runAction(backOf("machines"), "Machine added.", async () => { await createMachine(rawOf(f)); });
 }
 async function saveMachineAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
-  await runAction(backOf("machines"), "Machine updated.", async () => { await updateMachine(String(f.get("id")), rawOf(f)); });
+  return runAction(backOf("machines"), "Machine updated.", async () => { await updateMachine(String(f.get("id")), rawOf(f)); });
 }
 async function removeMachineAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
   let msg = "";
-  await runAction(backOf("machines"), () => msg, async () => {
+  return runAction(backOf("machines"), () => msg, async () => {
     msg = (await removeMachine(String(f.get("id")))) === "deleted" ? "Machine deleted." : "Machine has production history, so it was retired instead. Its moulds are free to fit elsewhere. Reactivate it any time.";
   });
 }
 async function addMouldAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
-  await runAction(backOf("moulds"), "Mould added. Set its cycle time and PM plan on its page.", async () => { await createMould(rawOf(f)); });
+  return runAction(backOf("moulds"), "Mould added. Set its cycle time and PM plan on its page.", async () => { await createMould(rawOf(f)); });
 }
 async function saveMouldAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
-  await runAction(backOf("moulds"), "Mould updated.", async () => { await updateMould(String(f.get("id")), rawOf(f)); });
+  return runAction(backOf("moulds"), "Mould updated.", async () => { await updateMould(String(f.get("id")), rawOf(f)); });
 }
 async function removeMouldAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
   let msg = "";
-  await runAction(backOf("moulds"), () => msg, async () => {
+  return runAction(backOf("moulds"), () => msg, async () => {
     msg = (await removeMould(String(f.get("id")))) === "deleted" ? "Mould deleted." : "Mould has PM, repair or plan history, so it was retired instead. Reactivate it any time.";
   });
 }
@@ -94,7 +95,7 @@ async function reactivateAction(f: FormData) {
   "use server";
   await requirePermission("equipment.manage");
   const kind = f.get("kind") === "machine" ? "machine" : "mould";
-  await runAction(backOf(kind === "machine" ? "machines" : "moulds"), "Back in service.", async () => { await reactivateEquipment(kind, String(f.get("id"))); });
+  return runAction(backOf(kind === "machine" ? "machines" : "moulds"), "Back in service.", async () => { await reactivateEquipment(kind, String(f.get("id"))); });
 }
 
 const STATE = {
@@ -128,7 +129,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
           <CreatePanel>
             <Card className="space-y-3">
               <Eyebrow>LOG A REPAIR OR TRIAL</Eyebrow>
-              <form action={repairAction} className="grid gap-3 md:grid-cols-4">
+              <Form action={repairAction} className="grid gap-3 md:grid-cols-4">
                 <input type="hidden" name="mouldId" value={sel.id} />
                 <label className="text-[13px]">Type<select name="kind" className={inputCls}><option value="REPAIR">Repair</option><option value="TRIAL">Trial</option></select></label>
                 <label className="text-[13px] md:col-span-2">What was done<input name="summary" required placeholder="e.g. Cavity 3 flash, parting line polished" className={inputCls} /></label>
@@ -136,7 +137,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 <label className="text-[13px] md:col-span-2">Photo (optional)<input name="photo" type="file" accept="image/*,application/pdf" capture="environment" className={`${inputCls} py-2.5 text-xs`} /></label>
                 <label className="text-[13px] md:col-span-2">Note<input name="note" className={inputCls} /></label>
                 <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Save</button></div>
-              </form>
+              </Form>
             </Card>
           </CreatePanel>
 
@@ -153,7 +154,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
 
           {manage && (
             <Card>
-              <form action={completeAction} className="space-y-2">
+              <Form action={completeAction} className="space-y-2">
                 <input type="hidden" name="mouldId" value={sel.id} />
                 <Eyebrow>PM CHECKLIST · EVERY {fmt(sel.interval)} SHOTS</Eyebrow>
                 {PM_CHECKS.map((c) => (
@@ -164,14 +165,14 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 </label>
                 <label className="block text-[13px]">Note<input name="note" className={inputCls} /></label>
                 <button className={`${btnOkCls} w-full`}>Complete PM · reset counter</button>
-              </form>
+              </Form>
             </Card>
           )}
 
           {manage && (
             <details className="rounded-[14px] bg-white p-4">
               <summary className="min-h-9 cursor-pointer text-sm font-semibold text-accent">Mould settings · cycle time, press size, PM plan</summary>
-              <form action={settingsAction} className="mt-3 grid gap-3 md:grid-cols-5">
+              <Form action={settingsAction} className="mt-3 grid gap-3 md:grid-cols-5">
                 <input type="hidden" name="mouldId" value={sel.id} />
                 <label className="text-[13px]">Standard cycle (s)<input name="idealCycleSec" type="number" step="any" min="0" defaultValue={mould.idealCycleSec === null ? "" : Number(mould.idealCycleSec)} className={inputCls} /></label>
                 <label className="text-[13px]">Min press (T)<input name="minTonnage" type="number" min="1" step="1" defaultValue={mould.minTonnage ?? ""} className={inputCls} /></label>
@@ -180,7 +181,7 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 <label className="text-[13px]">Counter at go-live<input name="openingShots" type="number" min="0" step="1" required defaultValue={mould.openingShots} className={inputCls} /></label>
                 <div className="md:col-span-5"><button className={`${btnCls} w-full md:w-auto`}>Save settings</button></div>
                 <p className="text-xs text-ink-3 md:col-span-5">The standard cycle time is what lets Metrics measure performance. Booked shots are added to the go-live counter automatically.</p>
-              </form>
+              </Form>
             </details>
           )}
 
@@ -271,33 +272,33 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
               return (
                 <div key={m.id} className={`group/p relative has-[details[open]]:col-span-full ${retired(raw?.active ?? true)}`}>
                   <Drawer label={`Edit mould ${m.code}`} tile={<>{mouldCard(m)}{raw && !raw.active && <Badge tone="neutral">Retired</Badge>}</>} tileClass={`${cardCls} cursor-pointer ring-1 ring-transparent hover:ring-accent`}>
-                    <form action={saveMouldAction} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
-                      <input type="hidden" name="id" value={m.id} /><input type="hidden" name="code" value={m.code} />
+                    <Form action={saveMouldAction} intents={{ reactivate: reactivateAction }} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                      <input type="hidden" name="id" value={m.id} /><input type="hidden" name="code" value={m.code} /><input type="hidden" name="kind" value="mould" />
                       <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">{m.code} <span className="font-normal text-ink-3">· code can&apos;t be changed · cycle time and PM plan are on its own page</span></p>
                       {mouldFields(raw && { name: raw.name, cavities: m.cavities, shotWeightG: raw.shotWeightG === null ? null : Number(raw.shotWeightG), runnerWeightG: raw.runnerWeightG === null ? null : Number(raw.runnerWeightG), machineId: raw.machineId })}
                       <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
                         <button className={btnCls}>Save</button>
-                        {raw && !raw.active && <button formAction={reactivateAction} formNoValidate name="kind" value="mould" className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Put back in service</button>}
+                        {raw && !raw.active && <button name="intent" value="reactivate" formNoValidate className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Put back in service</button>}
                       </div>
-                    </form>
+                    </Form>
                   </Drawer>
                   {(raw?.active ?? true) && (
-                    <form action={removeMouldAction} className="group-has-[details[open]]/p:hidden">
+                    <Form action={removeMouldAction} className="group-has-[details[open]]/p:hidden">
                       <input type="hidden" name="id" value={m.id} />
                       <RemoveButton label={`Remove mould ${m.code}`} busy={!!locked} why={locked} />
-                    </form>
+                    </Form>
                   )}
                 </div>
               );
             })}
             {editing && (
               <Drawer label="Add a mould" className="open:col-span-full" tileClass={`flex min-h-32 flex-col items-center justify-center gap-1 rounded-[14px] ${dotted}`} tile={<><Plus size={26} aria-hidden /><span className="text-sm font-semibold">Add mould</span></>}>
-                <form action={addMouldAction} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                <Form action={addMouldAction} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
                   <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">New mould</p>
                   <label className="text-xs">Code<input name="code" required maxLength={30} placeholder="e.g. MLD-2001" className={field} /></label>
                   {mouldFields()}
                   <div className="sm:col-span-2 lg:col-span-4"><button className={btnCls}>Create mould</button></div>
-                </form>
+                </Form>
               </Drawer>
             )}
             {visible.length === 0 && !editing && <Card><p className="text-sm text-ink-3">{q ? `No moulds match “${q}”.` : canEdit ? "No moulds yet. Use Edit list to add one." : "No moulds yet. Ask an admin to add them."}</p></Card>}
@@ -344,34 +345,34 @@ export default async function MaintenancePage({ searchParams }: { searchParams: 
                 return (
                   <div key={m.id} className={`group/p relative has-[details[open]]:col-span-full ${retired(m.active)}`}>
                     <Drawer label={`Edit machine ${m.code}`} tile={body} tileClass={`${cardCls} cursor-pointer ring-1 ring-transparent hover:ring-accent`}>
-                      <form action={saveMachineAction} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
-                        <input type="hidden" name="id" value={m.id} /><input type="hidden" name="code" value={m.code} />
+                      <Form action={saveMachineAction} intents={{ reactivate: reactivateAction }} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                        <input type="hidden" name="id" value={m.id} /><input type="hidden" name="code" value={m.code} /><input type="hidden" name="kind" value="machine" />
                         <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">{m.code} <span className="font-normal text-ink-3">· code can&apos;t be changed</span></p>
                         <label className="text-xs sm:col-span-2">Name<input name="name" required defaultValue={m.name} className={field} /></label>
                         <label className="text-xs">Tonnage<input name="tonnage" type="number" min="1" defaultValue={m.tonnage ?? ""} className={field} /></label>
                         <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
                           <button className={btnCls}>Save</button>
-                          {!m.active && <button formAction={reactivateAction} formNoValidate name="kind" value="machine" className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Put back in service</button>}
+                          {!m.active && <button name="intent" value="reactivate" formNoValidate className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Put back in service</button>}
                         </div>
-                      </form>
+                      </Form>
                     </Drawer>
                     {m.active && (
-                      <form action={removeMachineAction} className="group-has-[details[open]]/p:hidden">
+                      <Form action={removeMachineAction} className="group-has-[details[open]]/p:hidden">
                         <input type="hidden" name="id" value={m.id} />
                         <RemoveButton label={`Remove machine ${m.code}`} busy={false} why="" />
-                      </form>
+                      </Form>
                     )}
                   </div>
                 );
               })}
               <Drawer label="Add a machine" className="open:col-span-full" tileClass={`flex min-h-32 flex-col items-center justify-center gap-1 rounded-[14px] ${dotted}`} tile={<><Plus size={26} aria-hidden /><span className="text-sm font-semibold">Add machine</span></>}>
-                <form action={addMachineAction} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                <Form action={addMachineAction} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
                   <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">New machine</p>
                   <label className="text-xs">Code<input name="code" required maxLength={30} placeholder="e.g. IMM-05" className={field} /></label>
                   <label className="text-xs sm:col-span-2">Name<input name="name" required placeholder="e.g. Injection Machine 120T" className={field} /></label>
                   <label className="text-xs">Tonnage<input name="tonnage" type="number" min="1" className={field} /></label>
                   <div className="sm:col-span-2 lg:col-span-4"><button className={btnCls}>Create machine</button></div>
-                </form>
+                </Form>
               </Drawer>
             </div>
           )}

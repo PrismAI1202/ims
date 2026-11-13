@@ -1,5 +1,7 @@
 "use client";
 
+import type { FormAction } from "@/lib/action-result";
+import { Form } from "@/components/form";
 import { useState } from "react";
 
 export type MoveTarget = { code: string; rack: string; note: string };
@@ -8,7 +10,7 @@ export type MoveTarget = { code: string; rack: string; note: string };
 export function MoveLotForm({
   action, lotNumber, fromCode, back, max, uom, targets,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: FormAction;
   lotNumber: string; fromCode: string; back: string; max: number; uom: string; targets: MoveTarget[];
 }) {
   const [qty, setQty] = useState(String(max));
@@ -17,7 +19,7 @@ export function MoveLotForm({
   const racks = [...new Set(targets.map((t) => t.rack))];
   const quick = "min-h-9 cursor-pointer rounded-lg border border-shell-line px-3 text-xs font-semibold text-on-shell";
   return (
-    <form action={action} className="space-y-2.5">
+    <Form action={action} className="space-y-2.5">
       <input type="hidden" name="lotNumber" value={lotNumber} />
       <input type="hidden" name="fromCode" value={fromCode} />
       <input type="hidden" name="back" value={back} />
@@ -46,6 +48,6 @@ export function MoveLotForm({
       <button disabled={bad} className="min-h-11 w-full cursor-pointer rounded-lg bg-accent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
         Move {bad ? "" : `${n.toLocaleString("en-US")} ${uom}`}
       </button>
-    </form>
+    </Form>
   );
 }

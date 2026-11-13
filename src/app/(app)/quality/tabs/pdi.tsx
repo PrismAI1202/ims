@@ -1,7 +1,8 @@
+import { Form } from "@/components/form";
 import { pdiQueue } from "@/server/services/pdi";
 import { ago } from "@/server/services/home";
 import { btnCls, btnWarnCls } from "@/components/flash";
-import { Badge, Card, Mono } from "@/components/ui";
+import { Badge, Card, Mono, ScrollArea } from "@/components/ui";
 import { decideFinal } from "../actions";
 
 export async function PdiTab() {
@@ -13,6 +14,7 @@ export async function PdiTab() {
         Finished-goods lots can be packed and labelled straight away, but dispatch can only load boxes from a lot you have released. Put a lot on hold if the sample fails.
       </p>
       {lots.length === 0 && <Card><p className="text-sm text-ink-3">No lots are waiting for final inspection.</p></Card>}
+      <ScrollArea label="Lots waiting for final inspection">
       <div className="grid gap-2.5 md:grid-cols-2">
         {lots.map((l) => (
           <article key={l.lotNumber} className="space-y-2.5 rounded-[14px] bg-white p-3.5">
@@ -27,7 +29,7 @@ export async function PdiTab() {
               {l.qty.toLocaleString()} parts · {l.boxes} boxed · booking {l.booking} · {ago(l.since, now)}
               {l.note && <span className="block text-ink-2">Hold reason: {l.note}</span>}
             </div>
-            <form action={decideFinal} className="space-y-2">
+            <Form action={decideFinal} className="space-y-2">
               <input type="hidden" name="lot" value={l.lotNumber} />
               <label className="block text-[13px]">Remarks <span className="text-ink-3">(needed to hold)</span>
                 <input name="remarks" className="mt-1 w-full min-h-12 rounded-xl border border-border bg-white px-3.5 text-base" />
@@ -36,10 +38,11 @@ export async function PdiTab() {
                 <button name="decision" value="release" className={btnCls}>Release</button>
                 {l.status !== "HOLD" && <button name="decision" value="hold" className={btnWarnCls}>Hold</button>}
               </div>
-            </form>
+            </Form>
           </article>
         ))}
       </div>
+      </ScrollArea>
     </div>
   );
 }

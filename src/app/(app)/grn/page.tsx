@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn, DomainError } from "@/server/services/inventory";
@@ -9,7 +10,7 @@ import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
 
@@ -18,7 +19,7 @@ async function receive(formData: FormData) {
   const user = await requirePermission("grn.create");
   const poId = String(formData.get("poId"));
   const po = await db.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: true } });
-  await runAction("/grn", "GRN posted. Lots are in staging, pending QC.", async () => {
+  return runAction("/grn", "GRN posted. Lots are in staging, pending QC.", async () => {
     const lines = po.lines
       .map((l) => ({
         poLineId: l.id,
@@ -37,14 +38,23 @@ async function receive(formData: FormData) {
         throw e instanceof DomainError ? e : new DomainError("The certificate could not be saved.");
       }
     }
-    await createGrn({
-      poId,
-      vehicleNumber: String(formData.get("vehicleNumber")),
-      invoiceNumber: String(formData.get("invoiceNumber")),
-      coaUrl,
-      lines,
-      userId: user.id,
-    });
+    // Say which boxes are the problem, so the form comes back with those highlighted and everything else kept.
+    if (lines.length === 0) throw new DomainError("Enter the received quantity on at least one line.", po.lines.map((l) => `qty_${l.id}`));
+    const noLot = lines.filter((l) => !l.supplierLotNo.trim());
+    if (noLot.length) throw new DomainError("Enter the manufacturer lot / heat number for each line you received.", noLot.map((l) => `lot_${l.poLineId}`));
+    try {
+      await createGrn({
+        poId,
+        vehicleNumber: String(formData.get("vehicleNumber")),
+        invoiceNumber: String(formData.get("invoiceNumber")),
+        coaUrl,
+        lines,
+        userId: user.id,
+      });
+    } catch (e) {
+      if (e instanceof DomainError && /COA/.test(e.message)) throw new DomainError(e.message, ["coaFile", "coaUrl"]);
+      throw e;
+    }
     pushAfter({ view: "quality", perm: "qc.inspect", exceptUserId: user.id }, {
       title: "Lots waiting for QC", body: `${po.poNumber}: ${lines.length} line${lines.length === 1 ? "" : "s"} received`, url: "/quality?tab=inward", tag: "qc",
     });
@@ -52,7 +62,7 @@ async function receive(formData: FormData) {
 }
 
 export default async function GrnPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; po?: string; q?: string }> }) {
-  await requireView("grn");
+  const user = await requireView("grn");
   const { error, ok, po: poId, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const openPos = await db.purchaseOrder.findMany({
@@ -71,7 +81,9 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
   return (
     <CreateProvider defaultOpen={!!selected}>
     <div className="space-y-4">
-      <PageHeader right={<CreateButton label="New GRN" />} eyebrow="INWARD" title="Gate entry & GRN" />
+      <PageHeader right={<CreateButton label="New GRN" />} eyebrow="INWARD" title="Gate entry & GRN" subtitle="Receive the truck here, then QC the lots in staging">
+        <StoresTabs active="receive" user={user} />
+      </PageHeader>
       <Flash error={error} ok={ok} />
 
       <CreatePanel>
@@ -89,7 +101,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
         </Card>
 
         {selected && (
-          <form action={receive} className="space-y-4">
+          <Form action={receive} className="space-y-4">
             <input type="hidden" name="poId" value={selected.id} />
             <Card className="space-y-3">
               <Eyebrow>GATE</Eyebrow>
@@ -117,7 +129,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
               ))}
             </Card>
             <button className={`${btnCls} w-full md:w-auto`}>Post GRN</button>
-          </form>
+          </Form>
         )}
       </div>
       </CreatePanel>

@@ -1,17 +1,18 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { db } from "@/server/db";
 import { btnDangerCls, btnOkCls, btnWarnCls, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { CoaRef } from "@/components/coa-ref";
-import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono, ScrollArea } from "@/components/ui";
 import { decideInward } from "../actions";
 
-export async function InwardTab({ q }: { q?: string }) {
+export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
   const [pending, bins, recent] = await Promise.all([
     db.lot.findMany({
       where: { qcStatus: "PENDING_QC" }, orderBy: { receivedAt: "asc" },
-      include: { item: true, grnLine: { include: { grn: { include: { po: true } } } } },
+      include: { item: true, grnLine: { include: { grn: { include: { po: true } } } }, balances: { where: { qty: { gt: 0 } }, include: { location: true } } },
     }),
     db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
     db.lot.findMany({ where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 100, include: { item: true } }),
@@ -20,9 +21,11 @@ export async function InwardTab({ q }: { q?: string }) {
   return (
     <div className="space-y-4">
       {pending.length === 0 && <Card><p className="text-ink-3">Nothing here right now. No lots waiting for QC.</p></Card>}
+      <ScrollArea label="Lots waiting for QC">
+      <div className="space-y-4">
       {pending.map((l) => (
-        <form key={l.id} action={decideInward}>
-          <Card className="space-y-3">
+        <Form key={l.id} id={`lot-${l.lotNumber}`} className="scroll-mt-4" action={decideInward}>
+          <Card className={`space-y-3 ${l.lotNumber === lot ? "ring-2 ring-accent" : ""}`}>
             <input type="hidden" name="lotId" value={l.id} />
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
@@ -35,6 +38,17 @@ export async function InwardTab({ q }: { q?: string }) {
                 <Badge tone={l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "info" : "neutral"}>
                   {l.grnLine?.grn.po.segment === "AUTOMOTIVE" ? "Automotive" : "Non-auto"}
                 </Badge>
+              </div>
+            </div>
+            <div className="rounded-xl bg-canvas p-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-[13px] font-semibold">Count what is on the pallet ({l.item.uom})
+                  <input name="counted" type="number" step="any" min="0" defaultValue={Number(l.receivedQty)} aria-label="Counted quantity" className={`${inputCls} w-44`} />
+                </label>
+                <p className="min-w-48 flex-1 text-xs text-ink-2">
+                  The GRN says <Mono>{Number(l.receivedQty).toLocaleString()}</Mono> {l.item.uom}, in {l.balances.map((b) => b.location.code).join(", ") || "no bin"}.
+                  If your count differs, the difference goes for approval and the lot stays in staging until it is decided.
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -59,12 +73,14 @@ export async function InwardTab({ q }: { q?: string }) {
               <button name="decision" value="REJECTED" className={btnDangerCls}>Reject</button>
             </div>
           </Card>
-        </form>
+        </Form>
       ))}
+      </div>
+      </ScrollArea>
 
       <Eyebrow>RECENTLY DECIDED</Eyebrow>
       <SearchBar q={q} keep={{ tab: "inward" }} placeholder="Search lot or item" clearHref="/quality?tab=inward" />
-      <DataTable>
+      <DataTable scroll>
         <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
         <tbody>
           {recent.filter((l) => matches(q, l.lotNumber, l.item.code, l.item.name, l.qcStatus)).map((l) => (

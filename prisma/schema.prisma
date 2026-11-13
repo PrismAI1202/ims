@@ -436,6 +436,7 @@ model QcInspection {
   decision      QcStatus
   remarks       String?
   coaUrl        String?
+  countedQty    Decimal? @db.Decimal(14, 3) // what the inspector counted in staging, against the GRN quantity
   inspectedAt   DateTime @default(now())
   inspectedById String?
 }

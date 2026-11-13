@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { can } from "@/server/auth/permissions";
 import { btnCls, btnDangerCls, btnSecondaryCls, inputCls } from "@/components/flash";
 import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
+import { Form } from "@/components/form";
 import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
 import type { HomeUser } from "@/components/home/types";
 import { decideSheet, saveSheet, startSheet, submitSheet } from "./count-actions";
@@ -39,7 +40,7 @@ export async function CountsTab({ user }: { user: HomeUser }) {
           <CreatePanel>
             <Card className="space-y-3">
               <Eyebrow>OPEN A COUNT SHEET</Eyebrow>
-              <form action={startSheet} className="flex flex-wrap items-end gap-3">
+              <Form action={startSheet} className="flex flex-wrap items-end gap-3">
                 <label className="min-w-48 flex-1 text-[13px]">Bin
                   <select name="bin" required className={inputCls}>
                     <option value="">— choose a bin —</option>
@@ -47,7 +48,7 @@ export async function CountsTab({ user }: { user: HomeUser }) {
                   </select>
                 </label>
                 <button className={btnCls}>Open sheet</button>
-              </form>
+              </Form>
             </Card>
           </CreatePanel>
         )}
@@ -80,12 +81,12 @@ export async function CountsTab({ user }: { user: HomeUser }) {
                       </tbody>
                     </DataTable>
                   )}
-                  <form action={decideSheet} className="flex flex-wrap items-end gap-2">
+                  <Form action={decideSheet} className="flex flex-wrap items-end gap-2">
                     <input type="hidden" name="id" value={c.id} />
                     <label className="min-w-48 flex-1 text-[13px]">Remark <span className="text-ink-3">(needed to reject)</span><input name="note" className={inputCls} /></label>
                     <button name="decision" value="approve" className={btnCls}>Approve &amp; adjust stock</button>
                     <button name="decision" value="reject" className={btnDangerCls}>Reject</button>
-                  </form>
+                  </Form>
                 </Card>
               );
             })}
@@ -102,7 +103,7 @@ export async function CountsTab({ user }: { user: HomeUser }) {
                   <span><Mono className="font-semibold">{c.countNumber}</Mono> <span className="text-sm text-ink-2">· bin {c.location.code}</span></span>
                   <Badge tone="warn">Counting</Badge>
                 </div>
-                <form className="space-y-3">
+                <Form action={saveSheet} intents={{ submit: submitSheet }} className="space-y-3">
                   <input type="hidden" name="id" value={c.id} />
                   <DataTable>
                     <thead><tr><th>Lot</th><th>Item</th><th className="text-right">System</th><th className="w-36">Counted</th></tr></thead>
@@ -123,10 +124,10 @@ export async function CountsTab({ user }: { user: HomeUser }) {
                     <label className="text-[13px]">Quantity<input name="extraQty" type="number" step="any" min="0" className={inputCls} /></label>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button formAction={saveSheet} className={btnSecondaryCls}>Save</button>
-                    <button formAction={submitSheet} className={btnCls}>Submit for approval</button>
+                    <button className={btnSecondaryCls}>Save</button>
+                    <button name="intent" value="submit" className={btnCls}>Submit for approval</button>
                   </div>
-                </form>
+                </Form>
               </Card>
             ))}
           </section>

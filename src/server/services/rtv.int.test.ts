@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { debitNoteData, rejectedLots, returnToVendor } from "./rtv";
+import { debitNoteData, rejectedLots, returnToVendor, suggestReason } from "./rtv";
 import { createGrn, createPurchaseOrder, recordQc } from "./inventory";
 
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://ims:ims@localhost:5433/ims_test?schema=public";
@@ -22,6 +22,25 @@ beforeEach(async () => {
   const grn = await createGrn({ poId: po.id, vehicleNumber: "MH12", invoiceNumber: "INV1", lines: [{ poLineId: poLine.id, qty: 400, supplierLotNo: "HEAT-9" }] }, db);
   const lot = await db.lot.findFirstOrThrow({ where: { grnLine: { grnId: grn.id } } });
   lotNumber = lot.lotNumber;
+});
+
+describe("the QC behind a return", () => {
+  it("shows what the inspector recorded and offers it as the reason on the debit note", async () => {
+    const lot = await db.lot.findUniqueOrThrow({ where: { lotNumber } });
+    await recordQc({ lotId: lot.id, decision: "REJECTED", mfi: 18.2, moisturePct: 0.4, remarks: "Wet material, MFI out of spec", countedQty: 380 }, db);
+    const [l] = await rejectedLots(db);
+    expect(l).toMatchObject({ receivedQty: 400, supplierLotNo: "HEAT-9" });
+    expect(l.grnNumber).toMatch(/^GRN-/);
+    expect(l.qc).toMatchObject({ remarks: "Wet material, MFI out of spec", mfi: 18.2, moisturePct: 0.4, density: null, countedQty: 380 });
+    expect(l.suggestedReason).toBe("Wet material, MFI out of spec. Results: MFI 18.2 g/10min, moisture 0.4%.");
+  });
+
+  it("builds the reason from whatever was recorded", () => {
+    const base = { decidedAt: new Date(), inspector: null, remarks: null, mfi: null, moisturePct: null, density: null, tensile: null, countedQty: null, coaUrl: null };
+    expect(suggestReason(null)).toBe("");
+    expect(suggestReason(base)).toBe("Failed inward QC.");
+    expect(suggestReason({ ...base, remarks: "  Contaminated.  ", tensile: 31 })).toBe("Contaminated. Results: tensile 31 MPa.");
+  });
 });
 
 describe("return to supplier", () => {

@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { Check, ChevronLeft, Pencil, Plus } from "lucide-react";
 import { db } from "@/server/db";
@@ -31,7 +32,7 @@ async function addPartner(f: FormData) {
   "use server";
   await requirePermission("partners.manage");
   const kind = kindOf(f);
-  await runAction(back(kind), kind === "supplier" ? "Supplier added." : "Customer added.", async () => {
+  return runAction(back(kind), kind === "supplier" ? "Supplier added." : "Customer added.", async () => {
     await (kind === "supplier" ? createSupplier(raw(f)) : createCustomer(raw(f)));
   });
 }
@@ -41,7 +42,7 @@ async function savePartner(f: FormData) {
   await requirePermission("partners.manage");
   const kind = kindOf(f);
   const id = String(f.get("id"));
-  await runAction(back(kind), kind === "supplier" ? "Supplier updated." : "Customer updated.", async () => {
+  return runAction(back(kind), kind === "supplier" ? "Supplier updated." : "Customer updated.", async () => {
     await (kind === "supplier" ? updateSupplier(id, raw(f)) : updateCustomer(id, raw(f)));
   });
 }
@@ -52,7 +53,7 @@ async function removePartner(f: FormData) {
   const kind = kindOf(f);
   const id = String(f.get("id"));
   let outcome = "";
-  await runAction(back(kind), () => outcome, async () => {
+  return runAction(back(kind), () => outcome, async () => {
     const r = await (kind === "supplier" ? removeSupplier(id) : removeCustomer(id));
     const what = kind === "supplier" ? "Supplier" : "Customer";
     outcome = r === "deleted" ? `${what} deleted.` : `${what} has order history, so it was made inactive instead. Reactivate it any time.`;
@@ -63,7 +64,7 @@ async function reactivatePartner(f: FormData) {
   "use server";
   await requirePermission("partners.manage");
   const kind = kindOf(f);
-  await runAction(back(kind), "Reactivated.", async () => { await setActive(kind, String(f.get("id")), true); });
+  return runAction(back(kind), "Reactivated.", async () => { await setActive(kind, String(f.get("id")), true); });
 }
 
 const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
@@ -203,22 +204,22 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         {shown.map((r) => editing ? (
           <div key={r.id} className={`group/p relative has-[details[open]]:col-span-full ${r.active ? "" : "opacity-70"}`}>
             <Drawer label={`Edit ${r.name}`} tile={cardBody(r)} tileClass={`${cardCls} cursor-pointer ring-1 ring-transparent hover:ring-accent`}>
-              <form action={savePartner} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+              <Form action={savePartner} intents={{ reactivate: reactivatePartner }} className="grid gap-3 rounded-[14px] border border-border bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
                 <input type="hidden" name="kind" value={kind} /><input type="hidden" name="id" value={r.id} /><input type="hidden" name="code" value={r.code} />
                 <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">{r.name} <span className="font-normal text-ink-3">· code {r.code} can&apos;t be changed</span></p>
                 <label className="text-xs sm:col-span-2">Name<input name="name" required defaultValue={r.name} className={field} /></label>
                 {fields(r)}
                 <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
                   <button className={btnCls}>Save</button>
-                  {!r.active && <button formAction={reactivatePartner} formNoValidate className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Reactivate</button>}
+                  {!r.active && <button name="intent" value="reactivate" formNoValidate className="min-h-12 cursor-pointer text-sm font-semibold text-accent">Reactivate</button>}
                 </div>
-              </form>
+              </Form>
             </Drawer>
             {r.active && (
-              <form action={removePartner} className="group-has-[details[open]]/p:hidden">
+              <Form action={removePartner} className="group-has-[details[open]]/p:hidden">
                 <input type="hidden" name="kind" value={kind} /><input type="hidden" name="id" value={r.id} />
                 <RemoveButton label={`Remove ${r.name}`} busy={!!r.locked} why={r.locked ?? ""} />
-              </form>
+              </Form>
             )}
           </div>
         ) : (
@@ -229,14 +230,14 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         {editing && (
           <Drawer label={`Add a ${oneLabel}`} className="open:col-span-full" tileClass={`flex min-h-32 flex-col items-center justify-center gap-1 rounded-[14px] ${dotted}`}
             tile={<><Plus size={26} aria-hidden /><span className="text-sm font-semibold">Add {oneLabel}</span></>}>
-            <form action={addPartner} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+            <Form action={addPartner} className="grid gap-3 rounded-[14px] border-2 border-dashed border-accent bg-white p-3.5 sm:grid-cols-2 lg:grid-cols-4">
               <input type="hidden" name="kind" value={kind} />
               <p className="text-[13px] font-semibold sm:col-span-2 lg:col-span-4">New {oneLabel}</p>
               <label className="text-xs">Code<input name="code" required maxLength={20} className={field} /></label>
               <label className="text-xs sm:col-span-1 lg:col-span-1">Name<input name="name" required className={field} /></label>
               {fields()}
               <div className="sm:col-span-2 lg:col-span-4"><button className={btnCls}>Create {oneLabel}</button></div>
-            </form>
+            </Form>
           </Drawer>
         )}
         {shown.length === 0 && !editing && <Card><p className="text-sm text-ink-3">No {oneLabel}s match this filter.</p></Card>}

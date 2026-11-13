@@ -1,3 +1,5 @@
+import { DomainError } from "@/server/services/inventory";
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
@@ -27,7 +29,7 @@ async function book(formData: FormData) {
     regrindSkipped
       ? "Production booked. No regrind item exists for this resin grade, so the runners were logged but not added to stock."
       : "Production booked.";
-  await runAction("/production", message, async () => {
+  return runAction("/production", message, async () => {
     const r = await bookProduction({
       bomId: String(formData.get("bomId")), machineId: String(formData.get("machineId")),
       shift: String(formData.get("shift")) as "A" | "B" | "C",
@@ -41,7 +43,7 @@ async function book(formData: FormData) {
         lotNumber: String(formData.get(`lot_${i}`) || "").trim(), qty: Number(formData.get(`lotqty_${i}`) || 0),
       })).filter((l) => l.lotNumber),
       requireMaterialLots: true,
-    });
+    }).catch((e) => { throw aboutLots(e, formData); });
     regrindSkipped = r.regrindSkipped;
 
     const b = r.booking;
@@ -65,10 +67,18 @@ async function book(formData: FormData) {
   });
 }
 
+/** A rule about material lots: say which lot boxes it is about, so the form comes back with them highlighted. */
+function aboutLots(e: unknown, formData: FormData) {
+  if (!(e instanceof DomainError) || !/\blot\b/i.test(e.message)) return e;
+  const all = Array.from({ length: LOT_ROWS }, (_, i) => `lot_${i}`);
+  const typed = all.filter((n) => String(formData.get(n) || "").trim());
+  return new DomainError(e.message, /^Scan the lot/.test(e.message) || typed.length === 0 ? all : typed);
+}
+
 async function logStop(formData: FormData) {
   "use server";
   const user = await requirePermission("downtime.log");
-  await runAction("/production", "Stop logged. It counts toward availability on Metrics.", async () => {
+  return runAction("/production", "Stop logged. It counts toward availability on Metrics.", async () => {
     await logDowntime({
       machineId: String(formData.get("machineId")), mouldId: String(formData.get("mouldId") || "") || undefined,
       day: String(formData.get("day")), shift: String(formData.get("shift")) as "A" | "B" | "C",
@@ -104,7 +114,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No BOMs defined yet. Ask an admin to add one under BOMs.</p>
       ) : (
         <CreatePanel><Card>
-          <form action={book} className="grid gap-3 md:grid-cols-4">
+          <Form action={book} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Part / BOM
               <select name="bomId" required className={inputCls}>
                 {boms.map((b) => <option key={b.id} value={b.id}>{b.fgItem.code} · {b.mould.code} ({b.mould.cavities} cav)</option>)}
@@ -136,7 +146,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
             </div>
             <label className="text-[13px] md:col-span-3">Note<input name="note" className={inputCls} /></label>
             <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Book production</button></div>
-          </form>
+          </Form>
         </Card></CreatePanel>
       )}
 
@@ -144,7 +154,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
         <CreatePanel id="downtime">
           <Card className="space-y-3">
             <Eyebrow>LOG A MACHINE STOP</Eyebrow>
-            <form action={logStop} className="grid gap-3 md:grid-cols-4">
+            <Form action={logStop} className="grid gap-3 md:grid-cols-4">
               <label className="text-[13px]">Machine<select name="machineId" required className={inputCls}>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
               <label className="text-[13px]">Mould (optional)<select name="mouldId" className={inputCls}><option value="">—</option>{moulds.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
               <label className="text-[13px]">Date<input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} max={new Date().toISOString().slice(0, 10)} className={inputCls} /></label>
@@ -155,7 +165,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
               <label className="text-[13px]">Stopped for (min)<input name="minutes" type="number" min="1" step="1" required className={inputCls} /></label>
               <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
               <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Log stop</button></div>
-            </form>
+            </Form>
           </Card>
         </CreatePanel>
       )}

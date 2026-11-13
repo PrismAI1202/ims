@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { db } from "@/server/db";
 import { requireView } from "@/server/auth/guard";
@@ -36,12 +37,12 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 
 function ActiveToggle({ kind, id, active }: { kind: string; id: string; active: boolean }) {
   return (
-    <form action={toggleActive}>
+    <Form action={toggleActive}>
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="active" value={String(!active)} />
       <button className="min-h-9 cursor-pointer text-xs font-semibold text-ink-2">{active ? "Deactivate" : "Activate"}</button>
-    </form>
+    </Form>
   );
 }
 
@@ -67,7 +68,7 @@ async function Items({ q }: { q?: string }) {
   return (
     <>
       <Panel title="+ New item">
-        <form action={addItem} className="space-y-3">
+        <Form action={addItem} className="space-y-3">
           <ItemFields />
           <div className="grid gap-3 rounded-xl border-2 border-dashed border-border p-3 md:grid-cols-4">
             <p className="text-[13px] font-semibold md:col-span-4">Who you buy it from <span className="font-normal text-ink-3">(optional; not for finished goods or regrind). Needed for MRP to suggest a PO. More suppliers can be added on the item.</span></p>
@@ -77,7 +78,7 @@ async function Items({ q }: { q?: string }) {
             <label className="text-[13px]">Buying price (₹)<input name="buyPrice" type="number" min="0" step="any" className={inputCls} /></label>
           </div>
           <button className={btnCls}>Create item</button>
-        </form>
+        </Form>
       </Panel>
       <SearchBar q={q} placeholder="Search code, name or category" keep={{ tab: "items" }} clearHref="/masters?tab=items" />
       <Table head={["Code", "Name", "Category", "UOM", "Min", "ROP", "Max", "COA", "Status", ""]}>

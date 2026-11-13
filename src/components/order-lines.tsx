@@ -1,5 +1,7 @@
 "use client";
 
+import type { FormAction } from "@/lib/action-result";
+import { Form } from "@/components/form";
 import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { btnCls, inputCls } from "@/components/flash";
@@ -167,14 +169,14 @@ export function LinesEditor({ lines, options, mode, supplierId, ready, showDate,
 // ───────── New supplier PO ─────────
 
 export function NewPoForm({ action, suppliers, items, pre }: {
-  action: (f: FormData) => void | Promise<void>;
+  action: FormAction;
   suppliers: { id: string; name: string }[]; items: LineOption[];
   pre?: { supplierId?: string; itemId?: string; qty?: string };
 }) {
   const [supplierId, setSupplierId] = useState(pre?.supplierId ?? suppliers[0]?.id ?? "");
   const lines = useLines([{ itemId: pre?.itemId, qty: pre?.qty }]);
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} className="space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
         <label className="text-[13px]">Supplier
           <select name="supplierId" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={inputCls}>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
@@ -192,7 +194,7 @@ export function NewPoForm({ action, suppliers, items, pre }: {
       <LinesEditor lines={lines} options={items} mode="po" supplierId={supplierId} />
       <p className="text-xs text-ink-3">Blank prices use the price master. Without an expected date, the supplier&apos;s lead time is used.</p>
       <button className={`${btnCls} w-full md:w-auto`}>Create &amp; approve PO</button>
-    </form>
+    </Form>
   );
 }
 
@@ -201,7 +203,7 @@ export function NewPoForm({ action, suppliers, items, pre }: {
 export interface Suggestion { customerId: string; itemId: string; qty: number; due: string }
 
 export function NewPickListForm({ action, customers, parts, ready, suggestions }: {
-  action: (f: FormData) => void | Promise<void>;
+  action: FormAction;
   customers: { id: string; name: string }[]; parts: LineOption[];
   ready: Record<string, Record<string, number>>; // customer id -> part id -> boxed and released quantity
   suggestions: Suggestion[];
@@ -211,7 +213,7 @@ export function NewPickListForm({ action, customers, parts, ready, suggestions }
   const code = new Map(parts.map((p) => [p.id, p.code]));
   const mine = suggestions.filter((s) => s.customerId === customerId && code.has(s.itemId));
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} className="space-y-4">
       <label className="block max-w-xl text-[13px]">Customer
         <select name="customerId" required value={customerId} onChange={(e) => setCustomerId(e.target.value)} className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
       </label>
@@ -230,22 +232,22 @@ export function NewPickListForm({ action, customers, parts, ready, suggestions }
       )}
       <LinesEditor lines={lines} options={parts} mode="dispatch" ready={ready[customerId] ?? {}} itemLabel="Part" />
       <button className={`${btnCls} w-full md:w-auto`}>Create &amp; start loading</button>
-    </form>
+    </Form>
   );
 }
 
 // ───────── Edit a PO's lines ─────────
 
 export function EditPoLines({ action, poId, supplierId, items, initial, locked }: {
-  action: (f: FormData) => void | Promise<void>; poId: string; supplierId: string; items: LineOption[];
+  action: FormAction; poId: string; supplierId: string; items: LineOption[];
   initial: { itemId: string; qty: string; price: string; date: string }[]; locked: boolean;
 }) {
   const lines = useLines(initial.length ? initial : [{}]);
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} className="space-y-4">
       <input type="hidden" name="id" value={poId} />
       <LinesEditor lines={lines} options={items} mode="po" supplierId={supplierId} showDate locked={locked} />
       <button className={`${btnCls} w-full disabled:opacity-50 md:w-auto`} disabled={locked}>Save changes</button>
-    </form>
+    </Form>
   );
 }

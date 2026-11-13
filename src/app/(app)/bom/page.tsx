@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { can } from "@/server/auth/permissions";
@@ -28,7 +29,7 @@ const backTo = (v: FormDataEntryValue | null, fallback: string) => {
 async function save(formData: FormData) {
   "use server";
   await requirePermission("bom.manage");
-  await runAction("/bom", "BOM saved.", async () => {
+  return runAction("/bom", "BOM saved.", async () => {
     // One itemId and one value per material row, in row order, however many rows the form had.
     const ids = formData.getAll("itemId").map(String), values = formData.getAll("value").map(String);
     const wanted = ids.map((itemId, i) => ({ itemId, value: Number(values[i] || 0) })).filter((r) => r.itemId);
@@ -64,9 +65,9 @@ async function importFile(formData: FormData) {
   "use server";
   const user = await requirePermission("bom.manage");
   let msg = "";
-  await runAction("/bom", () => msg, async () => {
+  return runAction("/bom", () => msg, async () => {
     const file = formData.get("file");
-    if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.");
+    if (!(file instanceof File) || file.size === 0) throw new DomainError("Choose a .csv or .xlsx file first.", ["file"]);
     if (file.size > MAX_UPLOAD_BYTES) throw new DomainError("File is larger than 5 MB.");
     const createMissing = formData.get("createMissing") === "on";
     if (createMissing && !can(user, "masters.manage")) throw new DomainError("Creating new parts and materials needs access to Masters. Untick that option, or ask an admin.");
@@ -120,7 +121,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
         <SidePanel title="Import BOMs from a file" subtitle="Excel or CSV, one row per material" closeHref={closeHref}>
           <Flash error={error} />
           <Card className="space-y-4">
-            <form action={importFile} className="space-y-4">
+            <Form action={importFile} className="space-y-4">
               <label className="block text-[13px] font-semibold">File (.csv or .xlsx, up to 5 MB)
                 <input name="file" type="file" accept=".csv,.xlsx" required className={`${inputCls} bg-white py-2.5 file:mr-3`} />
               </label>
@@ -133,7 +134,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
                 <span>Create parts and materials that aren&apos;t in the system yet. <span className="text-ink-3">{canAddItems ? "They are added to the item master with the stock levels and supplier price from the file, so Stores tracks them and they can be put on a PO." : "This needs access to Masters; ask an admin."}</span></span>
               </label>
               <button className={`${btnCls} w-full md:w-auto`}>Upload &amp; import</button>
-            </form>
+            </Form>
             <p className="text-xs text-ink-3">
               Every row is checked before anything is saved; a file with any problem is rejected as a whole and each problem is listed with its row number.{" "}
               <DownloadLink href="/api/v1/bom-template">Download a template</DownloadLink>

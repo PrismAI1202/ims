@@ -90,11 +90,11 @@ const TASKS: TaskDef[] = [
     count: (db, { userId }) => db.firstOff.count({ where: { status: "PENDING", requestedById: userId } }),
   },
   {
-    key: "counting", view: "stock", perm: "stock.count", kind: "act", href: "/stock?view=counts", title: "Count sheets in progress", sub: "Opened but not yet sent for approval",
+    key: "counting", view: "stock", perm: "stock.count", kind: "act", href: "/stock?view=bins", title: "Count sheets in progress", sub: "Opened but not yet sent for approval",
     count: (db) => db.stockCount.count({ where: { status: "OPEN" } }),
   },
   {
-    key: "adjustments", view: "stock", perm: "stock.adjust", kind: "act", href: "/stock?view=counts", title: "Stock counts to approve", sub: "Submitted by Store, waiting for a decision",
+    key: "adjustments", view: "stock", perm: "stock.adjust", kind: "act", href: "/stock?view=bins", title: "Stock counts to approve", sub: "Submitted by Store, waiting for a decision",
     count: (db) => db.stockCount.count({ where: { status: "SUBMITTED" } }),
   },
   {

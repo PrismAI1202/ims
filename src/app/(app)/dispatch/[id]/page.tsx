@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { DownloadLink } from "@/components/download-link";
 import { notFound } from "next/navigation";
@@ -14,7 +15,7 @@ async function scan(formData: FormData) {
   await requirePermission("dispatch.manage");
   const id = String(formData.get("dispatchId"));
   let msg = "";
-  await runAction(`/dispatch/${id}`, () => msg, async () => {
+  return runAction(`/dispatch/${id}`, () => msg, async () => {
     const r = await scanBox({ dispatchId: id, scan: String(formData.get("scan") || "") });
     msg = `Loaded ${r.boxCode} (${r.qty.toLocaleString()}). ${r.scannedForLine.toLocaleString()} of ${r.ordered.toLocaleString()} for this part.`;
   });
@@ -24,7 +25,7 @@ async function remove(formData: FormData) {
   "use server";
   await requirePermission("dispatch.manage");
   const id = String(formData.get("dispatchId"));
-  await runAction(`/dispatch/${id}`, "Box removed from the load.", async () => {
+  return runAction(`/dispatch/${id}`, "Box removed from the load.", async () => {
     await unscanBox({ dispatchId: id, boxCode: String(formData.get("boxCode")) });
   });
 }
@@ -35,7 +36,7 @@ async function complete(formData: FormData) {
   const id = String(formData.get("dispatchId"));
   const crateItemId = String(formData.get("crateItemId") || "");
   const crateQty = Number(formData.get("crateQty") || 0);
-  await runAction(`/dispatch/${id}`, "Dispatched. Stock has been deducted.", async () => {
+  return runAction(`/dispatch/${id}`, "Dispatched. Stock has been deducted.", async () => {
     await completeDispatch({ dispatchId: id, crates: crateItemId && crateQty > 0 ? [{ itemId: crateItemId, qty: crateQty }] : [], userId: user.id });
   });
 }
@@ -44,7 +45,7 @@ async function saveTransport(formData: FormData) {
   "use server";
   await requirePermission("dispatch.manage");
   const id = String(formData.get("dispatchId"));
-  await runAction(`/dispatch/${id}`, "Transport details saved.", async () => {
+  return runAction(`/dispatch/${id}`, "Transport details saved.", async () => {
     await updateTransport(id, { vehicleNumber: String(formData.get("vehicleNumber") || ""), driverName: String(formData.get("driverName") || "") });
   });
 }
@@ -53,7 +54,7 @@ async function cancel(formData: FormData) {
   "use server";
   await requirePermission("dispatch.manage");
   const id = String(formData.get("dispatchId"));
-  await runAction(`/dispatch/${id}`, "Dispatch cancelled; boxes released.", async () => { await cancelDispatch(id); });
+  return runAction(`/dispatch/${id}`, "Dispatch cancelled; boxes released.", async () => { await cancelDispatch(id); });
 }
 
 export default async function DispatchDetail({
@@ -98,13 +99,13 @@ export default async function DispatchDetail({
 
       {loading && (
         <Card>
-          <form action={scan} className="flex items-end gap-3">
+          <Form action={scan} className="flex items-end gap-3">
             <input type="hidden" name="dispatchId" value={d.id} />
             <label className="flex-1 text-[13px] font-semibold">Scan box label
               <input name="scan" autoFocus required autoComplete="off" autoCapitalize="characters" spellCheck={false} className={inputCls} />
             </label>
             <button className={btnCls}>Load box</button>
-          </form>
+          </Form>
         </Card>
       )}
 
@@ -117,7 +118,7 @@ export default async function DispatchDetail({
               <td className="font-semibold"><Mono className="text-xs">{b.boxCode}</Mono></td><td>{b.itemCode}</td><td><Mono className="text-xs">{b.batchCode ?? "—"}</Mono></td>
               <td className="text-right"><Mono>{b.qty.toLocaleString()}</Mono></td>
               <td>{loading && (
-                <form action={remove}><input type="hidden" name="dispatchId" value={d.id} /><input type="hidden" name="boxCode" value={b.boxCode} /><button className="cursor-pointer text-xs font-semibold text-danger">Remove</button></form>
+                <Form action={remove}><input type="hidden" name="dispatchId" value={d.id} /><input type="hidden" name="boxCode" value={b.boxCode} /><button className="cursor-pointer text-xs font-semibold text-danger">Remove</button></Form>
               )}</td>
             </tr>
           ))}
@@ -128,7 +129,7 @@ export default async function DispatchDetail({
       {loading && (
         <div className="space-y-3">
           <Card>
-            <form action={complete} className="space-y-3">
+            <Form action={complete} className="space-y-3">
               <input type="hidden" name="dispatchId" value={d.id} />
               <span className="font-display text-base font-bold">Complete dispatch</span>
               <p className="text-sm text-ink-2">Stock is deducted only when you complete. Add the returnable crates going out with this load, if any.</p>
@@ -139,21 +140,21 @@ export default async function DispatchDetail({
                 <label className="text-[13px]">Quantity<input name="crateQty" type="number" min="0" step="1" className={inputCls} /></label>
               </div>
               <button className={`${btnCls} w-full disabled:cursor-not-allowed disabled:opacity-50 md:w-auto`} disabled={!progress.complete}>{progress.complete ? "Complete & dispatch" : "Scan the full pick list first"}</button>
-            </form>
+            </Form>
           </Card>
-          <form action={cancel}><input type="hidden" name="dispatchId" value={d.id} /><button className="min-h-10 cursor-pointer text-sm font-semibold text-danger">Cancel this dispatch</button></form>
+          <Form action={cancel}><input type="hidden" name="dispatchId" value={d.id} /><button className="min-h-10 cursor-pointer text-sm font-semibold text-danger">Cancel this dispatch</button></Form>
         </div>
       )}
 
       {d.status !== "CANCELLED" && (
         <Card className="space-y-3">
           <Eyebrow>TRANSPORT <span className="font-normal normal-case text-ink-3">(optional)</span></Eyebrow>
-          <form action={saveTransport} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <Form action={saveTransport} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
             <input type="hidden" name="dispatchId" value={d.id} />
             <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" defaultValue={d.vehicleNumber ?? ""} autoCapitalize="characters" placeholder="e.g. MH12AB1234" className={inputCls} /></label>
             <label className="text-[13px]">Driver<input name="driverName" defaultValue={d.driverName ?? ""} className={inputCls} /></label>
             <button className={btnSecondaryCls}>Save</button>
-          </form>
+          </Form>
           <p className="text-xs text-ink-3">Not needed to build a pick list or load it. Add it when the goods leave: it is printed on the challan and needed for the e-way bill.</p>
         </Card>
       )}

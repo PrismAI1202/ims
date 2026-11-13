@@ -25,8 +25,24 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/**
+ * What goes in the menus. Material requests and Gate entry & GRN are tabs of Stores, so a role that has Stores reaches them from there
+ * and does not get a second menu entry; a role without Stores (Production for requests) still gets the entry, or it could not reach it.
+ */
+const STORES_TABS = ["requests", "grn"];
+export function menuViews<T extends string>(views: readonly T[]): T[] {
+  return views.filter((v) => !(STORES_TABS.includes(v) && views.includes("stock" as T)));
+}
+
+/** A page that has no menu entry of its own lights the entry of the screen it lives in. */
+export const NAV_PARENT: Record<string, string> = { "/requests": "/stock", "/grn": "/stock" };
+export const litPath = (pathname: string, hrefs: readonly string[]) =>
+  [...hrefs].filter((h) => pathname.startsWith(h)).sort((a, b) => b.length - a.length)[0]
+  ?? hrefs.find((h) => Object.entries(NAV_PARENT).some(([child, parent]) => pathname.startsWith(child) && h === parent));
+
 /** The groups and items a user's views allow. */
-export function navFor(views: readonly string[]): NavGroup[] {
+export function navFor(allViews: readonly string[]): NavGroup[] {
+  const views = menuViews(allViews);
   return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => !n.view || views.includes(n.view)) })).filter((g) => g.items.length > 0);
 }
 
@@ -39,8 +55,8 @@ const TAB_LABEL: Partial<Record<ViewKey, string>> = {
 };
 
 /** Phone tab bar: Home, the first three screens of the user's role (in the role's own order), then More. */
-export function tabsFor(views: readonly ViewKey[]): Tab[] {
-  const picks = views.slice(0, 3).map((key) => {
+export function tabsFor(allViews: readonly ViewKey[]): Tab[] {
+  const picks = menuViews(allViews).slice(0, 3).map((key) => {
     const v = VIEWS.find((x) => x.key === key)!;
     return { href: v.href, label: TAB_LABEL[key] ?? v.name, view: key };
   });

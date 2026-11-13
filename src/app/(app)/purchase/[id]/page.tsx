@@ -14,7 +14,7 @@ async function save(formData: FormData) {
   "use server";
   await requirePermission("po.manage");
   const id = String(formData.get("id"));
-  await runAction("/orders?kind=po", "Purchase order updated.", async () => {
+  return runAction("/orders?kind=po", "Purchase order updated.", async () => {
     const po = await db.purchaseOrder.findUnique({ where: { id }, select: { supplierId: true } });
     // A blank price falls back to the supplier's price master, as it does when a PO is created.
     const master = new Map((await db.priceMaster.findMany({ where: { supplierId: po?.supplierId ?? "" } })).map((p) => [p.itemId, Number(p.price)]));

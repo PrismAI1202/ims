@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView } from "@/server/auth/guard";
 import { can } from "@/server/auth/permissions";
@@ -61,7 +62,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         {raise && (
           <CreatePanel>
             <Card>
-              <form action={raiseRequest} className="grid gap-3 md:grid-cols-4">
+              <Form action={raiseRequest} className="grid gap-3 md:grid-cols-4">
                 <label className="text-[13px] md:col-span-2">Item
                   <select name="itemId" required className={inputCls}>{items.map((i) => <option key={i.id} value={i.id}>{i.code} · {i.name}</option>)}</select>
                 </label>
@@ -70,7 +71,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                   <select name="machineId" className={inputCls}><option value="">—</option>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select>
                 </label>
                 <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Raise request</button></div>
-              </form>
+              </Form>
             </Card>
           </CreatePanel>
         )}
@@ -83,7 +84,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             </div>
             {toIssue.length === 0 && <Card><p className="text-sm text-ink-3">No open material requests.</p></Card>}
             {toIssue.map(({ request, line, remaining, lots }) => (
-              <form key={line.id} action={issueLine}>
+              <Form key={line.id} action={issueLine}>
                 <Card className="space-y-3">
                   <input type="hidden" name="requestLineId" value={line.id} />
                   <div className="text-sm"><Mono className="font-semibold">{request.requestNumber}</Mono> · {line.item.code} {line.item.name} · <b>{remaining} {line.item.uom}</b> still to issue</div>
@@ -104,7 +105,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <button className={`${btnCls} w-full md:w-auto`}>Issue</button>
                 </Card>
-              </form>
+              </Form>
             ))}
           </section>
         )}
@@ -118,13 +119,13 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             <CreatePanel id="return">
               <Card className="space-y-3">
                 <Eyebrow>RETURN ANOTHER LOT</Eyebrow>
-                <form action={giveBack} className="grid gap-3 md:grid-cols-5">
+                <Form action={giveBack} className="grid gap-3 md:grid-cols-5">
                   <label className="text-[13px]">Lot number<input name="lot" required className={inputCls} /></label>
                   <label className="text-[13px]">Quantity<input name="qty" type="number" step="any" min="0" required className={inputCls} /></label>
                   <label className="text-[13px]">Bin<select name="bin" required className={inputCls}>{binOptions}</select></label>
                   <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
                   <div className="flex items-end"><button className={`${btnCls} w-full`}>Return</button></div>
-                </form>
+                </Form>
               </Card>
             </CreatePanel>
             {outAtMachines.length === 0 && <Card><p className="text-sm text-ink-3">Nothing issued in the last 14 days is still out at a machine.</p></Card>}
@@ -135,12 +136,12 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                     <span><Mono className="font-semibold">{l.lotNumber}</Mono> <span className="text-sm text-ink-2">{l.itemCode} · {l.itemName}</span></span>
                     <Mono className="text-xs">{l.atMachine.toLocaleString()} {l.uom} out</Mono>
                   </div>
-                  <form action={giveBack} className="flex flex-wrap items-end gap-2">
+                  <Form action={giveBack} className="flex flex-wrap items-end gap-2">
                     <input type="hidden" name="lot" value={l.lotNumber} />
                     <label className="w-28 text-[13px]">Qty<input name="qty" type="number" step="any" min="0" max={l.atMachine} defaultValue={l.atMachine} required className={inputCls} /></label>
                     <label className="min-w-28 flex-1 text-[13px]">Bin<select name="bin" required className={inputCls}>{binOptions}</select></label>
                     <button className={btnCls}>Return</button>
-                  </form>
+                  </Form>
                 </article>
               ))}
             </div>

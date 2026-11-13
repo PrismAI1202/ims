@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { db } from "@/server/db";
 import { requirePermission, requireView, runAction } from "@/server/auth/guard";
@@ -53,7 +54,7 @@ const read = (formData: FormData): RoleInput => ({
 async function saveRules(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
-  await runAction("/settings", "Plant rules saved.", async () => {
+  return runAction("/settings", "Plant rules saved.", async () => {
     for (const rule of Object.keys(PLANT_RULES) as PlantRule[]) await setRule(rule, formData.get(rule) === "on");
   });
 }
@@ -62,7 +63,7 @@ async function create(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
   let key = "";
-  await runAction(() => at(key), "Role created. Tick the screens it needs, then save.", async () => {
+  return runAction(() => at(key), "Role created. Tick the screens it needs, then save.", async () => {
     // "Start from" copies another role's screens so a new role is a small edit rather than a blank sheet.
     const from = (await listRoles()).find((r) => r.key === String(formData.get("from") || ""));
     const role = await createRole({
@@ -77,7 +78,7 @@ async function save(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
   const key = String(formData.get("key"));
-  await runAction(at(key), "Role saved. Its users see the change on their next page load.", async () => {
+  return runAction(at(key), "Role saved. Its users see the change on their next page load.", async () => {
     await updateRole(key, read(formData));
   });
 }
@@ -86,7 +87,7 @@ async function reset(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
   const key = String(formData.get("key"));
-  await runAction(at(key), "Role reset to its defaults.", async () => {
+  return runAction(at(key), "Role reset to its defaults.", async () => {
     await resetRole(key);
   });
 }
@@ -95,7 +96,7 @@ async function remove(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
   const key = String(formData.get("key"));
-  await runAction("/settings", "Role deleted.", async () => {
+  return runAction("/settings", "Role deleted.", async () => {
     await deleteRole(key);
   }, at(key));
 }
@@ -105,7 +106,7 @@ async function addUser(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
   const role = String(formData.get("role") || "");
-  await runAction(at(role, "people"), "User added. Share the password securely and ask them to change it from Account.", async () => {
+  return runAction(at(role, "people"), "User added. Share the password securely and ask them to change it from Account.", async () => {
     await createUser({
       email: String(formData.get("email") || ""), name: String(formData.get("name") || ""),
       role, password: String(formData.get("password") || ""),
@@ -118,7 +119,7 @@ async function saveUser(formData: FormData) {
   const actor = await requirePermission("users.manage");
   const from = String(formData.get("from") || "");
   const to = String(formData.get("role") || "");
-  await runAction(at(from, "people"), to === from ? "User updated." : "User updated and moved to the other role.", async () => {
+  return runAction(at(from, "people"), to === from ? "User updated." : "User updated and moved to the other role.", async () => {
     await updateUser(String(formData.get("id")), actor.id, {
       name: String(formData.get("name") || ""), role: to, active: formData.get("active") === "on",
     });
@@ -128,7 +129,7 @@ async function saveUser(formData: FormData) {
 async function resetUserPassword(formData: FormData) {
   "use server";
   await requirePermission("users.manage");
-  await runAction(at(String(formData.get("from") || ""), "people"), "Password reset. That user's scanner tokens were revoked.", async () => {
+  return runAction(at(String(formData.get("from") || ""), "people"), "Password reset. That user's scanner tokens were revoked.", async () => {
     await resetPassword(String(formData.get("id")), String(formData.get("password") || ""));
   });
 }
@@ -168,16 +169,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
         <Card className="space-y-2">
           <Eyebrow>PLANT RULES</Eyebrow>
-          <form action={saveRules} className="space-y-1">
+          <Form action={saveRules} className="space-y-1">
             {rules.map(([rule, on]) => <Tick key={rule} name={rule} value="on" checked={on}>{PLANT_RULES[rule].label}</Tick>)}
             <button className={`${btnSecondaryCls} mt-1`}>Save rules</button>
-          </form>
+          </Form>
         </Card>
 
         <CreatePanel>
           <Card className="space-y-3">
             <Eyebrow>NEW ROLE</Eyebrow>
-            <form action={create} className="grid gap-3 md:grid-cols-4">
+            <Form action={create} className="grid gap-3 md:grid-cols-4">
               <label className="text-[13px]">Name<input name="name" required minLength={2} maxLength={40} placeholder="e.g. Shift Supervisor" className={inputCls} /></label>
               <label className="text-[13px] md:col-span-2">What this role does<input name="description" maxLength={200} className={inputCls} /></label>
               <label className="text-[13px]">Start from
@@ -187,7 +188,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </select>
               </label>
               <div className="md:col-span-4"><button className={btnCls}>Create role</button></div>
-            </form>
+            </Form>
           </Card>
         </CreatePanel>
 
@@ -245,14 +246,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 </div>
               </div>
 
-              <form action={addUser} className="grid gap-3 rounded-xl border-2 border-dashed border-border p-3 md:grid-cols-5">
+              <Form action={addUser} className="grid gap-3 rounded-xl border-2 border-dashed border-border p-3 md:grid-cols-5">
                 <input type="hidden" name="role" value={role.key} />
                 <p className="text-[13px] font-semibold md:col-span-5">Add someone to {role.name}</p>
                 <label className="text-[13px]">Name<input name="name" required className={inputCls} /></label>
                 <label className="text-[13px] md:col-span-2">Email<input name="email" type="email" required autoComplete="off" className={inputCls} /></label>
                 <label className="text-[13px]">Initial password<input name="password" type="text" required minLength={8} autoComplete="off" className={inputCls} /></label>
                 <div className="flex items-end"><button className={`${btnCls} w-full`}>Add user</button></div>
-              </form>
+              </Form>
 
               {people.length > 6 && <SearchBar q={q} placeholder="Search name or email" keep={{ role: role.key, tab: "people" }} clearHref={at(role.key, "people")} />}
               {shownPeople.length === 0 && <p className="text-sm text-ink-3">{people.length === 0 ? "Nobody has this role yet." : "No one matches that search."}</p>}
@@ -265,7 +266,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                         <span className="flex flex-none items-center gap-2">{!u.active && <Badge tone="neutral">Inactive</Badge>}<span className="text-xs font-semibold text-accent group-open:hidden">Edit</span><span className="hidden text-xs font-semibold text-ink-3 group-open:inline">Close ✕</span></span>
                       </summary>
                       <div className="space-y-3 border-t border-line bg-canvas p-3.5">
-                        <form action={saveUser} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <Form action={saveUser} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <input type="hidden" name="id" value={u.id} />
                           <input type="hidden" name="from" value={role.key} />
                           <label className="text-[13px]">Name<input name="name" defaultValue={u.name} required className={inputCls} /></label>
@@ -274,13 +275,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                           </label>
                           <label className="flex min-h-12 items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={u.active} className="size-5 accent-[#c2410c]" /> Active</label>
                           <button className={btnCls}>Save</button>
-                        </form>
-                        <form action={resetUserPassword} className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
+                        </Form>
+                        <Form action={resetUserPassword} className="flex flex-wrap items-end gap-2 border-t border-line pt-3">
                           <input type="hidden" name="id" value={u.id} />
                           <input type="hidden" name="from" value={role.key} />
                           <label className="text-xs text-ink-2">Reset password<input name="password" type="text" minLength={8} required autoComplete="off" placeholder="new password" className="ml-2 min-h-10 rounded-lg border border-border px-2 text-sm" /></label>
                           <button className="min-h-10 cursor-pointer text-xs font-semibold text-accent">Reset</button>
-                        </form>
+                        </Form>
                       </div>
                     </details>
                   </li>
@@ -290,7 +291,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           ) : (
           <Card>
             {/* Inputs are uncontrolled (defaultValue/defaultChecked); keying by role remounts them when another role is picked. */}
-            <form key={`${role.key}:${role.updatedAt.getTime()}`} action={save} className="space-y-5">
+            <Form key={`${role.key}:${role.updatedAt.getTime()}`} action={save} intents={{ reset, remove }} className="space-y-5">
               <input type="hidden" name="key" value={role.key} />
               <div className="grid gap-3 md:grid-cols-[1fr_2fr]">
                 <label className="text-[13px]">Name<input name="name" defaultValue={role.name} required minLength={2} maxLength={40} className={inputCls} /></label>
@@ -364,15 +365,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
               <div className="flex flex-wrap gap-2 border-t border-line pt-4">
                 <button className={btnCls}>Save role</button>
-                {isDefault && <button formAction={reset} formNoValidate className={btnSecondaryCls}>Reset to default</button>}
+                {isDefault && <button name="intent" value="reset" formNoValidate className={btnSecondaryCls}>Reset to default</button>}
                 {!role.system && (
-                  <button formAction={remove} formNoValidate disabled={role.activeUsers > 0} className={`${btnDangerCls} disabled:cursor-not-allowed disabled:opacity-50`}>
+                  <button name="intent" value="remove" formNoValidate disabled={role.activeUsers > 0} className={`${btnDangerCls} disabled:cursor-not-allowed disabled:opacity-50`}>
                     Delete role
                   </button>
                 )}
               </div>
               {!role.system && role.activeUsers > 0 && <p className="text-xs text-ink-3">Move this role&apos;s people to another role on the People tab before deleting it.</p>}
-            </form>
+            </Form>
           </Card>
           )}
           </div>

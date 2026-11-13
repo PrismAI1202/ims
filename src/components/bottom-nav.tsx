@@ -6,7 +6,7 @@ import {
   BarChart3, Boxes, ClipboardList, Factory, FileText, FlaskConical, GitBranch, Home, LayoutGrid, PackageCheck, PackageOpen,
   Route, ScanLine, Settings, Users, Wrench, type LucideIcon,
 } from "lucide-react";
-import type { Tab } from "./nav-data";
+import { litPath, type Tab } from "./nav-data";
 import type { ViewKey } from "@/lib/views";
 
 const ICONS: Partial<Record<ViewKey, LucideIcon>> = {
@@ -22,7 +22,7 @@ export function BottomNav({ tabs }: { tabs: Tab[] }) {
   const pathname = usePathname();
   const direct = tabs.filter((t) => t.href !== "/more").map((t) => t.href);
   // The longest matching tab wins, so /qc/scrap lights Scrap rather than QC.
-  const best = direct.filter((d) => pathname.startsWith(d)).sort((a, b) => b.length - a.length)[0];
+  const best = litPath(pathname, direct);
   const isActive = (href: string) => (href === "/more" ? !best : href === best);
 
   return (

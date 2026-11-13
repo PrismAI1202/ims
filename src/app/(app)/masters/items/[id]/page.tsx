@@ -1,3 +1,4 @@
+import { Form } from "@/components/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
@@ -29,7 +30,7 @@ export default async function EditItem({
       </PageHeader>
       <Flash error={error} ok={ok} />
       <Card>
-        <form action={saveItem} className="space-y-4">
+        <Form action={saveItem} className="space-y-4">
           <input type="hidden" name="id" value={item.id} />
           <ItemFields d={{
             code: item.code, name: item.name, category: item.category, uom: item.uom, polymerGrade: item.polymerGrade,
@@ -39,7 +40,7 @@ export default async function EditItem({
             stockTracked: item.stockTracked, hsnCode: item.hsnCode, unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
           }} />
           <button className={`${btnCls} w-full md:w-auto`}>Save changes</button>
-        </form>
+        </Form>
       </Card>
 
       {bought && (
@@ -55,19 +56,19 @@ export default async function EditItem({
                 <span className="flex flex-col"><span className="text-sm font-semibold">{p.supplier.name}{i === 0 && prices.length > 1 && <span className="ml-2 text-xs font-normal text-ok-ink">cheapest</span>}</span><span className="text-xs text-ink-3">Lead time {p.supplier.leadTimeDays} days{p.supplier.active ? "" : " · inactive"}</span></span>
                 <span className="flex items-center gap-3">
                   <Mono className="text-sm">₹{Number(p.price).toLocaleString("en-IN")} / {item.uom}</Mono>
-                  <form action={dropSupplierPrice}><input type="hidden" name="itemId" value={item.id} /><input type="hidden" name="supplierId" value={p.supplierId} /><button className="min-h-9 cursor-pointer text-xs font-semibold text-danger">Remove</button></form>
+                  <Form action={dropSupplierPrice}><input type="hidden" name="itemId" value={item.id} /><input type="hidden" name="supplierId" value={p.supplierId} /><button className="min-h-9 cursor-pointer text-xs font-semibold text-danger">Remove</button></Form>
                 </span>
               </li>
             ))}
           </ul>
-          <form action={addSupplierPrice} className="grid items-end gap-3 rounded-xl border-2 border-dashed border-border p-3 sm:grid-cols-[1fr_9rem_auto]">
+          <Form action={addSupplierPrice} className="grid items-end gap-3 rounded-xl border-2 border-dashed border-border p-3 sm:grid-cols-[1fr_9rem_auto]">
             <input type="hidden" name="itemId" value={item.id} />
             <label className="text-[13px]">Add or change a supplier
               <select name="supplierId" required className={inputCls}><option value="">— choose —</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
             </label>
             <label className="text-[13px]">Price (₹ / {item.uom})<input name="price" type="number" min="0" step="any" required className={inputCls} /></label>
             <button className={btnSecondaryCls}>Save price</button>
-          </form>
+          </Form>
         </Card>
       )}
     </div>

@@ -10,7 +10,7 @@ export async function pack(formData: FormData) {
   const user = await requirePermission("fg.pack");
   const [lotNumber, binCode] = String(formData.get("source")).split("|");
   let first = "";
-  await runAction("/fg?tab=pack", () => `Boxes created. ${first ? `Print labels: ${first}` : ""}`.trim(), async () => {
+  return runAction("/fg?tab=pack", () => `Boxes created. ${first ? `Print labels: ${first}` : ""}`.trim(), async () => {
     const boxes = await packBoxes({
       lotNumber, binCode, customerId: String(formData.get("customerId")),
       qtyPerBox: Number(formData.get("qtyPerBox")), boxCount: Number(formData.get("boxCount")), userId: user.id,
@@ -22,7 +22,7 @@ export async function pack(formData: FormData) {
 export async function recordCrates(formData: FormData) {
   const user = await requirePermission("crates.manage");
   const move = String(formData.get("move")) === "ISSUED" ? "ISSUED" : "RETURNED";
-  await runAction("/fg?tab=crates", move === "RETURNED" ? "Return recorded." : "Opening balance / issue recorded.", async () => {
+  return runAction("/fg?tab=crates", move === "RETURNED" ? "Return recorded." : "Opening balance / issue recorded.", async () => {
     await recordReturnable({
       customerId: String(formData.get("customerId")), itemId: String(formData.get("itemId")), move,
       qty: Number(formData.get("qty")), note: String(formData.get("note") || "") || undefined, userId: user.id,
