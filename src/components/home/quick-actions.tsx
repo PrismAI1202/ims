@@ -7,11 +7,11 @@ import type { HomeProps } from "./types";
 
 const ACTIONS: { href: string; label: string; sub: string; view: ViewKey; perm?: Permission }[] = [
   { href: "/grn", label: "Gate entry / GRN", sub: "Inward", view: "grn" },
-  { href: "/issue", label: "Issue to shop floor", sub: "FIFO lot", view: "issue" },
+  { href: "/requests", label: "Issue to shop floor", sub: "FIFO lot", view: "requests", perm: "stock.issue" },
   { href: "/quality?tab=inward", label: "QC queue", sub: "Hold / release", view: "quality", perm: "qc.inspect" },
   { href: "/production", label: "Book production", sub: "Shots, rejects, downtime", view: "production" },
-  { href: "/requests", label: "Request material", sub: "To stores", view: "requests" },
-  { href: "/fg", label: "Pack & label", sub: "FG boxes", view: "fg" },
+  { href: "/requests", label: "Request material", sub: "To stores", view: "requests", perm: "request.create" },
+  { href: "/fg?tab=pack", label: "Pack & label", sub: "FG boxes", view: "fg", perm: "fg.pack" },
   { href: "/orders?new=dispatch", label: "Dispatch", sub: "Pick, load, DC", view: "orders", perm: "dispatch.manage" },
   { href: "/orders?new=po", label: "Supplier PO", sub: "Raise / receive", view: "orders", perm: "po.manage" },
   { href: "/stock", label: "Bin transfer", sub: "Move between bins", view: "stock" },

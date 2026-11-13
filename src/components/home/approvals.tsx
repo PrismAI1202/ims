@@ -12,7 +12,7 @@ export async function Approvals() {
     <Card className="space-y-3">
       <div className="flex items-baseline justify-between gap-2">
         <SectionTitle>Approvals</SectionTitle>
-        <Link href="/approvals" className="text-[13px] font-semibold text-accent">Open</Link>
+        <Link href="/stock?view=counts" className="text-[13px] font-semibold text-accent">Open</Link>
       </div>
       {waiting.length === 0 ? (
         <p className="text-sm text-ink-3">No stock counts are waiting for a decision.</p>
@@ -20,7 +20,7 @@ export async function Approvals() {
         <ul className="divide-y divide-line rounded-xl border border-line">
           {waiting.map((c) => (
             <li key={c.id}>
-              <Link href="/approvals" className="flex min-h-12 items-center justify-between gap-2 px-3 text-sm">
+              <Link href="/stock?view=counts" className="flex min-h-12 items-center justify-between gap-2 px-3 text-sm">
                 <span><Mono className="font-semibold">{c.countNumber}</Mono> <span className="text-ink-3">· bin {c.location.code}</span></span>
                 <Badge tone={diffs(c) ? "warn" : "ok"}>{diffs(c) ? `${diffs(c)} differences` : "No differences"}</Badge>
               </Link>

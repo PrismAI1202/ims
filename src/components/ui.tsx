@@ -170,13 +170,13 @@ export function SegmentedTabs({
 const STORES_TABS = [
   { key: "stock", href: "/stock", label: "Stock", view: "stock" },
   { key: "bins", href: "/stock?view=bins", label: "Bins", view: "stock" },
-  { key: "requests", href: "/requests", label: "Requisitions", view: "requests" },
-  { key: "issue", href: "/issue", label: "FIFO issue", view: "issue" },
+  { key: "counts", href: "/stock?view=counts", label: "Counts", view: "stock", any: ["stock.count", "stock.adjust"] },
+  { key: "requests", href: "/requests", label: "Material requests", view: "requests" },
 ] as const;
 
 /** Only the tabs the user's role can open; nothing at all when that leaves just one. */
-export function StoresTabs({ active, views }: { active: (typeof STORES_TABS)[number]["key"]; views: readonly string[] }) {
-  const tabs = STORES_TABS.filter((t) => views.includes(t.view));
+export function StoresTabs({ active, user }: { active: (typeof STORES_TABS)[number]["key"]; user: { views: readonly string[]; permissions: readonly string[] } }) {
+  const tabs = STORES_TABS.filter((t) => user.views.includes(t.view) && (!("any" in t) || t.any.some((p) => user.permissions.includes(p))));
   if (tabs.length < 2) return null;
   return <SegmentedTabs tabs={tabs.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }

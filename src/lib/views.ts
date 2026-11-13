@@ -7,12 +7,11 @@ import type { Permission } from "@/server/auth/permissions";
 // Home, Account and Sync centre are open to every signed-in user and are not listed here.
 
 export type ViewKey =
-  | "process" | "orders" | "metrics" | "approvals"
-  | "masters" | "settings" | "partners" | "bom" | "equivalents" | "demand"
+  | "process" | "orders" | "metrics"
+  | "masters" | "settings" | "partners" | "bom" | "demand"
   | "mrp" | "grn" | "quality"
-  | "stock" | "count" | "requests" | "issue" | "returns" | "scan" | "production" | "fg" | "planning" | "maintenance"
-  | "returnables"
-  | "trace" | "variance";
+  | "stock" | "requests" | "scan" | "production" | "fg" | "planning" | "maintenance"
+  | "trace";
 
 export interface ViewDef {
   key: ViewKey;
@@ -25,10 +24,12 @@ export interface ViewDef {
   actions?: Permission[];
   levels?: AccessLevel[];
   tabs?: HubTab[];
+  /** For a hub: the line shown above its ticks in Settings (default: "A hub: each tab below is granted on its own."). */
+  hubNote?: string;
 }
 
 /**
- * A screen that is a hub of tabs (Quality). Each row is one permission that opens a tab: a role sees a tab when it holds the
+ * A screen that is a hub of tabs (Quality, Finished goods) or of parts of one flow (Material requests). Each row is one permission that opens a tab: a role sees a tab when it holds the
  * permission, and the hub drops out of a role's menu when it holds none. Two rows may open the same tab (First-off:
  * request and approve are different jobs on one tab).
  */
@@ -65,7 +66,6 @@ export const VIEWS: ViewDef[] = [
   { key: "process", href: "/process", name: "Process", what: "Live 11-step plant process with what is waiting at each step", group: "OVERVIEW", bar: "#C2410C" },
   { key: "orders", href: "/orders", name: "Orders", what: "Supplier POs, dispatches and customer orders in one filterable list; raise POs and pick lists", group: "OVERVIEW", bar: "#1D4ED8", actions: ["po.manage", "dispatch.manage"] },
   { key: "metrics", href: "/metrics", name: "Metrics", what: "OEE, downtime, rejects, regrind and maintenance KPIs", group: "OVERVIEW", bar: "#1E7A46" },
-  { key: "approvals", href: "/approvals", name: "Approvals", what: "Stock count adjustments waiting for a decision", group: "OVERVIEW", bar: "#B42318", requires: "stock.adjust" },
 
   { key: "masters", href: "/masters", name: "Admin · Masters", what: "Parts and materials: stock levels, supplier prices, stock rules", group: "SET UP", bar: "#0F5C5C", requires: "masters.manage" },
   { key: "settings", href: "/settings", name: "Settings · Roles & users", what: "Roles and what each can see and do, plus the people in each role: add users, reset passwords", group: "SET UP", bar: "#0F5C5C", requires: "users.manage" },
@@ -73,25 +73,29 @@ export const VIEWS: ViewDef[] = [
     { label: "View", permissions: [] },
     { label: "Edit list", permissions: ["partners.manage"] },
   ] },
-  { key: "bom", href: "/bom", name: "BOMs", what: "Blend ratios, inserts, and approved alternate grades by vendor", group: "SET UP", bar: "#C2410C", requires: "bom.manage" },
-  { key: "equivalents", href: "/equivalents", name: "Equivalent materials", what: "Approved alternate grades grouped by vendor", group: "SET UP", bar: "#C2410C", actions: ["equivalents.manage"] },
+  { key: "bom", href: "/bom", name: "BOMs", what: "Blend ratios and inserts per part. Open a BOM for its planned-versus-actual use and the alternate grades of its materials", group: "SET UP", bar: "#C2410C", actions: ["bom.manage", "equivalents.manage", "reports.view"] },
   { key: "demand", href: "/demand", name: "Customer demand", what: "Import customer POs and call-off schedules", group: "SET UP", bar: "#4B5563", requires: "mrp.plan" },
 
   { key: "mrp", href: "/mrp", name: "MRP plan", what: "Material shortfall from demand, with suggested POs", group: "BUY & RECEIVE", bar: "#4B5563", requires: "mrp.plan" },
   { key: "grn", href: "/grn", name: "Gate entry & GRN", what: "Vehicle, invoice, lot / heat no., bags and weight", group: "BUY & RECEIVE", bar: "#C2410C", requires: "grn.create" },
 
-  { key: "stock", href: "/stock", name: "Stores", what: "Stock and bins, put-away and bin-to-bin transfer", group: "STORE & SHOP FLOOR", bar: "#1E7A46", levels: [
+  { key: "stock", href: "/stock", name: "Stores", what: "Stock and bins, put-away, bin-to-bin transfer, and stock counts with their approval", actions: ["stock.count", "stock.adjust"], group: "STORE & SHOP FLOOR", bar: "#1E7A46", levels: [
     { label: "View", permissions: [] },
     { label: "Move stock", permissions: ["stock.transfer"] },
     { label: "Edit layout", permissions: ["stock.transfer", "bins.manage"] },
   ] },
-  { key: "count", href: "/count", name: "Stock count", what: "Count a bin and send differences for approval", group: "STORE & SHOP FLOOR", bar: "#1E7A46", requires: "stock.count" },
-  { key: "requests", href: "/requests", name: "Material requests", what: "Requisitions from the shop floor", group: "STORE & SHOP FLOOR", bar: "#1E7A46", requires: "request.create" },
-  { key: "issue", href: "/issue", name: "Issue to shop floor", what: "FIFO issue to machines", group: "STORE & SHOP FLOOR", bar: "#1E7A46", requires: "stock.issue" },
-  { key: "returns", href: "/returns", name: "Return to stores", what: "Put unused material back from the machine", group: "STORE & SHOP FLOOR", bar: "#1E7A46", requires: "material.return" },
+  { key: "requests", href: "/requests", name: "Material requests", what: "One flow from the shop floor and stores: raise a requisition, issue it FIFO, take back what is not used", group: "STORE & SHOP FLOOR", bar: "#1E7A46",
+    hubNote: "One flow with different owners: tick the steps this role takes part in. The screen shows only those steps.", tabs: [
+    { tab: "request", label: "Raise requisitions", what: "Ask stores for material for a machine (production)", permission: "request.create" },
+    { tab: "issue", label: "Issue FIFO to machines", what: "Pick the oldest lot and issue it against a requisition (stores)", permission: "stock.issue" },
+    { tab: "return", label: "Return unused material", what: "Put leftover material back into the same lot (production, stores)", permission: "material.return" },
+  ] },
   { key: "scan", href: "/scan", name: "Scanner", what: "Scan to issue, transfer or load, works offline", group: "STORE & SHOP FLOOR", bar: "#15171A" },
   { key: "production", href: "/production", name: "Production", what: "Hourly booking, downtime with reason codes, runner and regrind", group: "STORE & SHOP FLOOR", bar: "#6B4FB0", requires: "production.book", actions: ["downtime.log"] },
-  { key: "fg", href: "/fg", name: "FG & box labels", what: "Pack finished goods and print box labels", group: "STORE & SHOP FLOOR", bar: "#6B4FB0", requires: "fg.pack" },
+  { key: "fg", href: "/fg", name: "Finished goods", what: "Pack finished goods and print box labels, keep the returnable crate ledger, and jump to Dispatch", group: "STORE & SHOP FLOOR", bar: "#6B4FB0", tabs: [
+    { tab: "pack", label: "Pack & label", what: "Pack good parts into customer boxes and print the labels", permission: "fg.pack" },
+    { tab: "crates", label: "Crates", what: "Returnable crates and trolleys issued to and returned by customers", permission: "crates.manage" },
+  ] },
   { key: "planning", href: "/planning", name: "Planning", what: "Which mould runs on which machine, by day", group: "STORE & SHOP FLOOR", bar: "#4B5563", actions: ["plan.manage"] },
   { key: "maintenance", href: "/maintenance", name: "Maintenance", what: "Machines and moulds: shot life, PM, repairs, MTBF / MTTR; add, edit and remove them", group: "STORE & SHOP FLOOR", bar: "#7A4E14", actions: ["maintenance.manage", "equipment.manage"] },
 
@@ -103,10 +107,8 @@ export const VIEWS: ViewDef[] = [
     { tab: "firstoff", label: "First-off: approve", what: "Approve or reject a first-off sample (QA)", permission: "firstoff.approve" },
     { tab: "rtv", label: "Return to supplier", what: "Send rejected lots back with a debit note", permission: "rtv.manage" },
   ] },
-  { key: "returnables", href: "/returnables", name: "Returnable ledger", what: "Crates and trolleys issued to and returned by customers", group: "SHIP", bar: "#15171A", requires: "dispatch.manage" },
 
   { key: "trace", href: "/trace", name: "Traceability", what: "Back and forward trace of any box or lot", group: "TRACE & REPORTS", bar: "#1D4ED8" },
-  { key: "variance", href: "/reports/variance", name: "BOM variance", what: "Planned versus actual material use", group: "TRACE & REPORTS", bar: "#1D4ED8", requires: "reports.view" },
 ];
 
 export const VIEW_KEYS = VIEWS.map((v) => v.key);

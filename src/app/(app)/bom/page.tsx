@@ -86,6 +86,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
   const { error, ok, edit, new: isNew, import: isImport, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const canAddItems = can(user, "masters.manage");
+  const canEdit = can(user, "bom.manage");
   const [fgItems, items, moulds, boms, suppliers] = await Promise.all([
     db.item.findMany({ where: { category: "FG", active: true }, orderBy: { code: "asc" } }),
     db.item.findMany({ where: { category: { in: [...BOM_CATEGORIES] }, active: true }, orderBy: { code: "asc" } }),
@@ -101,16 +102,16 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
   const visible = boms.filter((b) => matches(q, b.fgItem.code, b.fgItem.name, b.mould.code, ...b.lines.flatMap((l) => [l.item.code, l.item.name])));
   const pctOf = (b: (typeof boms)[number], kind: string) => b.lines.filter((l) => l.kind === kind).reduce((a, l) => a + Number(l.pct ?? 0), 0);
 
-  const panel = editing ? "edit" : isNew ? "new" : isImport ? "import" : null;
+  const panel = !canEdit ? null : editing ? "edit" : isNew ? "new" : isImport ? "import" : null;
   const closeHref = "/bom";
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="SET UP" title="BOMs" subtitle={`${boms.length} BOM${boms.length === 1 ? "" : "s"} · one per finished part`}>
+      <PageHeader eyebrow="SET UP" title="BOMs" subtitle={`${boms.length} BOM${boms.length === 1 ? "" : "s"} · one per finished part. Open one for planned versus actual use and alternate grades`}>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/bom?new=1" className="flex min-h-10 items-center rounded-[10px] bg-accent px-3.5 text-[13px] font-semibold text-white hover:bg-accent-hover">+ New BOM</Link>
-          <Link href="/bom?import=1" className="flex min-h-10 items-center rounded-[10px] bg-shell-2 px-3.5 text-[13px] font-semibold text-on-shell">Import from file</Link>
-          <Link href="/equivalents" className="flex min-h-10 items-center px-2 text-sm font-semibold">Equivalent groups →</Link>
+          {canEdit && <Link href="/bom?new=1" className="flex min-h-10 items-center rounded-[10px] bg-accent px-3.5 text-[13px] font-semibold text-white hover:bg-accent-hover">+ New BOM</Link>}
+          {canEdit && <Link href="/bom?import=1" className="flex min-h-10 items-center rounded-[10px] bg-shell-2 px-3.5 text-[13px] font-semibold text-on-shell">Import from file</Link>}
+          <Link href="/bom/groups" className="flex min-h-10 items-center px-2 text-sm font-semibold">Equivalent groups →</Link>
         </div>
       </PageHeader>
       {!panel && <Flash error={error} ok={ok} />}
@@ -174,11 +175,13 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
           const virgin = pctOf(b, "RESIN"), regrind = pctOf(b, "REGRIND"), mb = pctOf(b, "MASTERBATCH");
           const limit = Math.min(...b.lines.filter((l) => l.kind === "RESIN" && l.item.maxRegrindPct !== null).map((l) => Number(l.item.maxRegrindPct)), 100);
           return (
-            <article key={b.id} className="flex flex-col gap-2.5 rounded-[14px] bg-white p-3.5">
+            <article key={b.id} className="relative flex flex-col gap-2.5 rounded-[14px] bg-white p-3.5 transition-shadow focus-within:ring-2 focus-within:ring-accent hover:shadow-md">
               <div className="flex items-start justify-between gap-2">
-                <span className="flex flex-col"><span className="font-semibold">{b.fgItem.name}</span>
+                <span className="flex flex-col">
+                  {/* The whole card opens the BOM; Edit sits above the link so it stays its own button. */}
+                  <Link href={`/bom/${b.id}`} className="font-semibold after:absolute after:inset-0 after:rounded-[14px] after:content-['']">{b.fgItem.name}</Link>
                   <span className="text-xs text-ink-3"><Mono>{b.fgItem.code}</Mono> · {b.mould.code} · {b.mould.cavities} cav · {Number(b.partWeightG)} g/part</span></span>
-                <Link href={`/bom?edit=${b.id}`} className="min-h-9 text-xs font-semibold text-accent">Edit</Link>
+                {canEdit && <Link href={`/bom?edit=${b.id}`} className="relative z-10 flex min-h-9 items-center text-xs font-semibold text-accent">Edit</Link>}
               </div>
               <StackedBar parts={[
                 { pct: virgin, color: BLEND_COLORS.virgin, label: `${virgin}%` },
@@ -198,6 +201,7 @@ export default async function BomPage({ searchParams }: { searchParams: Promise<
                   </li>
                 ))}
               </ul>
+              <span className="text-xs font-semibold text-accent">Variance and alternate grades →</span>
             </article>
           );
         })}

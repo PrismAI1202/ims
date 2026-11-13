@@ -1,32 +1,14 @@
 import { db } from "@/server/db";
 import { DownloadLink } from "@/components/download-link";
-import { requireView, requirePermission, runAction } from "@/server/auth/guard";
-import { recordReturnable, returnableBalances } from "@/server/services/dispatch";
-import { btnCls, Flash, inputCls } from "@/components/flash";
+import { returnableBalances } from "@/server/services/dispatch";
+import { btnCls, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
+import { recordCrates } from "../actions";
 
-export const instant = false;
-
-async function record(formData: FormData) {
-  "use server";
-  const user = await requirePermission("dispatch.manage");
-  const move = String(formData.get("move")) === "ISSUED" ? "ISSUED" : "RETURNED";
-  await runAction("/returnables", move === "RETURNED" ? "Return recorded." : "Opening balance / issue recorded.", async () => {
-    await recordReturnable({
-      customerId: String(formData.get("customerId")), itemId: String(formData.get("itemId")), move,
-      qty: Number(formData.get("qty")), note: String(formData.get("note") || "") || undefined, userId: user.id,
-      binCode: String(formData.get("binCode") || "") || undefined,
-    });
-  });
-}
-
-export default async function ReturnablesPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requireView("returnables");
-  const { error, ok, q: rawQ } = await searchParams;
-  const q = rawQ?.trim() || undefined;
+export async function CratesTab({ q }: { q?: string }) {
   const [balances, customers, items, recent, bins] = await Promise.all([
     returnableBalances(),
     db.customer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
@@ -38,16 +20,17 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
   return (
     <CreateProvider>
     <div className="space-y-4">
-      <PageHeader right={<CreateButton label="Record movement" />} eyebrow="SHIP" title="Returnable ledger" subtitle="Customer-owned containers · issued vs returned" />
-      <p className="max-w-3xl text-sm text-ink-2">
-        Crates, trolleys and pallets that travel with dispatches. Balance = issued − returned.
-        Crates sent on a dispatch are added automatically; record returns here, or add an opening balance for crates already at a customer.
-      </p>
-      <Flash error={error} ok={ok} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-sm text-ink-2">
+          Crates, trolleys and pallets that travel with dispatches. Balance = issued − returned.
+          Crates sent on a dispatch are added automatically; record returns here, or add an opening balance for crates already at a customer.
+        </p>
+        <CreateButton label="Record movement" />
+      </div>
       <CreatePanel>
         <Card className="space-y-3">
           <Eyebrow>RECORD A MOVEMENT</Eyebrow>
-          <form action={record} className="grid gap-3 md:grid-cols-6">
+          <form action={recordCrates} className="grid gap-3 md:grid-cols-6">
             <label className="text-[13px]">Customer
               <select name="customerId" required className={inputCls}>{customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             </label>
@@ -72,7 +55,7 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
         <span className="font-normal text-ink-3">To get a PDF, use your browser&apos;s Print and choose Save as PDF.</span>
       </p>
 
-      <SearchBar q={q} placeholder="Search customer or container" clearHref="/returnables" />
+      <SearchBar q={q} placeholder="Search customer or container" keep={{ tab: "crates" }} clearHref="/fg?tab=crates" />
       <Eyebrow>CUSTOMER BALANCES</Eyebrow>
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
         {balances.filter((b) => matches(q, b.customerName, b.itemCode, b.itemName)).map((b) => (

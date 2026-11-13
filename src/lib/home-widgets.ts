@@ -19,7 +19,7 @@ export interface HomeWidgetDef {
 export const HOME_WIDGETS: HomeWidgetDef[] = [
   { key: "needs-you", name: "Needs you", what: "The role's task inbox: work waiting at each hand-over" },
   { key: "plant-overview", name: "Plant overview", what: "OEE today, top downtime reason and open exceptions", view: "metrics" },
-  { key: "approvals", name: "Approvals", what: "Stock count adjustments waiting for a decision", view: "approvals" },
+  { key: "approvals", name: "Approvals", what: "Stock counts waiting for a decision", view: "stock", perm: "stock.adjust" },
   { key: "qc-queue", name: "QC queue", what: "Inward, first-off and final inspection waiting, with the oldest age", view: "quality" },
   { key: "my-machines", name: "My machines", what: "Each machine's mould, plan, last booking, open downtime and material", view: "production" },
   { key: "todays-shipments", name: "Today's shipments", what: "Demand due and FG ready to ship, per customer", view: "orders", perm: "dispatch.manage" },

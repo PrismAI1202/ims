@@ -9,6 +9,8 @@ import { addBin, removeBin, removeRack, renameBin, renameRack, renameShelf } fro
 import { Flash } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
+import { CountsTab } from "./counts";
+import { startSheet } from "./count-actions";
 import { MoveLotForm } from "@/components/move-lot-form";
 import { Drawer, dotted, field, RemoveButton } from "@/components/edit-mode";
 import { X } from "lucide-react";
@@ -110,7 +112,8 @@ type Search = { error?: string; ok?: string; view?: string; status?: string; cat
 export default async function StockPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireView("stock");
   const sp = await searchParams;
-  const view = sp.view === "bins" ? "bins" : "stock";
+  const countsOpen = can(user, "stock.count") || can(user, "stock.adjust");
+  const view = sp.view === "bins" ? "bins" : sp.view === "counts" && countsOpen ? "counts" : "stock";
   const canMove = can(user, "stock.transfer");
   // Layout editing is its own switch: only roles ticked for "edit the store layout" see it.
   const canEdit = can(user, "bins.manage");
@@ -142,9 +145,19 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       title="Stores"
       right={canMove && canView(user, "scan") ? <Link href="/scan" className={headerBtnCls}><ScanLine size={16} aria-hidden /> Scan</Link> : undefined}
     >
-      <StoresTabs active={view} views={user.views} />
+      <StoresTabs active={view} user={user} />
     </PageHeader>
   );
+
+  if (view === "counts") {
+    return (
+      <div className="space-y-4">
+        {header}
+        <Flash error={sp.error} ok={sp.ok} />
+        <CountsTab user={user} />
+      </div>
+    );
+  }
 
   if (view === "bins") {
     const byLoc = new Map<string, typeof balances>();
@@ -318,6 +331,12 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
               </div>
               <div className="space-y-3 overflow-y-auto p-4">
                 <Flash error={sp.error} ok={sp.ok} />
+                {can(user, "stock.count") && (
+                  <form action={startSheet}>
+                    <input type="hidden" name="bin" value={selected.code} />
+                    <button className="min-h-10 w-full cursor-pointer rounded-lg border border-shell-line bg-shell-2 text-[13px] font-semibold">Count this bin</button>
+                  </form>
+                )}
                 {selBalances.length === 0 ? (
                   <p className="text-sm">Empty bin. Open another bin and choose this one as the destination.</p>
                 ) : (

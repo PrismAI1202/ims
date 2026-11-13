@@ -66,11 +66,11 @@ const TASKS: TaskDef[] = [
     count: (db) => db.stockBalance.count({ where: { qty: { gt: 0 }, location: { type: "STAGING" }, lot: { qcStatus: { in: ["APPROVED", "DEVIATED"] } } } }),
   },
   {
-    key: "issue", view: "issue", kind: "act", href: "/issue", title: "Requests to issue", sub: "Open shop-floor requisitions, FIFO lot shown",
+    key: "issue", view: "requests", perm: "stock.issue", kind: "act", href: "/requests", title: "Requests to issue", sub: "Open shop-floor requisitions, FIFO lot shown",
     count: (db) => db.materialRequest.count({ where: OPEN_REQUEST }),
   },
   {
-    key: "my-requests", view: "requests", kind: "watch", href: "/requests", title: "Your requests not yet issued", sub: "Waiting on stores",
+    key: "my-requests", view: "requests", perm: "request.create", kind: "watch", href: "/requests", title: "Your requests not yet issued", sub: "Waiting on stores",
     count: (db, { userId }) => db.materialRequest.count({ where: { ...OPEN_REQUEST, requestedById: userId } }),
   },
   {
@@ -90,11 +90,11 @@ const TASKS: TaskDef[] = [
     count: (db, { userId }) => db.firstOff.count({ where: { status: "PENDING", requestedById: userId } }),
   },
   {
-    key: "counting", view: "count", kind: "act", href: "/count", title: "Count sheets in progress", sub: "Opened but not yet sent for approval",
+    key: "counting", view: "stock", perm: "stock.count", kind: "act", href: "/stock?view=counts", title: "Count sheets in progress", sub: "Opened but not yet sent for approval",
     count: (db) => db.stockCount.count({ where: { status: "OPEN" } }),
   },
   {
-    key: "adjustments", view: "approvals", kind: "act", href: "/approvals", title: "Stock counts to approve", sub: "Submitted by Store, waiting for a decision",
+    key: "adjustments", view: "stock", perm: "stock.adjust", kind: "act", href: "/stock?view=counts", title: "Stock counts to approve", sub: "Submitted by Store, waiting for a decision",
     count: (db) => db.stockCount.count({ where: { status: "SUBMITTED" } }),
   },
   {
@@ -102,7 +102,7 @@ const TASKS: TaskDef[] = [
     count: async (db) => (await pendingScrap(db)).length,
   },
   {
-    key: "grades", view: "equivalents", perm: "qc.inspect", kind: "act", href: "/equivalents", title: "Alternate grades to approve", sub: "Added by purchase, waiting on QA",
+    key: "grades", view: "bom", perm: "qc.inspect", kind: "act", href: "/bom/groups", title: "Alternate grades to approve", sub: "Added by purchase, waiting on QA",
     count: (db) => db.equivalentGrade.count({ where: { status: "PENDING_QA" } }),
   },
   {

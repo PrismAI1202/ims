@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, FileText } from "lucide-react";
 import { db } from "@/server/db";
-import { can, canView } from "@/server/auth/permissions";
+import { can } from "@/server/auth/permissions";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { addGrade, createGroup, decideGrade, GROUP_CATEGORIES, listGroups, moveGradeUp, type GroupView } from "@/server/services/equivalents";
 import { uploadFrom } from "@/server/upload-form";
@@ -17,16 +17,16 @@ async function create(formData: FormData) {
   "use server";
   await requirePermission("equivalents.manage");
   let id = "";
-  await runAction(() => `/equivalents?id=${id}`, "Group created. Add its first grade.", async () => {
+  await runAction(() => `/bom/groups?id=${id}`, "Group created. Add its first grade.", async () => {
     id = (await createGroup({ name: String(formData.get("name") || ""), itemId: String(formData.get("itemId") || ""), spec: String(formData.get("spec") || "") })).id;
-  }, "/equivalents");
+  }, "/bom/groups");
 }
 
 async function add(formData: FormData) {
   "use server";
   const user = await requirePermission("equivalents.manage");
   const groupId = String(formData.get("groupId"));
-  await runAction(`/equivalents?id=${groupId}`, "Grade sent to QA for approval. It can be used once QA approves it.", async () => {
+  await runAction(`/bom/groups?id=${groupId}`, "Grade sent to QA for approval. It can be used once QA approves it.", async () => {
     const days = String(formData.get("leadTimeDays") || "");
     await addGrade({
       groupId, gradeName: String(formData.get("gradeName") || ""), supplierId: String(formData.get("supplierId") || ""),
@@ -41,7 +41,7 @@ async function decide(formData: FormData) {
   const user = await requirePermission("qc.inspect");
   const groupId = String(formData.get("groupId"));
   const decision = String(formData.get("decision")) as "APPROVE_ALL" | "APPROVE_NON_AUTO" | "REJECT";
-  await runAction(`/equivalents?id=${groupId}`, decision === "REJECT" ? "Grade rejected." : "Grade approved.", async () => {
+  await runAction(`/bom/groups?id=${groupId}`, decision === "REJECT" ? "Grade rejected." : "Grade approved.", async () => {
     await decideGrade({ gradeId: String(formData.get("gradeId")), decision, userId: user.id });
   });
 }
@@ -50,7 +50,7 @@ async function moveUp(formData: FormData) {
   "use server";
   await requirePermission("equivalents.manage");
   const groupId = String(formData.get("groupId"));
-  await runAction(`/equivalents?id=${groupId}`, "Priority updated.", async () => { await moveGradeUp(String(formData.get("gradeId"))); });
+  await runAction(`/bom/groups?id=${groupId}`, "Priority updated.", async () => { await moveGradeUp(String(formData.get("gradeId"))); });
 }
 
 const COLORS = ["#1D4ED8", "#6E95E8", "#E98A3E", "#1E7A46"];
@@ -67,7 +67,7 @@ function GroupBar({ g }: { g: GroupView }) {
 }
 
 export default async function EquivalentsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; id?: string; q?: string }> }) {
-  const user = await requireView("equivalents");
+  const user = await requireView("bom");
   const { error, ok, id, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const groups = await listGroups();
@@ -84,7 +84,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
         <div className="space-y-4">
           <PageHeader eyebrow={sel.code} title={sel.name} right={canManage ? <CreateButton label="Add grade" /> : undefined}>
             <div className="space-y-2.5">
-              <Link href="/equivalents" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> All groups</Link>
+              <Link href="/bom/groups" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> All groups</Link>
               <div className="flex flex-wrap gap-1.5">{sel.spec.map((sp) => <span key={sp} className="rounded-md bg-shell-2 px-2 py-1 font-mono text-[11px]">{sp}</span>)}</div>
             </div>
           </PageHeader>
@@ -181,7 +181,7 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
     <CreateProvider>
       <div className="space-y-4">
         <PageHeader right={canManage ? <CreateButton label="New group" /> : undefined} eyebrow="SET UP" title="Equivalent groups" subtitle="One spec, many vendor grades. BOMs, MRP and stock use the group.">
-          {canView(user, "bom") && <Link href="/bom" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> BOMs</Link>}
+          <Link href="/bom" className="flex min-h-9 items-center gap-1 text-sm font-semibold"><ChevronLeft size={16} aria-hidden /> BOMs</Link>
         </PageHeader>
         <Flash error={error} ok={ok} />
         <CreatePanel>
@@ -199,13 +199,13 @@ export default async function EquivalentsPage({ searchParams }: { searchParams: 
             )}
           </Card>
         </CreatePanel>
-        <SearchBar q={q} placeholder="Search group, item, grade or vendor" clearHref="/equivalents" />
+        <SearchBar q={q} placeholder="Search group, item, grade or vendor" clearHref="/bom/groups" />
         <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((g) => {
             const low = g.onHand < g.min;
             const approved = g.grades.filter((x) => x.status === "APPROVED").length;
             return (
-              <Link key={g.id} href={`/equivalents?id=${g.id}`} className="flex flex-col gap-2 rounded-[14px] bg-white p-3.5">
+              <Link key={g.id} href={`/bom/groups?id=${g.id}`} className="flex flex-col gap-2 rounded-[14px] bg-white p-3.5">
                 <span className="flex items-start justify-between gap-2">
                   <span className="flex flex-col"><span className="font-semibold">{g.name}</span>
                     <span className="text-xs text-ink-3"><Mono>{g.code}</Mono> · {approved} approved grade{approved === 1 ? "" : "s"} · used in {g.usedIn.length ? g.usedIn.join(", ") : "no BOM yet"}</span></span>

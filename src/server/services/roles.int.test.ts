@@ -49,12 +49,18 @@ describe("roles", () => {
     await updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: ["qc.inspect"] }, db);
     expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA", views: ["quality"] });
     await resetRole("QA_INSPECTOR", db);
-    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA Inspector", views: ["quality", "trace", "equivalents"], home: ["qc-queue", "needs-you"] });
+    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA Inspector", views: ["quality", "trace", "bom"], home: ["qc-queue", "needs-you"] });
   });
 
   it("refuses a role that holds the Quality hub with none of its tabs", async () => {
     await expect(updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: [] }, db)).rejects.toThrow(/at least one of its tabs/);
     await expect(updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: ["rtv.manage"] }, db)).resolves.toBeTruthy();
+  });
+
+  it("refuses Material requests or Finished goods with none of their steps ticked", async () => {
+    await expect(updateRole("PRODUCTION_LEAD", { name: "Production Lead", views: ["production", "requests"], permissions: [] }, db)).rejects.toThrow(/Material requests needs at least one/);
+    await expect(updateRole("DISPATCH_OFFICER", { name: "Dispatch Officer", views: ["orders", "fg"], permissions: [] }, db)).rejects.toThrow(/Finished goods needs at least one/);
+    await expect(updateRole("DISPATCH_OFFICER", { name: "Dispatch Officer", views: ["orders", "fg"], permissions: ["crates.manage"] }, db)).resolves.toBeTruthy();
   });
 
   it("keeps admin able to manage access", async () => {
@@ -63,7 +69,7 @@ describe("roles", () => {
   });
 
   it("keeps a role's menu order when screens are added", async () => {
-    await updateRole("STORE_INCHARGE", { name: "Store Incharge", views: ["mrp", "grn", "stock", "issue", "trace"], permissions: [] }, db);
-    expect((await db.accessRole.findUniqueOrThrow({ where: { key: "STORE_INCHARGE" } })).views).toEqual(["grn", "stock", "issue", "mrp", "trace"]);
+    await updateRole("STORE_INCHARGE", { name: "Store Incharge", views: ["mrp", "grn", "stock", "demand", "trace"], permissions: [] }, db);
+    expect((await db.accessRole.findUniqueOrThrow({ where: { key: "STORE_INCHARGE" } })).views).toEqual(["grn", "stock", "mrp", "demand", "trace"]);
   });
 });

@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
       { source: "/pdi", destination: "/quality?tab=pdi", permanent: false },
       { source: "/firstoff", destination: "/quality?tab=firstoff", permanent: false },
       { source: "/rtv", destination: "/quality?tab=rtv", permanent: false },
+      { source: "/issue", destination: "/requests", permanent: false },
+      { source: "/returns", destination: "/requests", permanent: false },
+      { source: "/count", destination: "/stock?view=counts", permanent: false },
+      { source: "/approvals", destination: "/stock?view=counts", permanent: false },
+      { source: "/returnables", destination: "/fg?tab=crates", permanent: false },
+      { source: "/equivalents", destination: "/bom/groups", permanent: false },
+      { source: "/reports/variance", destination: "/bom", permanent: false },
     ];
   },
   experimental: {

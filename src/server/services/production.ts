@@ -303,3 +303,38 @@ export async function varianceReport(from: Date, to: Date, db: Db = defaultDb) {
     },
   };
 }
+
+export interface BomVarianceRow {
+  itemId: string; code: string; name: string; uom: string;
+  forPart: number;      // what this part's bookings should have used, by the BOM
+  plantExpected: number; // what every part's bookings should have used of this material
+  issued: number;       // issued to the floor in the window, less returns (counted per material, not per part)
+  variance: number; variancePct: number | null;
+  shared: boolean;      // other parts use this material too, so issued and variance cover them all
+}
+
+/** One BOM's view of the variance report: its own expected use per material beside the plant-wide issue figures. */
+export async function bomVariance(bomId: string, from: Date, to: Date, db: Db = defaultDb) {
+  const [report, own, bookings, lines] = await Promise.all([
+    varianceReport(from, to, db),
+    db.bookingConsumption.groupBy({ by: ["itemId"], _sum: { expectedQty: true }, where: { booking: { bomId, producedAt: { gte: from, lt: to } } } }),
+    db.productionBooking.aggregate({ _sum: { goodParts: true, rejectParts: true, shots: true }, _count: true, where: { bomId, producedAt: { gte: from, lt: to } } }),
+    db.bomLine.findMany({ where: { bomId }, include: { item: true }, orderBy: { item: { code: "asc" } } }),
+  ]);
+  const ownBy = new Map(own.map((o) => [o.itemId, Number(o._sum.expectedQty ?? 0)]));
+  const plant = new Map(report.rows.map((r) => [r.itemId, r]));
+  const rows: BomVarianceRow[] = lines.map((l) => {
+    const r = plant.get(l.itemId);
+    const forPart = round(ownBy.get(l.itemId) ?? 0, 3);
+    const plantExpected = r?.expected ?? 0;
+    return {
+      itemId: l.itemId, code: l.item.code, name: l.item.name, uom: l.item.uom, forPart, plantExpected,
+      issued: r?.issued ?? 0, variance: r?.variance ?? 0, variancePct: r?.variancePct ?? null,
+      shared: plantExpected - forPart > 1e-6,
+    };
+  });
+  return {
+    rows,
+    totals: { bookings: bookings._count, goodParts: bookings._sum.goodParts ?? 0, rejectParts: bookings._sum.rejectParts ?? 0, shots: bookings._sum.shots ?? 0 },
+  };
+}

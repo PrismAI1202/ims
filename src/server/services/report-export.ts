@@ -12,7 +12,7 @@ type Db = PrismaClient;
 export const REPORTS = {
   stock: "stock.view",
   variance: "reports.view",
-  returnables: "dispatch.manage",
+  returnables: "crates.manage",
   mrp: "mrp.plan",
   demand: "mrp.plan",
 } as const satisfies Record<string, Permission>;

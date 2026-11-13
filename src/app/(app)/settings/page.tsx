@@ -4,7 +4,7 @@ import { requirePermission, requireView, runAction } from "@/server/auth/guard";
 import { HOME_ACTIONS, PERMISSION_LABELS, resolveAccess, SYSTEM_ROLES, type Permission } from "@/server/auth/permissions";
 import { createRole, deleteRole, listRoles, resetRole, updateRole, type RoleInput } from "@/server/services/roles";
 import { createUser, resetPassword, updateUser } from "@/server/services/users";
-import { levelOf, levelPermissions, VIEW_GROUPS, VIEWS } from "@/lib/views";
+import { hubTabs, levelOf, levelPermissions, VIEW_GROUPS, VIEWS } from "@/lib/views";
 import { HOME_WIDGETS } from "@/lib/home-widgets";
 import { getRule, PLANT_RULES, setRule, type PlantRule } from "@/server/services/settings";
 import { btnCls, btnDangerCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
@@ -14,7 +14,6 @@ import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { ViewAccessRow } from "@/components/view-access-row";
 import { HubAccessRow } from "@/components/hub-access-row";
-import { QUALITY_TAB_LABEL, qualityTabs } from "@/lib/quality-tabs";
 
 export const instant = false;
 
@@ -29,11 +28,13 @@ function readHome(formData: FormData): string[] {
     .map((w) => w.key);
 }
 
-// The Quality tabs a role holds, for its card in the role list (the hub tells a different story per role).
-function qualityLine(r: NonNullable<Parameters<typeof resolveAccess>[0]>): string {
-  if (r.allAccess) return "all tabs";
+// What a role does in each hub screen (Quality, Material requests, Finished goods), for its card in the role list.
+function hubLines(r: NonNullable<Parameters<typeof resolveAccess>[0]>): string[] {
   const a = resolveAccess(r);
-  return a.views.includes("quality") ? qualityTabs(a.permissions).map((t) => QUALITY_TAB_LABEL[t]).join(" · ") : "";
+  return VIEWS.filter((v) => v.tabs && a.views.includes(v.key)).map((v) => {
+    const slugs = hubTabs(v, a.permissions);
+    return `${v.name}: ${r.allAccess ? "everything" : slugs.map((s) => v.tabs!.find((t) => t.tab === s)!.label).join(" · ")}`;
+  });
 }
 
 const read = (formData: FormData): RoleInput => ({
@@ -210,8 +211,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <p className="text-xs text-ink-3 lg:hidden">
           {role.allAccess ? "Every screen" : `${resolveAccess(role).views.length} screens`} · {role.activeUsers} active user{role.activeUsers === 1 ? "" : "s"}
           {!role.system && " · Custom"}
-          {qualityLine(role) && ` · Quality: ${qualityLine(role)}`}
         </p>
+        {hubLines(role).map((l) => <p key={l} className="text-xs text-ink-2 lg:hidden">{l}</p>)}
 
         <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
           <nav aria-label="Roles" className="hidden flex-col gap-1.5 self-start lg:flex">
@@ -225,7 +226,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <span className="text-xs text-ink-3">
                   {r.allAccess ? "Every screen" : `${resolveAccess(r).views.length} screens`} · {r.activeUsers} active user{r.activeUsers === 1 ? "" : "s"}
                 </span>
-                {qualityLine(r) && <span className="text-xs text-ink-2">Quality: {qualityLine(r)}</span>}
+                {hubLines(r).map((l) => <span key={l} className="text-xs text-ink-2">{l}</span>)}
               </Link>
             ))}
           </nav>
@@ -339,7 +340,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     {VIEWS.filter((v) => v.group === g).map((v) => (
                       <li key={v.key} className="border-t border-line py-1.5">
                         {v.tabs ? (
-                          <HubAccessRow viewKey={v.key} name={v.name} tabs={v.tabs} tabNames={QUALITY_TAB_LABEL}
+                          <HubAccessRow viewKey={v.key} name={v.name} note={v.hubNote} tabs={v.tabs}
                             defaultOn={role.allAccess || role.views.includes(v.key)} defaultPerms={v.tabs.filter((t) => role.allAccess || has(t.permission)).map((t) => t.permission)} />
                         ) : v.levels ? (
                           <ViewAccessRow viewKey={v.key} name={v.name} note={v.requires ? `Includes: ${PERMISSION_LABELS[v.requires].toLowerCase()}` : undefined}

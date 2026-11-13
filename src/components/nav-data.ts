@@ -33,9 +33,9 @@ export function navFor(views: readonly string[]): NavGroup[] {
 export type Tab = { href: string; label: string; view?: ViewKey };
 
 const TAB_LABEL: Partial<Record<ViewKey, string>> = {
-  masters: "Masters", settings: "Settings", partners: "Partners", equivalents: "Grades", demand: "Demand",
-  mrp: "MRP", grn: "Receive", quality: "Quality", issue: "Issue", stock: "Stores", requests: "Requests", production: "Book", fg: "Pack",
-  maintenance: "Maint.", returnables: "Crates", trace: "Trace", variance: "Variance", scan: "Scan",
+  masters: "Masters", settings: "Settings", partners: "Partners", demand: "Demand",
+  mrp: "MRP", grn: "Receive", quality: "Quality", stock: "Stores", requests: "Requests", bom: "BOMs", production: "Book", fg: "Goods",
+  maintenance: "Maint.", trace: "Trace", scan: "Scan",
 };
 
 /** Phone tab bar: Home, the first three screens of the user's role (in the role's own order), then More. */

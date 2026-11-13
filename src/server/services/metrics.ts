@@ -99,7 +99,7 @@ export async function computeMetrics(db: Db = defaultDb, now = new Date()): Prom
       { label: "MTBF (plant)", value: rel.mtbfHours === null ? "—" : `${rel.mtbfHours} h`, note: "Run h ÷ breakdowns · 30 d", tone: "neutral", href: "/maintenance?tab=machines" },
       { label: "MTTR (plant)", value: rel.mttrMin === null ? "—" : `${rel.mttrMin} min`, note: "Repair min ÷ breakdowns · 30 d", tone: "neutral", href: "/maintenance?tab=machines" },
       { label: "PM compliance", value: `${maint.length - overdue.length} of ${maint.length}`, note: overdue.length ? `${overdue.map((m) => m.code).join(", ")} overdue` : "All moulds in date", tone: tone(overdue.length === 0, true), href: "/maintenance" },
-      { label: "Returnables out", value: String(out), note: `${new Set(returnables.filter((r) => r.balance > 0).map((r) => r.customerId)).size} customers holding`, tone: "neutral", href: "/returnables" },
+      { label: "Returnables out", value: String(out), note: `${new Set(returnables.filter((r) => r.balance > 0).map((r) => r.customerId)).size} customers holding`, tone: "neutral", href: "/fg?tab=crates" },
     ];
   };
 

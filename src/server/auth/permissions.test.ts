@@ -2,7 +2,7 @@ import { qualityTabs } from "@/lib/quality-tabs";
 import { describe, expect, it } from "vitest";
 import { assertCan, can, canView, ForbiddenError, resolveAccess, SYSTEM_ROLES } from "./permissions";
 import { normalize } from "@/server/services/roles";
-import { levelOf, levelPermissions, VIEW_KEYS, viewDef } from "@/lib/views";
+import { hubTabs, levelOf, levelPermissions, VIEW_KEYS, viewDef } from "@/lib/views";
 import { tasksFor } from "@/server/services/inbox";
 import { tabsFor } from "@/components/nav-data";
 
@@ -69,14 +69,14 @@ describe("normalize (saving a role)", () => {
     expect(n.permissions.sort()).toEqual(["downtime.log", "reorder.view"]);
   });
   it("keeps the existing order and appends newly ticked screens", () => {
-    expect(normalize({ views: ["grn", "issue", "trace"], permissions: [] }, ["trace", "grn"]).views).toEqual(["trace", "grn", "issue"]);
+    expect(normalize({ views: ["grn", "demand", "trace"], permissions: [] }, ["trace", "grn"]).views).toEqual(["trace", "grn", "demand"]);
   });
 });
 
 describe("role home and tabs", () => {
   it("puts the role's first three screens in the phone tab bar", () => {
-    expect(tabsFor(role("QA_INSPECTOR").views).map((t) => t.label)).toEqual(["Home", "Quality", "Trace", "Grades", "More"]);
-    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Receive", "Stores", "Issue", "More"]);
+    expect(tabsFor(role("QA_INSPECTOR").views).map((t) => t.label)).toEqual(["Home", "Quality", "Trace", "BOMs", "More"]);
+    expect(tabsFor(role("STORE_INCHARGE").views).map((t) => t.label)).toEqual(["Home", "Receive", "Stores", "Requests", "More"]);
   });
   it("routes each hand-over to the role that does the next step", () => {
     expect(tasksFor(role("STORE_INCHARGE"))).toEqual(expect.arrayContaining(["gate", "putaway", "issue", "to-buy"]));
@@ -152,7 +152,7 @@ describe("Orders (Supplier PO and Dispatch merged in)", () => {
     expect(viewDef("dispatch")).toBeUndefined();
   });
   it("keeps Orders as the dispatch officer's first phone tab", () => {
-    expect(tabsFor(role("DISPATCH_OFFICER").views).map((t) => t.label)).toEqual(["Home", "Orders", "Pack", "Crates", "More"]);
+    expect(tabsFor(role("DISPATCH_OFFICER").views).map((t) => t.label)).toEqual(["Home", "Orders", "Goods", "Scan", "More"]);
   });
 });
 
@@ -218,5 +218,38 @@ describe("Quality hub: one screen, tabs by permission", () => {
   });
   it("lists first-off once even though it has a request and an approve permission", () => {
     expect(qualityTabs(["firstoff.request", "firstoff.approve"])).toEqual(["firstoff"]);
+  });
+});
+
+describe("merged screens: what each role does in them", () => {
+  const stepsOf = (key: string, r: string) => hubTabs(viewDef(key)!, role(r).permissions);
+  it("Material requests is one flow whose steps follow the permissions", () => {
+    expect(stepsOf("requests", "PRODUCTION_LEAD")).toEqual(["request", "return"]);
+    expect(stepsOf("requests", "STORE_INCHARGE")).toEqual(["issue", "return"]);
+    expect(canView(role("DISPATCH_OFFICER"), "requests")).toBe(false);
+    expect(stepsOf("requests", "DEMO")).toEqual(["request", "issue", "return"]);
+  });
+  it("Finished goods has Pack for production and Pack + Crates for dispatch", () => {
+    expect(stepsOf("fg", "PRODUCTION_LEAD")).toEqual(["pack"]);
+    expect(stepsOf("fg", "DISPATCH_OFFICER")).toEqual(["pack", "crates"]);
+    expect(can(role("PRODUCTION_LEAD"), "crates.manage")).toBe(false);
+  });
+  it("stock counts live in Stores: Store counts, Admin approves, nobody else does either", () => {
+    expect(can(role("STORE_INCHARGE"), "stock.count")).toBe(true);
+    expect(can(role("STORE_INCHARGE"), "stock.adjust")).toBe(false);
+    expect(can(role("ADMIN"), "stock.adjust")).toBe(true);
+    expect(can(role("ADMIN"), "stock.count")).toBe(false);
+    expect(can(role("PRODUCTION_LEAD"), "stock.count")).toBe(false);
+    expect(normalize({ views: ["grn"], permissions: ["stock.count", "stock.adjust"] }).permissions).toEqual([]); // dropped without Stores
+    expect(normalize({ views: ["stock"], permissions: ["stock.count"] }).permissions).toContain("stock.count");
+  });
+  it("BOMs: everyone with the screen reads it; editing, variance and group management are their own permissions", () => {
+    expect(canView(role("QA_INSPECTOR"), "bom")).toBe(true);
+    expect(can(role("QA_INSPECTOR"), "bom.manage")).toBe(false);
+    expect(can(role("QA_INSPECTOR"), "reports.view")).toBe(false);
+    expect(can(role("ADMIN"), "bom.manage") && can(role("ADMIN"), "reports.view") && can(role("ADMIN"), "equivalents.manage")).toBe(true);
+  });
+  it("the retired screens are gone from the catalog", () => {
+    for (const k of ["count", "approvals", "issue", "returns", "returnables", "equivalents", "variance"]) expect(viewDef(k)).toBeUndefined();
   });
 });

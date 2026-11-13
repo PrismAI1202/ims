@@ -32,7 +32,8 @@ export type Permission =
   | "pdi.release"
   | "bins.manage"
   | "partners.manage"
-  | "equipment.manage";
+  | "equipment.manage"
+  | "crates.manage";
 
 /** What each permission lets a user do, as shown on Settings · Roles & access. */
 export const PERMISSION_LABELS: Record<Permission, string> = {
@@ -46,19 +47,19 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "reorder.view": "See stock health (red / yellow / green) on Home",
   "request.create": "Raise material requests",
   "production.book": "Book production",
-  "bom.manage": "Edit BOMs",
+  "bom.manage": "Create, edit and import BOMs",
   "fg.pack": "Pack FG boxes and print box labels",
   "mrp.plan": "Import demand and run MRP",
   "users.manage": "Manage roles, users and passwords",
   "scrap.approve": "Decide regrind or waste for rejects",
-  "reports.view": "Open and export reports",
+  "reports.view": "See BOM variance (planned versus actual use) and export it",
   "equivalents.manage": "Add and rank alternate grades",
   "plan.manage": "Edit the machine plan",
   "maintenance.manage": "Record PM, repairs and mould settings",
   "downtime.log": "Log downtime",
   "dispatch.manage": "Create, load and complete dispatches",
-  "stock.count": "Count bins and submit differences",
-  "stock.adjust": "Approve stock count adjustments",
+  "stock.count": "Count bins in Stores and send differences for approval",
+  "stock.adjust": "Approve stock counts and the adjustments they make",
   "material.return": "Return unused material to stores",
   "rtv.manage": "Return rejected lots to the supplier",
   "firstoff.request": "Request a first-off inspection",
@@ -67,6 +68,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "bins.manage": "Edit the store layout (add racks, shelves and bins)",
   "partners.manage": "Add, edit and remove customers and suppliers",
   "equipment.manage": "Add, edit and remove machines and moulds",
+  "crates.manage": "Keep the returnable ledger (crates and trolleys)",
 };
 
 export const PERMISSIONS = Object.keys(PERMISSION_LABELS) as Permission[];
@@ -116,36 +118,36 @@ export const SYSTEM_ROLES: SystemRole[] = [
   {
     key: "ADMIN", name: "Admin", allAccess: false,
     description: "Plant head and system owner: set-up, users and roles, exceptions and KPIs.",
-    views: ["process", "orders", "metrics", "approvals", "masters", "settings", "partners", "bom", "equivalents", "maintenance", "trace", "variance", "stock"],
-    permissions: ["reorder.view", "equivalents.manage", "stock.transfer", "bins.manage", "partners.manage", "equipment.manage"],
+    views: ["process", "orders", "metrics", "masters", "settings", "partners", "bom", "maintenance", "trace", "stock"],
+    permissions: ["reorder.view", "bom.manage", "equivalents.manage", "reports.view", "stock.transfer", "stock.adjust", "bins.manage", "partners.manage", "equipment.manage"],
     home: ["plant-overview", "approvals", "needs-you", "stock-health"],
   },
   {
     key: "STORE_INCHARGE", name: "Store Incharge", allAccess: false,
     description: "Receives trucks, puts away approved lots, issues material FIFO, counts bins and raises POs.",
-    views: ["grn", "stock", "issue", "scan", "orders", "mrp", "count", "returns", "quality"],
-    permissions: ["reorder.view", "stock.transfer", "po.manage", "rtv.manage"],
+    views: ["grn", "stock", "requests", "scan", "orders", "mrp", "quality"],
+    permissions: ["reorder.view", "stock.transfer", "stock.count", "stock.issue", "material.return", "po.manage", "rtv.manage"],
     home: ["needs-you", "stock-health", "quick-actions"],
   },
   {
     key: "QA_INSPECTOR", name: "QA Inspector", allAccess: false,
     description: "Inward QC, first-off and final inspection, scrap decisions, traceability and alternate-grade approval.",
-    views: ["quality", "trace", "equivalents"],
+    views: ["quality", "trace", "bom"],
     permissions: ["qc.inspect", "scrap.approve", "pdi.release", "firstoff.approve"],
     home: ["qc-queue", "needs-you"],
   },
   {
     key: "PRODUCTION_LEAD", name: "Production Lead", allAccess: false,
     description: "Runs the machines: requests material, books shifts and downtime, packs FG, logs maintenance.",
-    views: ["production", "requests", "fg", "planning", "maintenance", "returns", "quality"],
-    permissions: ["downtime.log", "maintenance.manage", "firstoff.request"],
+    views: ["production", "requests", "fg", "planning", "maintenance", "quality"],
+    permissions: ["downtime.log", "maintenance.manage", "firstoff.request", "request.create", "material.return", "fg.pack"],
     home: ["my-machines", "needs-you", "quick-actions"],
   },
   {
     key: "DISPATCH_OFFICER", name: "Dispatch Officer", allAccess: false,
     description: "Picks and loads FG boxes, prints the DC and e-way data, keeps the returnable ledger.",
-    views: ["orders", "fg", "returnables", "scan"],
-    permissions: ["dispatch.manage"],
+    views: ["orders", "fg", "scan"],
+    permissions: ["dispatch.manage", "fg.pack", "crates.manage"],
     home: ["todays-shipments", "needs-you"],
   },
   {

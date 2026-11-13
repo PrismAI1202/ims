@@ -200,7 +200,7 @@ export function MetricsView({ data, footer, views }: { data: MetricsData; footer
               </div>
             ))}
           </div>
-          {opens("/reports/variance") && <Link href="/reports/variance" className="mt-3 flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border text-sm font-semibold">BOM variance report (live) <ArrowRight size={15} aria-hidden /></Link>}
+          {opens("/bom") && <Link href="/bom" className="mt-3 flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border text-sm font-semibold">BOM variance: open a BOM <ArrowRight size={15} aria-hidden /></Link>}
         </Card>
       </div>
       {footer}
