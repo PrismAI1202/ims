@@ -139,7 +139,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
                   </div>
                 ))}
               </div>
-              {week.machines.length === 0 && <p className="text-sm text-ink-3">No machines yet. Add them in Masters.</p>}
+              {week.machines.length === 0 && <p className="text-sm text-ink-3">No machines yet. Add them under Maintenance → Machines → Edit list.</p>}
             </Card>
 
             {slot && (

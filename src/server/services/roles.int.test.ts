@@ -46,15 +46,20 @@ describe("roles", () => {
 
   it("never deletes a built-in role and resets it to its defaults", async () => {
     await expect(deleteRole("QA_INSPECTOR", db)).rejects.toThrow(/Built-in/);
-    await updateRole("QA_INSPECTOR", { name: "QA", views: ["qc"], permissions: [] }, db);
-    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA", views: ["qc"] });
+    await updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: ["qc.inspect"] }, db);
+    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA", views: ["quality"] });
     await resetRole("QA_INSPECTOR", db);
-    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA Inspector", views: ["qc", "scrap", "trace", "equivalents"] });
+    expect(await db.accessRole.findUniqueOrThrow({ where: { key: "QA_INSPECTOR" } })).toMatchObject({ name: "QA Inspector", views: ["quality", "trace", "equivalents"], home: ["qc-queue", "needs-you"] });
+  });
+
+  it("refuses a role that holds the Quality hub with none of its tabs", async () => {
+    await expect(updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: [] }, db)).rejects.toThrow(/at least one of its tabs/);
+    await expect(updateRole("QA_INSPECTOR", { name: "QA", views: ["quality"], permissions: ["rtv.manage"] }, db)).resolves.toBeTruthy();
   });
 
   it("keeps admin able to manage access", async () => {
-    await expect(updateRole("ADMIN", { name: "Admin", views: ["masters"], permissions: [] }, db)).rejects.toThrow(/Users and Settings/);
-    await updateRole("ADMIN", { name: "Admin", views: ["masters", "users", "settings"], permissions: [] }, db);
+    await expect(updateRole("ADMIN", { name: "Admin", views: ["masters"], permissions: [] }, db)).rejects.toThrow(/must keep Settings/);
+    await updateRole("ADMIN", { name: "Admin", views: ["masters", "settings"], permissions: [] }, db);
   });
 
   it("keeps a role's menu order when screens are added", async () => {

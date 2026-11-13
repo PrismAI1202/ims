@@ -15,6 +15,13 @@ export async function requireUser() {
   return session.user;
 }
 
+// A screen that several roles open for different reasons (Orders): the view, and the permission this page needs on it.
+export async function requireViewWith(view: ViewKey, permission: Permission) {
+  const user = await requireView(view);
+  if (!can(user, permission)) redirect(DENIED);
+  return user;
+}
+
 // Every server action calls this itself: layout-level auth does not cover server actions.
 export async function requirePermission(permission: Permission) {
   const user = await requireUser();

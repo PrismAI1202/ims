@@ -1,12 +1,15 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { db as defaultDb } from "@/server/db";
 import {
   expectedConsumption, KIND_CATEGORY, round, runnerKg, validateBomLines, validateBooking,
   type BomLineInput,
 } from "./bom-math";
 import { DomainError, nextNumber } from "./inventory";
+import { getRule } from "./settings";
+import { hasApprovedFirstOff } from "./firstoff";
 
 type Db = PrismaClient;
+type Tx = Prisma.TransactionClient;
 
 // ───────── BOM ─────────
 
@@ -17,8 +20,9 @@ export interface SaveBomInput {
   lines: BomLineInput[];
 }
 
-// Creates or replaces the BOM for a finished part, enforcing the blend and max-regrind rules.
-export async function saveBom(input: SaveBomInput, db: Db = defaultDb) {
+// Creates or replaces the BOM for a finished part, enforcing the blend and max-regrind rules. `saveBomIn` does the work inside
+// a transaction you already have, so an import can create items and BOMs together and roll all of it back on any problem.
+export async function saveBomIn(db: Db | Tx, input: SaveBomInput) {
   if (!(input.partWeightG > 0)) throw new DomainError("Part weight must be greater than 0.");
 
   const [fg, mould] = await Promise.all([
@@ -26,7 +30,7 @@ export async function saveBom(input: SaveBomInput, db: Db = defaultDb) {
     db.mould.findUnique({ where: { id: input.mouldId } }),
   ]);
   if (!fg || fg.category !== "FG") throw new DomainError("Choose a finished-goods item for the BOM.");
-  if (!mould) throw new DomainError("Choose a mould.");
+  if (!mould || !mould.active) throw new DomainError("Choose a mould that is in service.");
 
   const items = await db.item.findMany({ where: { id: { in: input.lines.map((l) => l.itemId) } } });
   const byId = new Map(items.map((i) => [i.id, i]));
@@ -63,21 +67,23 @@ export async function saveBom(input: SaveBomInput, db: Db = defaultDb) {
   const lineData = input.lines.map((l) => ({
     itemId: l.itemId, kind: l.kind, pct: l.pct ?? null, qtyPerPart: l.qtyPerPart ?? null,
   }));
-  return db.$transaction(async (tx) => {
-    const existing = await tx.bom.findUnique({ where: { fgItemId: input.fgItemId } });
-    if (existing) {
-      await tx.bomLine.deleteMany({ where: { bomId: existing.id } });
-      return tx.bom.update({
-        where: { id: existing.id },
-        data: { mouldId: input.mouldId, partWeightG: input.partWeightG, lines: { create: lineData } },
-        include: { lines: true },
-      });
-    }
-    return tx.bom.create({
-      data: { fgItemId: input.fgItemId, mouldId: input.mouldId, partWeightG: input.partWeightG, lines: { create: lineData } },
+  const existing = await db.bom.findUnique({ where: { fgItemId: input.fgItemId } });
+  if (existing) {
+    await db.bomLine.deleteMany({ where: { bomId: existing.id } });
+    return db.bom.update({
+      where: { id: existing.id },
+      data: { mouldId: input.mouldId, partWeightG: input.partWeightG, lines: { create: lineData } },
       include: { lines: true },
     });
+  }
+  return db.bom.create({
+    data: { fgItemId: input.fgItemId, mouldId: input.mouldId, partWeightG: input.partWeightG, lines: { create: lineData } },
+    include: { lines: true },
   });
+}
+
+export async function saveBom(input: SaveBomInput, db: Db = defaultDb) {
+  return db.$transaction((tx) => saveBomIn(tx, input));
 }
 
 // Which stock item receives runners and crushed rejects: the BOM's own regrind item, else a REGRIND item of the resin's grade.
@@ -112,11 +118,17 @@ export interface BookProductionInput {
 export async function bookProduction(input: BookProductionInput, db: Db = defaultDb) {
   const bom = await db.bom.findUnique({
     where: { id: input.bomId },
-    include: { mould: true, lines: { include: { item: true } } },
+    include: { mould: true, fgItem: true, lines: { include: { item: true } } },
   });
   if (!bom) throw new DomainError("Unknown BOM.");
   const machine = await db.machine.findUnique({ where: { id: input.machineId } });
-  if (!machine) throw new DomainError("Choose a machine.");
+  if (!machine || !machine.active) throw new DomainError("Choose a machine that is in service.");
+
+  if (await getRule("requireFirstOff", db)) {
+    if (!(await hasApprovedFirstOff(machine.id, bom.id, input.shift, db))) {
+      throw new DomainError(`No approved first-off for ${machine.code} · ${bom.fgItem.code} · shift ${input.shift} in the last 24 hours. Ask QA on the First-off screen.`);
+    }
+  }
 
   const errors = validateBooking({ ...input, cavities: bom.mould.cavities });
   if (errors.length) throw new DomainError(errors[0]);
@@ -160,8 +172,8 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
   const regrindItemId = await findRegrindItemId(db, bom.lines);
   const bin = runner > 0 && regrindItemId
     ? input.regrindLocationCode
-      ? await db.location.findUnique({ where: { code: input.regrindLocationCode } })
-      : await db.location.findFirst({ where: { type: "STORAGE" }, orderBy: { code: "asc" } })
+      ? await db.location.findFirst({ where: { code: input.regrindLocationCode, active: true } })
+      : await db.location.findFirst({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } })
     : null;
   if (runner > 0 && regrindItemId && !bin) throw new DomainError("Regrind bin not found.");
   if (bin && bin.type !== "STORAGE") throw new DomainError("Regrind must be stored in a storage bin.");
@@ -169,12 +181,13 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
   // Good parts become an approved finished-goods lot so they can be packed into labelled boxes and dispatched.
   const fgBin = input.goodParts > 0
     ? input.fgLocationCode
-      ? await db.location.findUnique({ where: { code: input.fgLocationCode } })
-      : await db.location.findFirst({ where: { type: "STORAGE" }, orderBy: { code: "asc" } })
+      ? await db.location.findFirst({ where: { code: input.fgLocationCode, active: true } })
+      : await db.location.findFirst({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } })
     : null;
   if (input.goodParts > 0 && !fgBin) throw new DomainError("Finished-goods bin not found.");
   if (fgBin && fgBin.type !== "STORAGE") throw new DomainError("Finished goods must be stored in a storage bin.");
 
+  const requirePdi = await getRule("requirePdi", db);
   return db.$transaction(async (tx) => {
     const bookingNumber = await nextNumber(tx, "PB", "productionBooking");
 
@@ -185,6 +198,7 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
           lotNumber: await nextNumber(tx, "LOT", "lot"),
           itemId: bom.fgItemId, supplierLotNo: bookingNumber, receivedQty: input.goodParts,
           qcStatus: "APPROVED", // inspected at the press; rejects are booked separately
+          pdiStatus: requirePdi ? "PENDING" : "NOT_REQUIRED", // final inspection before it may ship
         },
       });
       await tx.stockBalance.create({ data: { lotId: fgLot.id, locationId: fgBin.id, qty: input.goodParts } });
@@ -232,9 +246,9 @@ export interface VarianceRow {
 }
 
 // Expected = what the BOM says the bookings should have used. Issued = what the store actually
-// handed to the floor in the same window. A big positive variance points at over-use or scrap.
+// handed to the floor in the same window, less anything returned from the machines. A big positive variance points at over-use or scrap.
 export async function varianceReport(from: Date, to: Date, db: Db = defaultDb) {
-  const [consumption, issues, bookings] = await Promise.all([
+  const [consumption, issues, bookings, returns] = await Promise.all([
     db.bookingConsumption.groupBy({
       by: ["itemId"], _sum: { expectedQty: true },
       where: { booking: { producedAt: { gte: from, lt: to } } },
@@ -245,6 +259,11 @@ export async function varianceReport(from: Date, to: Date, db: Db = defaultDb) {
     db.productionBooking.aggregate({
       _sum: { goodParts: true, rejectParts: true, runnerKg: true, shots: true }, _count: true,
       where: { producedAt: { gte: from, lt: to } },
+    }),
+    // Material sent back from the machines in the same window comes off what was issued.
+    db.stockTransaction.findMany({
+      where: { type: "RETURN", refType: "MACHINE_RETURN", createdAt: { gte: from, lt: to } },
+      select: { qty: true, lot: { select: { itemId: true } } },
     }),
   ]);
 
@@ -258,6 +277,7 @@ export async function varianceReport(from: Date, to: Date, db: Db = defaultDb) {
     const itemId = itemOfLine.get(i.requestLineId);
     if (itemId) issuedByItem.set(itemId, (issuedByItem.get(itemId) ?? 0) + Number(i._sum.qty ?? 0));
   }
+  for (const r of returns) issuedByItem.set(r.lot.itemId, (issuedByItem.get(r.lot.itemId) ?? 0) - Number(r.qty));
   const expectedByItem = new Map(consumption.map((c) => [c.itemId, Number(c._sum.expectedQty ?? 0)]));
 
   const ids = [...new Set([...expectedByItem.keys(), ...issuedByItem.keys()])];

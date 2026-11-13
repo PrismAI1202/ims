@@ -13,14 +13,13 @@ export class DuplicateScanError extends DomainError {}
 
 export interface CreateDispatchInput {
   customerId: string;
-  vehicleNumber: string;
+  vehicleNumber?: string; // not needed to build a pick list; add it later with updateTransport
   driverName?: string;
   lines: { itemId: string; qty: number }[];
   userId?: string;
 }
 
 export async function createDispatch(input: CreateDispatchInput, db: Db = defaultDb) {
-  if (!input.vehicleNumber.trim()) throw new DomainError("Vehicle number is required.");
   if (input.lines.length === 0) throw new DomainError("Add at least one pick-list line.");
   if (input.lines.some((l) => !Number.isInteger(l.qty) || l.qty <= 0)) throw new DomainError("Pick-list quantities must be whole numbers above 0.");
   if (new Set(input.lines.map((l) => l.itemId)).size !== input.lines.length) throw new DomainError("Each part may appear once on the pick list.");
@@ -36,12 +35,22 @@ export async function createDispatch(input: CreateDispatchInput, db: Db = defaul
     tx.dispatch.create({
       data: {
         dcNumber: await nextNumber(tx, "DC", "dispatch"),
-        customerId: customer.id, vehicleNumber: input.vehicleNumber.trim().toUpperCase(),
+        customerId: customer.id, vehicleNumber: input.vehicleNumber?.trim().toUpperCase() || undefined,
         driverName: input.driverName?.trim() || undefined, createdById: input.userId,
         lines: { create: input.lines },
       },
     }),
   );
+}
+
+/** Sets or clears the transport details of a dispatch that hasn't been cancelled. Blank clears them. */
+export async function updateTransport(id: string, input: { vehicleNumber?: string; driverName?: string }, db: Db = defaultDb) {
+  const d = await db.dispatch.findUnique({ where: { id } });
+  if (!d) throw new DomainError("Unknown dispatch.");
+  if (d.status === "CANCELLED") throw new DomainError(`${d.dcNumber} is cancelled and can't be changed.`);
+  const vehicleNumber = input.vehicleNumber?.trim().toUpperCase() || null;
+  if (vehicleNumber && !/^[A-Z0-9 -]{3,20}$/.test(vehicleNumber)) throw new DomainError("The vehicle number should be letters and digits, such as MH12AB1234.");
+  return db.dispatch.update({ where: { id }, data: { vehicleNumber, driverName: input.driverName?.trim() || null } });
 }
 
 export interface Progress {
@@ -84,6 +93,12 @@ export async function scanBox(input: { dispatchId: string; scan: string }, db: D
     if (box.dispatchId === d.id) throw new DuplicateScanError(`${code} is already scanned on this dispatch.`);
     if (box.dispatchId) throw new DomainError(`${code} is already loaded on another dispatch.`);
     if (box.customerId !== d.customerId) throw new DomainError(`${code} is labelled for a different customer.`);
+
+    if (box.lot.pdiStatus === "PENDING" || box.lot.pdiStatus === "HOLD") {
+      throw new DomainError(box.lot.pdiStatus === "HOLD"
+        ? `${code}: lot ${box.lot.lotNumber} is on hold by QA and can't ship.`
+        : `${code}: lot ${box.lot.lotNumber} is waiting for final inspection (PDI) and can't ship yet.`);
+    }
 
     const line = d.lines.find((l) => l.itemId === box.lot.itemId);
     if (!line) throw new DomainError(`${code} holds a part that isn't on this pick list.`);
@@ -231,8 +246,8 @@ export async function recordReturnable(
   // A return of a container we own puts it back in stock. (An "issued" entry is an opening balance: already at the customer.)
   const bin = input.move === "RETURNED" && item.stockTracked
     ? input.binCode
-      ? await db.location.findUnique({ where: { code: input.binCode } })
-      : await db.location.findFirst({ where: { type: "STORAGE" }, orderBy: { code: "asc" } })
+      ? await db.location.findFirst({ where: { code: input.binCode, active: true } })
+      : await db.location.findFirst({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } })
     : null;
   if (input.move === "RETURNED" && item.stockTracked && (!bin || bin.type !== "STORAGE")) throw new DomainError("Choose a storage bin for the returned containers.");
 

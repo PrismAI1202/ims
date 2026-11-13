@@ -13,6 +13,7 @@ The app runs on Vercel with a hosted Postgres and a private Vercel Blob store. `
    |---|---|
    | `AUTH_SECRET` | `openssl rand -base64 32` |
    | `COMPANY_NAME`, `COMPANY_GSTIN`, `COMPANY_ADDRESS` | Printed on delivery challans |
+   | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Optional. Turn on push notifications. Generate once with `npx web-push generate-vapid-keys`; the subject is a `mailto:` address. |
 
    `AUTH_TRUST_HOST` is not needed on Vercel.
 5. **Deploy.** The first production build runs `prisma migrate deploy` against the empty database.

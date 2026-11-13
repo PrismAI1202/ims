@@ -34,6 +34,11 @@ Errors look like `{ "error": "message" }` with status `401` (no or invalid crede
 | `GET /files/{name}` | `stock.view` | An uploaded COA certificate. |
 | `GET /dispatch/{id}/eway` | `dispatch.manage` | E-way bill (delivery challan) data as a JSON file. |
 | `GET /demand-template` | `mrp.plan` | CSV template for demand upload. |
+| `GET /push` | signed in | `{ configured, publicKey }`: what a browser needs to subscribe to push notifications. |
+| `POST /push` / `DELETE /push` | signed in | Save (`{ endpoint, keys: { p256dh, auth } }`) or forget (`{ endpoint }`) this device's push subscription. |
+| `POST /items` | `masters.manage` | Create an item (part, resin, masterbatch, insert, packaging) and optionally its supplier and buying price; used by the BOM editor. |
+| `GET /bom-template` | `bom.manage` | CSV template for importing BOMs from a file. |
+| `GET /po-template` | `po.manage` | CSV template for importing supplier POs from a file (Orders → Import from file). |
 | `GET /health` | none | `{ "ok": true }`, or 503 if the database is unreachable. |
 
 ## `POST /sync`: offline-safe operations

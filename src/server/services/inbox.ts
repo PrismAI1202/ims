@@ -1,9 +1,15 @@
+import { qualityHref } from "@/lib/quality-tabs";
 import type { PrismaClient } from "@prisma/client";
 import { db as defaultDb } from "@/server/db";
 import { can, canView, type Permission } from "@/server/auth/permissions";
 import type { ViewKey } from "@/lib/views";
 import { mouldRows } from "./maintenance";
+import { mondayOf, planWeek } from "./planning";
 import { pendingScrap } from "./scrap";
+import { pdiQueue } from "./pdi";
+import { rejectedLots } from "./rtv";
+import { stockByItem, supplyByItem } from "./stock";
+import { needsPo } from "./supply-steps";
 
 type Db = PrismaClient;
 
@@ -37,11 +43,22 @@ const TASKS: TaskDef[] = [
     count: (db) => db.purchaseOrder.count({ where: { status: { in: ["APPROVED", "PARTIAL"] } } }),
   },
   {
-    key: "release", view: "purchase", kind: "act", href: "/purchase", title: "Draft POs to release", sub: "Raised but not yet sent to the vendor",
-    count: (db) => db.purchaseOrder.count({ where: { status: "DRAFT" } }),
+    key: "demand-due", view: "demand", kind: "watch", href: "/demand", title: "Customer demand due this week", sub: "Firm and spot lines due in the next 7 days",
+    count: (db, { now }) => db.demandLine.count({ where: { type: { in: ["FIRM", "SPOT"] }, dueDate: { gte: now, lte: new Date(now.getTime() + WEEK) } } }),
   },
   {
-    key: "qc", view: "qc", kind: "act", href: "/qc", title: "Lots waiting for inward QC", sub: "Received and held in staging",
+    key: "to-buy", view: "mrp", kind: "act", href: "/mrp", title: "Items to buy", sub: "At or below reorder point even after open POs and QC",
+    count: async (db) => {
+      const [rows, supply] = await Promise.all([stockByItem(db), supplyByItem(db)]);
+      return rows.filter((r) => needsPo(r, supply.get(r.itemId) ?? { openPoQty: 0, toPutAway: 0 })).length;
+    },
+  },
+  {
+    key: "to-plan", view: "planning", perm: "plan.manage", kind: "act", href: "/planning", title: "Parts to plan on a machine", sub: "Firm demand not yet covered by planned machine days",
+    count: async (db, { now }) => (await planWeek(mondayOf(now), db, now)).jobs.filter((j) => j.left > 0).length,
+  },
+  {
+    key: "qc", view: "quality", perm: "qc.inspect", kind: "act", href: qualityHref("inward"), title: "Lots waiting for inward QC", sub: "Received and held in staging",
     count: (db) => db.lot.count({ where: { qcStatus: "PENDING_QC" } }),
   },
   {
@@ -57,7 +74,31 @@ const TASKS: TaskDef[] = [
     count: (db, { userId }) => db.materialRequest.count({ where: { ...OPEN_REQUEST, requestedById: userId } }),
   },
   {
-    key: "scrap", view: "scrap", kind: "act", href: "/qc/scrap", title: "Rejects waiting for a decision", sub: "Regrind or waste, per booking",
+    key: "rtv", view: "quality", perm: "rtv.manage", kind: "act", href: qualityHref("rtv"), title: "Rejected lots to send back", sub: "Sitting in staging, no debit note yet",
+    count: async (db) => (await rejectedLots(db)).length,
+  },
+  {
+    key: "pdi", view: "quality", perm: "pdi.release", kind: "act", href: qualityHref("pdi"), title: "FG lots waiting for final inspection", sub: "Dispatch can't load them until released",
+    count: async (db) => (await pdiQueue(db)).filter((l) => l.status === "PENDING").length,
+  },
+  {
+    key: "firstoff", view: "quality", perm: "firstoff.approve", kind: "act", href: qualityHref("firstoff"), title: "First-offs to approve", sub: "Asked for by production after a set-up",
+    count: (db) => db.firstOff.count({ where: { status: "PENDING" } }),
+  },
+  {
+    key: "firstoff-mine", view: "quality", perm: "firstoff.request", kind: "watch", href: qualityHref("firstoff"), title: "Your first-offs waiting for QA", sub: "Production can't be booked until approved",
+    count: (db, { userId }) => db.firstOff.count({ where: { status: "PENDING", requestedById: userId } }),
+  },
+  {
+    key: "counting", view: "count", kind: "act", href: "/count", title: "Count sheets in progress", sub: "Opened but not yet sent for approval",
+    count: (db) => db.stockCount.count({ where: { status: "OPEN" } }),
+  },
+  {
+    key: "adjustments", view: "approvals", kind: "act", href: "/approvals", title: "Stock counts to approve", sub: "Submitted by Store, waiting for a decision",
+    count: (db) => db.stockCount.count({ where: { status: "SUBMITTED" } }),
+  },
+  {
+    key: "scrap", view: "quality", perm: "scrap.approve", kind: "act", href: qualityHref("scrap"), title: "Rejects waiting for a decision", sub: "Regrind or waste, per booking",
     count: async (db) => (await pendingScrap(db)).length,
   },
   {
@@ -69,12 +110,12 @@ const TASKS: TaskDef[] = [
     count: async (db) => (await mouldRows(db)).filter((m) => m.state !== "OK").length,
   },
   {
-    key: "loading", view: "dispatch", kind: "act", href: "/dispatch", title: "Dispatches still loading", sub: "Pick list open, not yet completed",
+    key: "loading", view: "orders", perm: "dispatch.manage", kind: "act", href: "/orders?kind=dispatch&state=active", title: "Dispatches still loading", sub: "Pick list open, not yet completed",
     count: (db) => db.dispatch.count({ where: { status: "LOADING" } }),
   },
   {
-    key: "fg-ready", view: "dispatch", kind: "watch", href: "/dispatch", title: "FG boxes ready to ship", sub: "Packed and labelled, in stock",
-    count: (db) => db.fgBox.count({ where: { status: "IN_STOCK" } }),
+    key: "fg-ready", view: "orders", perm: "dispatch.manage", kind: "watch", href: "/orders?kind=dispatch&state=active", title: "FG boxes ready to ship", sub: "Packed, labelled and released by QA",
+    count: (db) => db.fgBox.count({ where: { status: "IN_STOCK", lot: { pdiStatus: { notIn: ["PENDING", "HOLD"] } } } }),
   },
   {
     key: "fifo-overrides", view: "process", kind: "watch", href: "/process", title: "FIFO overrides this week", sub: "Lots issued out of order, with a reason",

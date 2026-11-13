@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn, DomainError } from "@/server/services/inventory";
 import { saveUpload } from "@/server/services/storage";
+import { pushAfter } from "@/server/push";
 import { CoaRef } from "@/components/coa-ref";
 import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -43,6 +44,9 @@ async function receive(formData: FormData) {
       coaUrl,
       lines,
       userId: user.id,
+    });
+    pushAfter({ view: "quality", perm: "qc.inspect", exceptUserId: user.id }, {
+      title: "Lots waiting for QC", body: `${po.poNumber}: ${lines.length} line${lines.length === 1 ? "" : "s"} received`, url: "/quality?tab=inward", tag: "qc",
     });
   });
 }

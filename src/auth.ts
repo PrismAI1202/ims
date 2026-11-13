@@ -12,6 +12,7 @@ declare module "next-auth" {
     roleName: SessionAccess["roleName"];
     views: SessionAccess["views"];
     permissions: SessionAccess["permissions"];
+    home: SessionAccess["home"];
   }
   interface Session {
     user: { id: string; name: string; email: string } & SessionAccess;
@@ -48,7 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        return { ...token, id: user.id, role: user.role, roleName: user.roleName, views: user.views, permissions: user.permissions };
+        return { ...token, id: user.id, role: user.role, roleName: user.roleName, views: user.views, permissions: user.permissions, home: user.home };
       }
       // Every later read re-checks the user, so deactivation and role changes apply immediately.
       const fresh = await refreshToken(token as SessionToken, accessOf);
@@ -61,6 +62,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.roleName = t.roleName ?? "";
       session.user.views = t.views ?? [];
       session.user.permissions = t.permissions ?? [];
+      session.user.home = t.home ?? ["needs-you"];
       return session;
     },
   },

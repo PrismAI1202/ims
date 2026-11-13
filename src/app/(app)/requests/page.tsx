@@ -1,6 +1,7 @@
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createMaterialRequest } from "@/server/services/inventory";
+import { pushAfter } from "@/server/push";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
@@ -13,11 +14,12 @@ async function create(formData: FormData) {
   "use server";
   const user = await requirePermission("request.create");
   await runAction("/requests", "Material request sent to store.", async () => {
-    await createMaterialRequest({
+    const req = await createMaterialRequest({
       machineId: String(formData.get("machineId") || "") || undefined,
       lines: [{ itemId: String(formData.get("itemId")), qty: Number(formData.get("qty")) }],
       userId: user.id,
     });
+    pushAfter({ view: "issue", exceptUserId: user.id }, { title: "Material requested", body: `${req.requestNumber} is waiting to be issued.`, url: "/issue", tag: "issue" });
   });
 }
 
@@ -27,7 +29,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   const q = rawQ?.trim() || undefined;
   const [items, machines, requests] = await Promise.all([
     db.item.findMany({ where: { active: true, category: { notIn: ["FG", "RETURNABLE"] } }, orderBy: { code: "asc" } }),
-    db.machine.findMany({ orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.materialRequest.findMany({ orderBy: { createdAt: "desc" }, take: 100, include: { lines: { include: { item: true } } } }),
   ]);
 

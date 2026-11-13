@@ -7,7 +7,7 @@ export interface Company {
 export interface EwayInput {
   dcNumber: string;
   date: Date;
-  vehicleNumber: string;
+  vehicleNumber?: string | null; // added on the dispatch screen when the load is ready to leave
   company: Company;
   customer: { name: string; gstin?: string | null; address?: string | null };
   items: { name: string; hsnCode?: string | null; qty: number; uom: string; unitPrice?: number | null }[];
@@ -37,7 +37,7 @@ export function buildEwayData(i: EwayInput): EwayData {
   const missing: string[] = [];
   if (!i.company.gstin) missing.push("Company GSTIN (set COMPANY_GSTIN)");
   if (!i.customer.gstin) missing.push(`GSTIN for ${i.customer.name}`);
-  if (!i.vehicleNumber.trim()) missing.push("Vehicle number");
+  if (!i.vehicleNumber?.trim()) missing.push("Vehicle number (add it under Transport on the dispatch)");
 
   const itemList = i.items.map((it) => {
     if (!it.hsnCode) missing.push(`HSN code for ${it.name}`);
@@ -52,7 +52,7 @@ export function buildEwayData(i: EwayInput): EwayData {
     supplyType: "O", docType: "CHL", docNo: i.dcNumber, docDate: ddmmyyyy(i.date),
     fromGstin: i.company.gstin, fromTrdName: i.company.name,
     toGstin: i.customer.gstin ?? "", toTrdName: i.customer.name,
-    vehicleNo: i.vehicleNumber.replace(/\s+/g, "").toUpperCase(),
+    vehicleNo: (i.vehicleNumber ?? "").replace(/\s+/g, "").toUpperCase(),
     totalValue: money(itemList.reduce((s, x) => s + x.taxableAmount, 0)),
     itemList, missing: [...new Set(missing)],
   };

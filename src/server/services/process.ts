@@ -19,15 +19,15 @@ const TEMPLATE: Record<Seg, string[]> = {
 const STAGE: Record<string, Omit<ProcessStage, "key" | "entries">> = {
   sched: { view: "demand", name: "Customer schedule", role: "Planner", owners: ["Planner", "Admin"], color: "#4B5563", rule: "CSV / Excel import", proofs: [], link: "/demand", linkLabel: "Customer demand",
     desc: "Rolling forecasts, firm weekly call-offs and spot POs are imported and tagged by customer, which decides the rules every later step applies." },
-  mrp: { view: "purchase", name: "MRP & PO release", role: "Planner", owners: ["Planner", "Store Incharge", "Admin"], color: "#4B5563", rule: "Equivalents allowed", proofs: [], link: "/purchase", linkLabel: "Supplier POs",
+  mrp: { view: "orders", perm: "po.manage", name: "MRP & PO release", role: "Planner", owners: ["Planner", "Store Incharge", "Admin"], color: "#4B5563", rule: "Equivalents allowed", proofs: [], link: "/orders?kind=po", linkLabel: "Supplier POs",
     desc: "Net requirement is worked out from live stock, safety stock and active BOMs. A PO is then released to the chosen vendor." },
   gate: { view: "grn", name: "Gate entry", role: "Security / Store Incharge", owners: ["Store Incharge", "Admin"], color: "#C2410C", rule: "Vehicle + invoice", proofs: [], link: "/grn", linkLabel: "Gate entry & GRN",
     desc: "The vehicle and supplier invoice are logged before material enters the yard. The invoice is matched to an open PO." },
   grn: { view: "grn", name: "GRN & lot tagging", role: "Store Incharge", owners: ["Store Incharge", "Admin"], color: "#C2410C", rule: "Heat / lot no.", proofs: ["COA document"], link: "/grn", linkLabel: "Gate entry & GRN",
     desc: "Store records the received quantity and the manufacturer heat/lot number. Each received line becomes a lot held for QC." },
-  coa: { view: "qc", name: "COA verification", role: "QA Inspector", owners: ["QA Inspector", "Admin"], color: "#1D4ED8", rule: "IATF 16949", proofs: ["COA document"], link: "/qc", linkLabel: "Inward QC",
+  coa: { view: "quality", perm: "qc.inspect", name: "COA verification", role: "QA Inspector", owners: ["QA Inspector", "Admin"], color: "#1D4ED8", rule: "IATF 16949", proofs: ["COA document"], link: "/quality?tab=inward", linkLabel: "Inward QC",
     desc: "QA checks the supplier certificate of analysis. Mandatory before GRN release for automotive lots." },
-  qc: { view: "qc", name: "QC hold / release", role: "QA Inspector", owners: ["QA Inspector", "Admin"], color: "#1D4ED8", rule: "MFI · moisture", proofs: [], link: "/qc", linkLabel: "Inward QC",
+  qc: { view: "quality", perm: "qc.inspect", name: "QC hold / release", role: "QA Inspector", owners: ["QA Inspector", "Admin"], color: "#1D4ED8", rule: "MFI · moisture", proofs: [], link: "/quality?tab=inward", linkLabel: "Inward QC",
     desc: "The lot stays on hold until the test results pass. Release adds the lot to the FIFO queue; reject or deviation needs a reason." },
   store: { view: "stock", name: "Bin put-away", role: "Store Incharge", owners: ["Store Incharge", "Admin"], color: "#1E7A46", rule: "Rack-Shelf-Bin", proofs: [], link: "/stock?view=bins", linkLabel: "Stores bin map",
     desc: "Released material is placed into Rack-Shelf-Bin locations so pickers are guided straight to the oldest lot." },
@@ -37,7 +37,7 @@ const STAGE: Record<string, Omit<ProcessStage, "key" | "entries">> = {
     desc: "Production books shots, good and rejected parts and runner weight, and logs any stop with its reason." },
   fg: { view: "fg", name: "FG packing & label", role: "Production Lead / Operator", owners: ["Production Lead", "Dispatch Officer", "Admin"], color: "#6B4FB0", rule: "OEM QR label", proofs: [], link: "/fg", linkLabel: "FG & box labels",
     desc: "Good parts are packed into labelled boxes for a customer, in that customer's label format." },
-  disp: { view: "dispatch", name: "Dispatch & DC", role: "Dispatch Officer", owners: ["Dispatch Officer", "Admin"], color: "#15171A", rule: "Pick-list scan", proofs: [], link: "/dispatch", linkLabel: "Dispatch",
+  disp: { view: "orders", perm: "dispatch.manage", name: "Dispatch & DC", role: "Dispatch Officer", owners: ["Dispatch Officer", "Admin"], color: "#15171A", rule: "Pick-list scan", proofs: [], link: "/orders?kind=dispatch", linkLabel: "Dispatch",
     desc: "The pick list is scanned box by box before loading. The delivery challan and e-way data are generated when the load is completed." },
 };
 
@@ -115,7 +115,7 @@ export async function processStages(seg: Seg, db: Db = defaultDb, now = new Date
     disp: dispatches.map((d) => {
       const ordered = d.lines.reduce((a, l) => a + l.qty, 0), scanned = d.boxes.reduce((a, b) => a + b.qty, 0);
       return E(d.dcNumber, person(d.createdById), d.createdAt, d.status === "LOADING" ? "Picking" : d.status === "DISPATCHED" ? "Dispatched" : "Cancelled",
-        [["Customer", d.customer.name], ["Vehicle", d.vehicleNumber], ["Loaded", `${n(scanned)} / ${n(ordered)} pcs`]]);
+        [["Customer", d.customer.name], ...(d.vehicleNumber ? [["Vehicle", d.vehicleNumber] as [string, string]] : []), ["Loaded", `${n(scanned)} / ${n(ordered)} pcs`]]);
     }),
   };
 

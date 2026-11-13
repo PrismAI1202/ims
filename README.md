@@ -7,17 +7,18 @@ It handles automotive customers (strict lot traceability, COA before GRN, Kanban
 
 | Area | Features |
 |---|---|
-| **Masters** | Items (Min/ROP/Max, COA flag, HSN, price), suppliers, customers (segment, label format, GSTIN), bins, machines, moulds. Create/edit, deactivate instead of delete. |
+| **Masters** | Items (Min/ROP/Max, COA flag, HSN, price) with the suppliers and buying prices that let MRP and "Raise PO" order them. Customers and suppliers are edited on their own screen, bins on Stores (Edit layout), and machines and moulds on Maintenance (Edit list); each has add, edit and remove, and anything with history is retired rather than erased. |
 | **Demand & MRP** | Upload forecasts / firm schedules / spot orders (Excel or CSV). MRP nets demand against stock and open POs, explodes through BOMs, applies Kanban (automotive) or reorder-point rules, and creates purchase orders from the plan. |
 | **Purchasing & inward** | Multi-line POs (edit, cancel, close short), gate entry & GRN, COA upload (mandatory for automotive), QC hold/release with lab values and put-away, printable QR lot tags. |
 | **Stock** | Stock by bin and lot, Min/ROP/Max colour dashboard, bin transfers, material requests, FIFO/FEFO-enforced issue. |
-| **Production** | Moulding BOM (blend must total 100%, max regrind enforced), production booking with the material lots used, runner → regrind stock, QA scrap approval (regrind or waste), BOM-vs-issued variance. |
+| **Production** | BOMs are built in a side panel (colour-coded material cards with live blend checks), can add new parts and materials in place, and can be imported from Excel/CSV, optionally creating parts, materials and supplier prices that are not in the system yet. Moulding BOM (blend must total 100%, max regrind enforced), production booking with the material lots used, runner → regrind stock, QA scrap approval (regrind or waste), BOM-vs-issued variance. |
 | **Finished goods & dispatch** | FG lots from production, customer-format box labels (OEM/generic), pick-list dispatch with scan validation, delivery challan + packing list, e-way bill data, returnable container ledger (with optional crate stock tracking). |
 | **Traceability** | Box → machine/shift/mould → resin heat lot → supplier GRN/COA/QC, and recall search from a heat number to every customer reached (regrind chained). |
 | **Scanner PWA** | Mobile screens for issue, bin transfer and dispatch loading with an offline queue that syncs safely. |
 | **Reports** | Excel/CSV export of stock, variance, returnables, MRP plan and demand; print-to-PDF from the browser. |
 | **Hardware** | ZPL output for Zebra-compatible printers (download or send to a network printer); weighing-scale input via Web Serial. |
-| **Admin** | Users, plus Settings · Roles & access: create roles and choose the screens (views) and actions each gets. Seven built-in roles (the five from SRS §5, Planner, and a full-access Demo). Each role lands on a Home inbox of its own tasks with a trimmed menu. Sessions are re-checked on every request, so deactivation and role edits take effect immediately. |
+| **Task flow** | Each role's Home is built from widgets an admin chooses (Needs you, Stock health, My machines, Today's shipments, QC queue, Plant overview, Approvals). Orders (supplier POs, dispatches, customer orders) are one filterable list; POs and pick lists are built from any number of lines, and orders raised in another tool can be imported from CSV or Excel. Hand-overs create the next person's task, with a push notification to their phone. Also: stock count with approval, return unused material to stores, return to supplier with a debit note, final inspection (PDI) before dispatch, first-off approval before a run. |
+| **Admin** | Settings · Roles & users: create roles, choose the screens and actions each gets, and manage the people in each role (add users, change roles, reset passwords). Seven built-in roles (the five from SRS §5, Planner, and a full-access Demo). Each role lands on a Home inbox of its own tasks with a trimmed menu. Sessions are re-checked on every request, so deactivation and role edits take effect immediately. |
 
 ## Stack
 Next.js 16 (App Router) · TypeScript · Tailwind · Prisma · PostgreSQL · Auth.js · Vitest
@@ -65,6 +66,7 @@ DATABASE_URL="postgresql://ims:ims@localhost:5433/ims_test?schema=public" npx pr
 ## Known limits
 - EDI parsing is not built (schedules come from Excel/CSV); EDI needs each customer's message spec.
 - E-way bill data is produced as a JSON file; it is not sent to the government portal.
-- Variance compares issued material with BOM-expected use, so material still sitting at machines shows as variance.
+- Variance compares issued material with BOM-expected use, less anything returned to stores; material at a machine that is neither used nor returned still shows as variance.
+- Push notifications need HTTPS and the `VAPID_*` keys. An iPhone only receives them once IMS is added to the home screen. There is no email or WhatsApp.
 - Hardware paths (handheld/camera scanning, weighing scale, ZPL printer) are unit-tested but untested on physical devices.
 - No native mobile app yet; the PWA covers scanning.

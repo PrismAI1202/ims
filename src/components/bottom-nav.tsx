@@ -4,16 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3, Boxes, ClipboardList, Factory, FileText, FlaskConical, GitBranch, Home, LayoutGrid, PackageCheck, PackageOpen,
-  Route, ScanLine, Settings, ShoppingCart, Trash2, Truck, Users, Wrench, type LucideIcon,
+  Route, ScanLine, Settings, Truck, Users, Wrench, type LucideIcon,
 } from "lucide-react";
 import type { Tab } from "./nav-data";
 import type { ViewKey } from "@/lib/views";
 
 const ICONS: Partial<Record<ViewKey, LucideIcon>> = {
-  process: GitBranch, orders: FileText, metrics: BarChart3, masters: Settings, users: Users, settings: Settings,
-  partners: Users, bom: ClipboardList, equivalents: FlaskConical, demand: ClipboardList, mrp: ClipboardList, purchase: ShoppingCart,
-  grn: PackageOpen, qc: FlaskConical, scrap: Trash2, stock: Boxes, requests: ClipboardList, issue: PackageCheck, scan: ScanLine,
-  production: Factory, fg: PackageCheck, planning: ClipboardList, maintenance: Wrench, dispatch: Truck, returnables: Truck,
+  process: GitBranch, orders: FileText, metrics: BarChart3, masters: Settings, settings: Users,
+  partners: Users, bom: ClipboardList, equivalents: FlaskConical, demand: ClipboardList, mrp: ClipboardList,
+  grn: PackageOpen, quality: FlaskConical, stock: Boxes, requests: ClipboardList, issue: PackageCheck, scan: ScanLine,
+  production: Factory, fg: PackageCheck, planning: ClipboardList, maintenance: Wrench, returnables: Truck,
   trace: Route, variance: BarChart3,
 };
 

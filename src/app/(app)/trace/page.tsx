@@ -65,7 +65,7 @@ function Fg({ t }: { t: FgTrace }) {
       <section className="space-y-2">
         <h3 className="font-display text-sm font-bold">Shipped to customers</h3>
         {t.dispatches.length === 0 ? <p className="text-sm text-ink-3">Not dispatched yet.</p> : (
-          <ul className="space-y-1 text-sm">{t.dispatches.map((x) => <li key={x.dcNumber} className="rounded-xl bg-white p-3"><b>{x.dcNumber}</b> · {x.customer} · {d(x.date)} · vehicle {x.vehicle} · {x.boxes} box{x.boxes === 1 ? "" : "es"} ({x.qty.toLocaleString()} parts)</li>)}</ul>
+          <ul className="space-y-1 text-sm">{t.dispatches.map((x) => <li key={x.dcNumber} className="rounded-xl bg-white p-3"><b>{x.dcNumber}</b> · {x.customer} · {d(x.date)}{x.vehicle ? ` · vehicle ${x.vehicle}` : ""} · {x.boxes} box{x.boxes === 1 ? "" : "es"} ({x.qty.toLocaleString()} parts)</li>)}</ul>
         )}
       </section>
     </div>

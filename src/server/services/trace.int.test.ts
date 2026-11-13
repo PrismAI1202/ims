@@ -56,9 +56,11 @@ async function receivedLot(itemId: string, heat: string, qty = 1000) {
 
 async function produce(lots: { lotNumber: string; qty: number }[], opts: { shots?: number; good?: number } = {}) {
   const bom = await db.bom.findFirstOrThrow();
-  return bookProduction({
+  const r = await bookProduction({
     bomId: bom.id, machineId: ids.machine, shift: "B", shots: opts.shots ?? 1000, goodParts: opts.good ?? 3800, rejectParts: 100, materialLots: lots,
   }, db);
+  await db.lot.updateMany({ where: { pdiStatus: "PENDING" }, data: { pdiStatus: "RELEASED" } }); // these tests are about tracing, not final inspection
+  return r;
 }
 
 describe("recording material lots on a booking", () => {

@@ -20,8 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     name: "DEVICE",
     items: [
-      { href: "/account", name: "Account", what: "Change your password", bar: "#585C63" },
-      { href: "/sync", name: "Sync centre", what: "Offline outbox and sync status for this device", bar: "#585C63" },
+      { href: "/account", name: "Account", what: "Password, notifications and offline sync for this device", bar: "#585C63" },
     ],
   },
 ];
@@ -34,9 +33,9 @@ export function navFor(views: readonly string[]): NavGroup[] {
 export type Tab = { href: string; label: string; view?: ViewKey };
 
 const TAB_LABEL: Partial<Record<ViewKey, string>> = {
-  masters: "Masters", settings: "Settings", partners: "Partners", equivalents: "Grades", demand: "Demand", purchase: "POs",
-  mrp: "MRP", grn: "Receive", qc: "QC", issue: "Issue", scrap: "Scrap", stock: "Stores", requests: "Requests", production: "Book", fg: "Pack",
-  maintenance: "Maint.", dispatch: "Dispatch", returnables: "Crates", trace: "Trace", variance: "Variance", scan: "Scan",
+  masters: "Masters", settings: "Settings", partners: "Partners", equivalents: "Grades", demand: "Demand",
+  mrp: "MRP", grn: "Receive", quality: "Quality", issue: "Issue", stock: "Stores", requests: "Requests", production: "Book", fg: "Pack",
+  maintenance: "Maint.", returnables: "Crates", trace: "Trace", variance: "Variance", scan: "Scan",
 };
 
 /** Phone tab bar: Home, the first three screens of the user's role (in the role's own order), then More. */

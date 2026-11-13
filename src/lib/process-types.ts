@@ -7,7 +7,7 @@ export interface ProcessEntry {
   photos: ProcessPhoto[]; fields: [string, string][];
 }
 export interface ProcessStage {
-  key: string; view: ViewKey; name: string; role: string; owners: string[]; color: string; rule: string;
+  key: string; view: ViewKey; perm?: string; name: string; role: string; owners: string[]; color: string; rule: string;
   proofs: string[]; link: string; linkLabel: string; desc: string; entries: ProcessEntry[];
 }
 

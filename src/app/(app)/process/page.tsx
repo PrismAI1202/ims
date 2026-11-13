@@ -7,5 +7,5 @@ export const instant = false;
 export default async function ProcessPage() {
   const user = await requireView("process");
   const [auto, non] = await Promise.all([processStages("auto"), processStages("non")]);
-  return <ProcessView roleName={user.roleName} views={user.views} stagesBySegment={{ auto, non }} />;
+  return <ProcessView roleName={user.roleName} views={user.views} permissions={user.permissions} stagesBySegment={{ auto, non }} />;
 }

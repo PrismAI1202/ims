@@ -32,7 +32,7 @@ export default async function ReturnablesPage({ searchParams }: { searchParams: 
     db.customer.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
     db.item.findMany({ where: { category: "RETURNABLE", active: true }, orderBy: { code: "asc" } }),
     db.returnableLedger.findMany({ orderBy: { createdAt: "desc" }, take: 100, include: { customer: true, item: true, dispatch: true } }),
-    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
+    db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
   ]);
 
   return (

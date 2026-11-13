@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     });
     name = `lot-${lot.lotNumber}`;
   } else if (q.get("bins")) {
-    if (!need("masters.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
+    if (!need("masters.manage") && !need("bins.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
     const bins = await db.location.findMany({ where: { code: { in: list(q.get("bins")) } }, orderBy: { code: "asc" } });
     zpl = bins.map((b) => zplBinLabel(b.code)).join("");
     name = "bin-labels";

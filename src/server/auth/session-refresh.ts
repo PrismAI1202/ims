@@ -1,7 +1,8 @@
 import type { Permission } from "./permissions";
 import type { ViewKey } from "@/lib/views";
+import type { HomeWidgetKey } from "@/lib/home-widgets";
 
-export interface SessionAccess { role: string; roleName: string; views: ViewKey[]; permissions: Permission[] }
+export interface SessionAccess { role: string; roleName: string; views: ViewKey[]; permissions: Permission[]; home: HomeWidgetKey[] }
 export interface SessionToken extends Partial<SessionAccess> { id?: string; [k: string]: unknown }
 export type UserLookup = (id: string) => Promise<({ active: boolean } & SessionAccess) | null>;
 
@@ -12,5 +13,5 @@ export async function refreshToken(token: SessionToken, lookup: UserLookup): Pro
   if (!token.id) return token; // first sign-in: the jwt callback has just filled it in
   const u = await lookup(token.id);
   if (!u || !u.active) return null;
-  return { ...token, role: u.role, roleName: u.roleName, views: u.views, permissions: u.permissions };
+  return { ...token, role: u.role, roleName: u.roleName, views: u.views, permissions: u.permissions, home: u.home };
 }

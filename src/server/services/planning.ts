@@ -55,7 +55,7 @@ export async function planWeek(monday: Date, db: Db = defaultDb, now = new Date(
   const days = weekDays(monday);
   const today = parseDay(iso(now));
   const [machines, slots, demand, boms, fgBalances, shiftMinutes, futureJobSlots] = await Promise.all([
-    db.machine.findMany({ orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.planSlot.findMany({ where: { day: { gte: days[0], lte: days[days.length - 1] } }, include: { mould: true } }),
     db.demandLine.findMany({ where: { type: { in: ["FIRM", "SPOT"] }, dueDate: { gte: today } }, include: { fgItem: true } }),
     db.bom.findMany({ include: { fgItem: true, mould: true, lines: { include: { item: true } } } }),
@@ -108,7 +108,7 @@ export async function placeJob(
     db.machine.findUnique({ where: { id: input.machineId } }),
     db.bom.findUnique({ where: { fgItemId: input.fgItemId }, include: { mould: true, fgItem: true, lines: { include: { item: true } } } }),
   ]);
-  if (!machine) throw new DomainError("Choose a machine.");
+  if (!machine || !machine.active) throw new DomainError("Choose a machine that is in service.");
   if (!bom) throw new DomainError("That part has no BOM, so there is no mould to plan.");
   const err = placementError(machine, bom.mould);
   if (err) throw new DomainError(err);

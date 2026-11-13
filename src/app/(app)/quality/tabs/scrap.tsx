@@ -1,44 +1,26 @@
 import { db } from "@/server/db";
-import { requireView, requirePermission, runAction } from "@/server/auth/guard";
-import { approveScrap, pendingScrap } from "@/server/services/scrap";
-import { btnDangerCls, btnOkCls, Flash, inputCls } from "@/components/flash";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { pendingScrap } from "@/server/services/scrap";
+import { btnDangerCls, btnOkCls, inputCls } from "@/components/flash";
+import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
+import { decideScrap } from "../actions";
 
-export const instant = false;
-
-async function decide(formData: FormData) {
-  "use server";
-  const user = await requirePermission("scrap.approve");
-  const kind = String(formData.get("kind")) === "REGRIND" ? "REGRIND" : "WASTE";
-  await runAction("/qc/scrap", kind === "REGRIND" ? "Approved. The parts' weight was added to regrind stock." : "Approved as waste.", async () => {
-    await approveScrap({
-      bookingId: String(formData.get("bookingId")), parts: Number(formData.get("parts")), kind,
-      regrindLocationCode: String(formData.get("bin") || "") || undefined, note: String(formData.get("note") || "") || undefined, userId: user.id,
-    });
-  });
-}
-
-export default async function ScrapPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requireView("scrap");
-  const { error, ok } = await searchParams;
+export async function ScrapTab() {
   const [pending, bins, history] = await Promise.all([
     pendingScrap(),
-    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
+    db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
     db.scrapDisposition.findMany({ orderBy: { createdAt: "desc" }, take: 15, include: { booking: { include: { bom: { include: { fgItem: true } } } } } }),
   ]);
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="BUY & RECEIVE" title="Scrap approval" subtitle={`${pending.length} booking${pending.length === 1 ? "" : "s"} waiting for a decision`} />
       <p className="max-w-3xl text-sm text-ink-2">
         Rejected parts from production need a QA decision. <b>Regrind</b> crushes them back into usable regrind stock (not allowed for parts with inserts).
         <b> Waste</b> records them as scrapped.
       </p>
-      <Flash error={error} ok={ok} />
       {pending.length === 0 && <Card><p className="text-sm text-ink-3">No rejected parts waiting for a decision.</p></Card>}
       <div className="grid gap-3 lg:grid-cols-2">
         {pending.map((p) => (
-          <form key={p.bookingId} action={decide}>
+          <form key={p.bookingId} action={decideScrap}>
             <Card className="space-y-3">
               <input type="hidden" name="bookingId" value={p.bookingId} />
               <div className="flex flex-wrap items-start justify-between gap-2 text-sm">

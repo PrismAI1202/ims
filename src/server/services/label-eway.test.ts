@@ -56,6 +56,15 @@ describe("buildEwayData", () => {
     expect(e.missing).toEqual([]);
   });
 
+  it("flags a missing vehicle for the e-way bill, but still builds the record", () => {
+    for (const vehicleNumber of [undefined, null, "  "]) {
+      const e = buildEwayData({ ...input, vehicleNumber });
+      expect(e.vehicleNo).toBe("");
+      expect(e.missing).toEqual(["Vehicle number (add it under Transport on the dispatch)"]);
+      expect(e.totalValue).toBe(4250);
+    }
+  });
+
   it("lists missing master data instead of silently emitting blanks", () => {
     const e = buildEwayData({
       ...input, company: { ...input.company, gstin: "" }, customer: { name: "Apex Motors" },

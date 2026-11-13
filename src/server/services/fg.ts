@@ -31,7 +31,7 @@ export async function packBoxes(input: PackBoxesInput, db: Db = defaultDb) {
 
   const [lot, loc, customer] = await Promise.all([
     db.lot.findUnique({ where: { lotNumber: input.lotNumber.trim() }, include: { item: true } }),
-    db.location.findUnique({ where: { code: input.binCode.trim() } }),
+    db.location.findFirst({ where: { code: input.binCode.trim(), active: true } }),
     db.customer.findUnique({ where: { id: input.customerId } }),
   ]);
   if (!lot) throw new DomainError(`Unknown lot ${input.lotNumber}.`);

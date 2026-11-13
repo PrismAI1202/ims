@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requireView } from "@/server/auth/guard";
+import { requireViewWith } from "@/server/auth/guard";
 import { challanData } from "@/server/services/dispatch";
 
 export const instant = false;
@@ -8,7 +8,7 @@ export const instant = false;
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default async function ChallanPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireView("dispatch");
+  await requireViewWith("orders", "dispatch.manage");
   const { id } = await params;
   if (!(await db.dispatch.findUnique({ where: { id }, select: { id: true } }))) notFound();
   const { dispatch: d, date, items, eway, company } = await challanData(id);
@@ -33,7 +33,7 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
         <div><div className="text-xs uppercase text-slate-500">Deliver to</div>
           <div className="font-semibold">{d.customer.name}</div><div>{d.customer.address ?? ""}</div><div>GSTIN: {d.customer.gstin ?? "not set"}</div></div>
         <div><div className="text-xs uppercase text-slate-500">Transport</div>
-          <div>Vehicle: <b>{d.vehicleNumber}</b></div><div>Driver: {d.driverName ?? "—"}</div></div>
+          <div>Vehicle: <b>{d.vehicleNumber ?? "—"}</b></div><div>Driver: {d.driverName ?? "—"}</div></div>
       </div>
 
       <table className="w-full">

@@ -210,12 +210,14 @@ async function baseDemo() {
   // ── Pack and dispatch: one load still being scanned (31 of 40 boxes), one already shipped ──
   const customer = async (code: string) => (await prisma.customer.findUniqueOrThrow({ where: { code } })).id;
   const fgLot = async (fg: string) => (await prisma.lot.findFirstOrThrow({ where: { item: { code: fg } } })).lotNumber;
+  // QA has released the two lots that ship; the rest stay in the final-inspection queue.
+  await prisma.lot.updateMany({ where: { item: { code: { in: ["FG-DT220", "FG-BZ31"] } } }, data: { pdiStatus: "RELEASED", pdiNote: "Demo data" } });
   const dt = await packBoxes({ lotNumber: await fgLot("FG-DT220"), binCode: "D-01-01", customerId: await customer("CUS-001"), qtyPerBox: 250, boxCount: 40, userId: prod });
-  const loading = await createDispatch({ customerId: await customer("CUS-001"), vehicleNumber: "[VEHICLE NO.]", driverName: "[DRIVER]", lines: [{ itemId: await item("FG-DT220"), qty: 10000 }], userId: disp });
+  const loading = await createDispatch({ customerId: await customer("CUS-001"), lines: [{ itemId: await item("FG-DT220"), qty: 10000 }], userId: disp });
   for (const b of dt.slice(0, 31)) await scanBox({ dispatchId: loading.id, scan: b.boxCode });
 
   const bz = await packBoxes({ lotNumber: await fgLot("FG-BZ31"), binCode: "D-01-03", customerId: await customer("CUS-022"), qtyPerBox: 100, boxCount: 40, userId: prod });
-  const shipped = await createDispatch({ customerId: await customer("CUS-022"), vehicleNumber: "[VEHICLE NO.]", lines: [{ itemId: await item("FG-BZ31"), qty: 4000 }], userId: disp });
+  const shipped = await createDispatch({ customerId: await customer("CUS-022"), lines: [{ itemId: await item("FG-BZ31"), qty: 4000 }], userId: disp });
   for (const b of bz) await scanBox({ dispatchId: shipped.id, scan: b.boxCode });
   await completeDispatch({ dispatchId: shipped.id, crates: [{ itemId: await item("PK-CRATE-RB600"), qty: 40 }], userId: disp });
 

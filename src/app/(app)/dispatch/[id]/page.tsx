@@ -2,8 +2,8 @@ import Link from "next/link";
 import { DownloadLink } from "@/components/download-link";
 import { notFound } from "next/navigation";
 import { db } from "@/server/db";
-import { requireView, requirePermission, runAction } from "@/server/auth/guard";
-import { cancelDispatch, completeDispatch, dispatchProgress, scanBox, unscanBox } from "@/server/services/dispatch";
+import { requireViewWith, requirePermission, runAction } from "@/server/auth/guard";
+import { cancelDispatch, completeDispatch, dispatchProgress, scanBox, unscanBox, updateTransport } from "@/server/services/dispatch";
 import { btnCls, btnSecondaryCls, Flash, inputCls } from "@/components/flash";
 import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader, ProgressBar } from "@/components/ui";
 
@@ -40,6 +40,15 @@ async function complete(formData: FormData) {
   });
 }
 
+async function saveTransport(formData: FormData) {
+  "use server";
+  await requirePermission("dispatch.manage");
+  const id = String(formData.get("dispatchId"));
+  await runAction(`/dispatch/${id}`, "Transport details saved.", async () => {
+    await updateTransport(id, { vehicleNumber: String(formData.get("vehicleNumber") || ""), driverName: String(formData.get("driverName") || "") });
+  });
+}
+
 async function cancel(formData: FormData) {
   "use server";
   await requirePermission("dispatch.manage");
@@ -50,7 +59,7 @@ async function cancel(formData: FormData) {
 export default async function DispatchDetail({
   params, searchParams,
 }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
-  await requireView("dispatch");
+  await requireViewWith("orders", "dispatch.manage");
   const [{ id }, { error, ok }] = await Promise.all([params, searchParams]);
   const d = await db.dispatch.findUnique({ where: { id }, include: { customer: true } });
   if (!d) notFound();
@@ -66,8 +75,8 @@ export default async function DispatchDetail({
   return (
     <div className="space-y-4">
       <PageHeader eyebrow={`DISPATCH · ${d.customer.name.toUpperCase()}`} title={d.dcNumber}
-        subtitle={`Vehicle ${d.vehicleNumber}${d.driverName ? ` · driver ${d.driverName}` : ""}`} right={<Badge tone={tone}>{d.status}</Badge>}>
-        <Link href="/dispatch" className="text-sm font-semibold">← All dispatches</Link>
+        subtitle={d.vehicleNumber || d.driverName ? [d.vehicleNumber && `Vehicle ${d.vehicleNumber}`, d.driverName && `Driver ${d.driverName}`].filter(Boolean).join(" · ") : undefined} right={<Badge tone={tone}>{d.status}</Badge>}>
+        <Link href="/orders?kind=dispatch" className="text-sm font-semibold">← Orders</Link>
       </PageHeader>
       <Flash error={error} ok={ok} />
 
@@ -134,6 +143,19 @@ export default async function DispatchDetail({
           </Card>
           <form action={cancel}><input type="hidden" name="dispatchId" value={d.id} /><button className="min-h-10 cursor-pointer text-sm font-semibold text-danger">Cancel this dispatch</button></form>
         </div>
+      )}
+
+      {d.status !== "CANCELLED" && (
+        <Card className="space-y-3">
+          <Eyebrow>TRANSPORT <span className="font-normal normal-case text-ink-3">(optional)</span></Eyebrow>
+          <form action={saveTransport} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <input type="hidden" name="dispatchId" value={d.id} />
+            <label className="text-[13px]">Vehicle no.<input name="vehicleNumber" defaultValue={d.vehicleNumber ?? ""} autoCapitalize="characters" placeholder="e.g. MH12AB1234" className={inputCls} /></label>
+            <label className="text-[13px]">Driver<input name="driverName" defaultValue={d.driverName ?? ""} className={inputCls} /></label>
+            <button className={btnSecondaryCls}>Save</button>
+          </form>
+          <p className="text-xs text-ink-3">Not needed to build a pick list or load it. Add it when the goods leave: it is printed on the challan and needed for the e-way bill.</p>
+        </Card>
       )}
 
       {d.status !== "CANCELLED" && (

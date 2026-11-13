@@ -42,7 +42,9 @@ beforeEach(async () => {
 
 const run = async (fgItemId: string, good = 3800, rejects = 100) => {
   const bom = await db.bom.findFirstOrThrow({ where: { fgItemId } });
-  return bookProduction({ bomId: bom.id, machineId: ids.machine, shift: "A", shots: 1000, goodParts: good, rejectParts: rejects }, db);
+  const r = await bookProduction({ bomId: bom.id, machineId: ids.machine, shift: "A", shots: 1000, goodParts: good, rejectParts: rejects }, db);
+  await db.lot.updateMany({ where: { pdiStatus: "PENDING" }, data: { pdiStatus: "RELEASED" } }); // these tests are about scrap and crates, not final inspection
+  return r;
 };
 
 describe("scrap approval", () => {

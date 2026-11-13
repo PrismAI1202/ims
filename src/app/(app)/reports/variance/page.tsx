@@ -27,7 +27,7 @@ export default async function VariancePage({ searchParams }: { searchParams: Pro
     <div className="space-y-4">
       <PageHeader eyebrow="TRACE & REPORTS" title="BOM variance" subtitle="Planned versus actual material use" />
       <p className="max-w-3xl text-sm text-ink-2">
-        <b>Expected</b> is what the BOM says the booked production should have used. <b>Issued</b> is what the store handed to the floor in the same dates.
+        <b>Expected</b> is what the BOM says the booked production should have used. <b>Issued</b> is what the store handed to the floor in the same dates, less anything returned from the machines.
         A large positive variance suggests over-use, scrap or material still sitting at the machines; a negative one means booked output was made from material issued earlier.
       </p>
       <Card>

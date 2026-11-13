@@ -13,6 +13,7 @@ export interface ItemStockRow {
   minStock: number;
   reorderPoint: number;
   maxStock: number;
+  stockTracked: boolean; // returnables: false means the customer owns them, so we never buy them
   status: StockStatus;
 }
 
@@ -39,8 +40,24 @@ export async function stockByItem(client: PrismaClient = db): Promise<ItemStockR
     return {
       itemId: i.id, code: i.code, name: i.name, category: i.category, uom: i.uom,
       onHand, pendingQc: pending.get(i.id) ?? 0,
-      minStock, reorderPoint, maxStock: Number(i.maxStock),
+      minStock, reorderPoint, maxStock: Number(i.maxStock), stockTracked: i.stockTracked,
       status: stockStatus(onHand, { minStock, reorderPoint }),
     };
   });
+}
+
+/** Per item: PO quantity still to arrive on open POs, and QC-approved stock still sitting in staging. */
+export async function supplyByItem(client: PrismaClient = db): Promise<Map<string, { openPoQty: number; toPutAway: number }>> {
+  const [poLines, staged] = await Promise.all([
+    client.purchaseOrderLine.findMany({ where: { po: { status: { in: ["APPROVED", "PARTIAL"] } } }, select: { itemId: true, qty: true, receivedQty: true } }),
+    client.stockBalance.findMany({
+      where: { qty: { gt: 0 }, location: { type: "STAGING" }, lot: { qcStatus: { in: ["APPROVED", "DEVIATED"] } } },
+      select: { qty: true, lot: { select: { itemId: true } } },
+    }),
+  ]);
+  const out = new Map<string, { openPoQty: number; toPutAway: number }>();
+  const at = (id: string) => out.get(id) ?? out.set(id, { openPoQty: 0, toPutAway: 0 }).get(id)!;
+  for (const l of poLines) at(l.itemId).openPoQty += Math.max(Number(l.qty) - Number(l.receivedQty), 0);
+  for (const b of staged) at(b.lot.itemId).toPutAway += Number(b.qty);
+  return out;
 }

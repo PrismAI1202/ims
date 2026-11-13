@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { refreshToken } from "./session-refresh";
 
 describe("refreshToken", () => {
-  const qa = { role: "QA_INSPECTOR", roleName: "QA Inspector", views: ["qc" as const], permissions: ["qc.inspect" as const] };
+  const qa = { role: "QA_INSPECTOR", roleName: "QA Inspector", views: ["quality" as const], permissions: ["qc.inspect" as const], home: ["qc-queue" as const] };
   const live = async () => ({ active: true, ...qa });
 
   it("picks up a changed role, and what that role may do, straight away", async () => {
-    const t = await refreshToken({ id: "u1", role: "ADMIN", views: ["users"], permissions: ["users.manage"] }, live);
+    const t = await refreshToken({ id: "u1", role: "ADMIN", views: ["settings"], permissions: ["users.manage"] }, live);
     expect(t).toMatchObject(qa);
   });
   it("ends the session for a deactivated user", async () => {

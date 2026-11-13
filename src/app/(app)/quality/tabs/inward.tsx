@@ -1,58 +1,27 @@
 import Link from "next/link";
 import { db } from "@/server/db";
-import { requireView, requirePermission, runAction } from "@/server/auth/guard";
-import { recordQc } from "@/server/services/inventory";
-import { btnDangerCls, btnOkCls, btnWarnCls, Flash, inputCls } from "@/components/flash";
+import { btnDangerCls, btnOkCls, btnWarnCls, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { CoaRef } from "@/components/coa-ref";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono } from "@/components/ui";
+import { decideInward } from "../actions";
 
-export const instant = false;
-
-const num = (v: FormDataEntryValue | null) => (v === null || v === "" ? undefined : Number(v));
-
-async function decide(formData: FormData) {
-  "use server";
-  const user = await requirePermission("qc.inspect");
-  const decision = String(formData.get("decision")) as "APPROVED" | "REJECTED" | "DEVIATED";
-  await runAction("/qc", `Lot ${decision.toLowerCase()}.`, async () => {
-    await recordQc({
-      lotId: String(formData.get("lotId")),
-      decision,
-      mfi: num(formData.get("mfi")), moisturePct: num(formData.get("moisture")),
-      density: num(formData.get("density")), tensile: num(formData.get("tensile")),
-      remarks: String(formData.get("remarks") || "") || undefined,
-      putawayLocationCode: String(formData.get("bin") || "") || undefined,
-      userId: user.id,
-    });
-  });
-}
-
-export default async function QcPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  await requireView("qc");
-  const { error, ok, q: rawQ } = await searchParams;
-  const q = rawQ?.trim() || undefined;
+export async function InwardTab({ q }: { q?: string }) {
   const [pending, bins, recent] = await Promise.all([
     db.lot.findMany({
       where: { qcStatus: "PENDING_QC" }, orderBy: { receivedAt: "asc" },
       include: { item: true, grnLine: { include: { grn: { include: { po: true } } } } },
     }),
-    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
-    db.lot.findMany({
-      where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 100, include: { item: true },
-    }),
+    db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
+    db.lot.findMany({ where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 100, include: { item: true } }),
   ]);
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow="INWARD" title="Inward QC" subtitle={`${pending.length} lot${pending.length === 1 ? "" : "s"} waiting`} />
-      <Flash error={error} ok={ok} />
-      {pending.length === 0 && (
-        <Card><p className="text-ink-3">Nothing here right now. No lots waiting for QC.</p></Card>
-      )}
+      {pending.length === 0 && <Card><p className="text-ink-3">Nothing here right now. No lots waiting for QC.</p></Card>}
       {pending.map((l) => (
-        <form key={l.id} action={decide}>
+        <form key={l.id} action={decideInward}>
           <Card className="space-y-3">
             <input type="hidden" name="lotId" value={l.id} />
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -94,7 +63,7 @@ export default async function QcPage({ searchParams }: { searchParams: Promise<{
       ))}
 
       <Eyebrow>RECENTLY DECIDED</Eyebrow>
-      <SearchBar q={q} placeholder="Search lot or item" clearHref="/qc" />
+      <SearchBar q={q} keep={{ tab: "inward" }} placeholder="Search lot or item" clearHref="/quality?tab=inward" />
       <DataTable>
         <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
         <tbody>

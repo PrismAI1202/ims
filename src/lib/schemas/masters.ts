@@ -41,11 +41,14 @@ export const customerSchema = z.object({
   address: z.string().trim().max(300).optional().transform((s) => s || undefined),
 });
 
+/** One part of a bin code (rack, shelf or bin): 1 to 10 characters, upper-cased. */
+export const binPart = z.string().trim().min(1).max(10).transform((s) => s.toUpperCase());
+
 export const locationSchema = z.object({
   warehouseId: z.string().min(1),
-  rack: z.string().trim().min(1).max(10).transform((s) => s.toUpperCase()),
-  shelf: z.string().trim().min(1).max(10).transform((s) => s.toUpperCase()),
-  bin: z.string().trim().min(1).max(10).transform((s) => s.toUpperCase()),
+  rack: binPart,
+  shelf: binPart,
+  bin: binPart,
   type: z.enum(["STORAGE", "STAGING"]).default("STORAGE"),
 });
 

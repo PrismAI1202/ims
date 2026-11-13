@@ -6,7 +6,7 @@ import { cacheGet, cachePut, enqueue, newUuid } from "@/lib/offline-queue";
 import { QueueBar, useQueue } from "@/lib/use-queue";
 import { ProgressBar } from "@/components/ui";
 
-type Open = { id: string; dcNumber: string; customer: string; vehicle: string; lines: { code: string; ordered: number; scanned: number }[] };
+type Open = { id: string; dcNumber: string; customer: string; vehicle: string | null; lines: { code: string; ordered: number; scanned: number }[] };
 
 // Scans are saved on the device first and checked by the server when they sync. A rejected box (wrong customer,
 // not on the pick list, already loaded elsewhere…) shows up in the red list with the reason, so nothing is lost silently.
@@ -54,7 +54,7 @@ export function DispatchScanForm() {
       <label className="block text-[13px] font-semibold">Dispatch
         <select value={id} onChange={(e) => { setId(e.target.value); setTally([]); }} className="mt-1 min-h-13 w-full rounded-xl border border-border bg-white px-3.5 text-base">
           <option value="">Select…</option>
-          {list.map((d) => <option key={d.id} value={d.id}>{d.dcNumber} · {d.customer} · {d.vehicle}</option>)}
+          {list.map((d) => <option key={d.id} value={d.id}>{d.dcNumber} · {d.customer}{d.vehicle ? ` · ${d.vehicle}` : ""}</option>)}
         </select>
       </label>
       {dispatch && (

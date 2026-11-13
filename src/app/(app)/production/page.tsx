@@ -3,6 +3,8 @@ import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import type { DowntimeReason } from "@prisma/client";
 import { logDowntime } from "@/server/services/downtime";
+import { mouldRows, pmStatus } from "@/server/services/maintenance";
+import { pushAfter } from "@/server/push";
 import { DOWNTIME_LABEL } from "@/server/services/oee";
 import { can } from "@/server/auth/permissions";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -41,6 +43,25 @@ async function book(formData: FormData) {
       requireMaterialLots: true,
     });
     regrindSkipped = r.regrindSkipped;
+
+    const b = r.booking;
+    if (b.rejectParts > 0) {
+      pushAfter({ view: "quality", perm: "scrap.approve", exceptUserId: user.id }, { title: "Rejects to decide", body: `${b.bookingNumber}: ${b.rejectParts} rejected parts need a regrind or waste decision.`, url: "/quality?tab=scrap", tag: "scrap" });
+    }
+    if (r.fgLotId) {
+      const lot = await db.lot.findUnique({ where: { id: r.fgLotId }, select: { lotNumber: true, pdiStatus: true } });
+      if (lot?.pdiStatus === "PENDING") {
+        pushAfter({ view: "quality", perm: "pdi.release", exceptUserId: user.id }, { title: "FG lot for final inspection", body: `${lot.lotNumber} was booked and can't ship until released.`, url: "/quality?tab=pdi", tag: "pdi" });
+      }
+    }
+    // Tell maintenance only when this booking pushes a mould across into "PM due", not on every booking after.
+    const bom = await db.bom.findUnique({ where: { id: b.bomId }, select: { mouldId: true } });
+    const mould = bom && (await mouldRows()).find((m) => m.id === bom.mouldId);
+    if (mould && mould.state !== "OK" && pmStatus(mould.shots - b.shots, mould.lastPm, mould.interval).state === "OK") {
+      pushAfter({ view: "maintenance", perm: "maintenance.manage", exceptUserId: user.id }, {
+        title: mould.state === "OVERDUE" ? "Mould overdue for PM" : "Mould due for PM", body: `${mould.code} has run ${mould.shots.toLocaleString()} shots.`, url: "/maintenance", tag: `pm-${mould.code}`,
+      });
+    }
   });
 }
 
@@ -63,14 +84,14 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
   const q = rawQ?.trim() || undefined;
   const [boms, machines, bins, recent, stops, moulds] = await Promise.all([
     db.bom.findMany({ include: { fgItem: true, mould: true }, orderBy: { fgItem: { code: "asc" } } }),
-    db.machine.findMany({ orderBy: { code: "asc" } }),
-    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
+    db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
     db.productionBooking.findMany({
       orderBy: { producedAt: "desc" }, take: 100,
       include: { bom: { include: { fgItem: true } }, machine: true },
     }),
     db.downtime.findMany({ orderBy: { createdAt: "desc" }, take: 8, include: { machine: true } }),
-    db.mould.findMany({ orderBy: { code: "asc" } }),
+    db.mould.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
   ]);
   const canLog = can(user, "downtime.log");
 

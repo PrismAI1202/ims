@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { ScanLine } from "lucide-react";
+import { Check, Pencil, Plus, ScanLine } from "lucide-react";
 import { db } from "@/server/db";
 import { can, canView } from "@/server/auth/permissions";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { transferStock } from "@/server/services/inventory";
 import { stockByItem } from "@/server/services/stock";
+import { addBin, removeBin, removeRack, renameBin, renameRack, renameShelf } from "@/server/services/masters";
 import { Flash } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { MoveLotForm } from "@/components/move-lot-form";
+import { Drawer, dotted, field, RemoveButton } from "@/components/edit-mode";
 import { X } from "lucide-react";
 import {
   Badge, Card, Chip, Chips, headerBtnCls, LegendDot, MinMaxBar, Mono, PageHeader, StoresTabs,
@@ -58,13 +60,61 @@ const BIN_STYLE: Record<BinState, string> = {
   hold: "bg-[#E98A3E] text-ink border-transparent",
 };
 
-type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string; q?: string };
+const EDIT = "/stock?view=bins&edit=1";
+
+// Adds a shelf/bin to an existing rack, or starts a new rack with its first bin.
+async function addBinAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  await runAction(EDIT, "Bin added. Print its label from Print bin labels.", async () => {
+    await addBin({ rack: formData.get("rack"), shelf: formData.get("shelf"), bin: formData.get("bin") });
+  });
+}
+
+const RELABEL = " Labels already printed for the renamed bins are out of date: print new ones.";
+const text = (f: FormData, k: string) => String(f.get(k) ?? "");
+
+async function removeBinAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  await runAction(EDIT, "Bin removed.", async () => { await removeBin(text(formData, "id")); });
+}
+
+async function removeRackAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  const rack = text(formData, "rack");
+  await runAction(EDIT, `Rack ${rack} removed.`, async () => { await removeRack(rack); });
+}
+
+async function renameBinAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  await runAction(EDIT, "Bin renamed." + RELABEL, async () => { await renameBin(text(formData, "id"), text(formData, "to")); });
+}
+
+async function renameShelfAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  await runAction(EDIT, "Shelf renamed." + RELABEL, async () => { await renameShelf(text(formData, "rack"), text(formData, "shelf"), text(formData, "to")); });
+}
+
+async function renameRackAction(formData: FormData) {
+  "use server";
+  await requirePermission("bins.manage");
+  await runAction(EDIT, "Rack renamed." + RELABEL, async () => { await renameRack(text(formData, "rack"), text(formData, "to")); });
+}
+
+type Search = { error?: string; ok?: string; view?: string; status?: string; cat?: string; bin?: string; item?: string; q?: string; edit?: string };
 
 export default async function StockPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireView("stock");
   const sp = await searchParams;
   const view = sp.view === "bins" ? "bins" : "stock";
   const canMove = can(user, "stock.transfer");
+  // Layout editing is its own switch: only roles ticked for "edit the store layout" see it.
+  const canEdit = can(user, "bins.manage");
+  const editing = view === "bins" && canEdit && sp.edit === "1";
 
   const [rows, balances, locations, boxedRows] = await Promise.all([
     stockByItem(),
@@ -73,7 +123,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       include: { lot: { include: { item: true } }, location: true },
       orderBy: [{ location: { code: "asc" } }, { lot: { receivedAt: "asc" } }],
     }),
-    db.location.findMany({ orderBy: { code: "asc" } }),
+    db.location.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.fgBox.groupBy({ by: ["lotId", "locationId"], where: { status: "IN_STOCK" }, _sum: { qty: true } }),
   ]);
   // Parts already in labelled boxes are reserved for dispatch and cannot be moved.
@@ -107,7 +157,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     };
     const racks = [...new Set(locations.map((l) => l.rack))];
     const highlight = new Set(sp.item ? (rows.find((r) => r.code === sp.item) ? [...(where.get(rows.find((r) => r.code === sp.item)!.itemId) ?? [])] : []) : []);
-    const selected = sp.bin ? locations.find((l) => l.code === sp.bin) : undefined;
+    const selected = !editing && sp.bin ? locations.find((l) => l.code === sp.bin) : undefined;
     const selBalances = selected ? byLoc.get(selected.id) ?? [] : [];
     const targetsFor = (fromId: string) => locations.filter((l) => l.type === "STORAGE" && l.id !== fromId).map((l) => {
       const bs = byLoc.get(l.id) ?? [];
@@ -120,39 +170,139 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     return (
       <div className="space-y-4">
         {header}
-        {!selected && <Flash error={sp.error} ok={sp.ok} />}
+        {!selected && !editing && <Flash error={sp.error} ok={sp.ok} />}
         <div className="flex flex-wrap gap-3 text-xs text-ink-2">
           <LegendDot color="#1D4ED8" label="Full" />
           <LegendDot color="#8FAEF0" label="Part" />
           <LegendDot color="#FFFFFF" label="Empty" border />
           <LegendDot color="#E98A3E" label="QC hold" />
+          {canEdit && (
+            <span className="ml-auto flex flex-wrap items-center gap-3">
+              <Link href="/masters/bin-labels" className="font-semibold text-accent">Print bin labels</Link>
+              <Link href={editing ? "/stock?view=bins" : EDIT} scroll={false} aria-pressed={editing}
+                className={`flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold ${editing ? "bg-ink text-white" : "border border-border bg-white text-ink"}`}>
+                {editing ? <><Check size={15} aria-hidden /> Done</> : <><Pencil size={15} aria-hidden /> Edit layout</>}
+              </Link>
+            </span>
+          )}
         </div>
+        {editing && (
+          <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-ink">
+            Editing the layout. Tap a dotted <b>+</b> to add a shelf and bin to a rack, or the dotted box at the end to start a new rack. Tap a bin or a rack name to rename it. The red <b>−</b> removes an empty bin or rack; it is greyed out while anything is still stored there.
+          </p>
+        )}
+        <Flash error={editing ? sp.error : undefined} ok={editing ? sp.ok : undefined} />
         {sp.item && <p className="text-sm text-ink-2">Showing bins that hold <Mono className="font-semibold">{sp.item}</Mono> (outlined). <Link href="/stock?view=bins" className="font-semibold text-accent">Clear</Link></p>}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {racks.map((rack) => (
-            <Card key={rack} className="space-y-2">
-              <h2 className="font-display text-sm font-bold">{rack === "STG" ? "Staging (awaiting QC)" : `Rack ${rack}`}</h2>
-              <div className="grid grid-cols-4 gap-1.5">
-                {locations.filter((l) => l.rack === rack).map((l) => {
-                  const st = stateOf(l.id);
-                  const on = l.code === sp.bin;
-                  const hi = highlight.has(l.code);
-                  return (
-                    <Link
-                      key={l.id}
-                      href={`/stock?view=bins&bin=${l.code}${sp.item ? `&item=${sp.item}` : ""}`}
-                      scroll={false}
-                      aria-label={`${l.code}, ${st === "hold" ? "QC hold" : st}`}
-                      aria-pressed={on}
-                      className={`flex h-11 items-center justify-center rounded-lg border font-mono text-[11px] ${BIN_STYLE[st]} ${on ? "outline-[3px] outline-offset-2 outline-ink" : ""} ${hi ? "ring-[3px] ring-accent ring-offset-1" : ""}`}
-                    >
-                      {l.code}
-                    </Link>
-                  );
-                })}
-              </div>
-            </Card>
-          ))}
+          {racks.map((rack) => {
+            const rackBins = locations.filter((l) => l.rack === rack);
+            const rackBusy = rackBins.some((l) => (byLoc.get(l.id)?.length ?? 0) > 0);
+            const shelves = [...new Set(rackBins.map((l) => l.shelf))];
+            const layoutRack = editing && rack !== "STG";
+            return (
+              <Card key={rack} className="relative space-y-2">
+                {layoutRack && (
+                  <form action={removeRackAction}>
+                    <input type="hidden" name="rack" value={rack} />
+                    <RemoveButton label={`Remove rack ${rack}`} busy={rackBusy} why="Empty every bin in this rack first" />
+                  </form>
+                )}
+                {layoutRack ? (
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden" aria-label={`Rename rack ${rack} or its shelves`}>
+                      <h2 className="font-display text-sm font-bold">Rack {rack}</h2>
+                      <span className="flex items-center gap-1 text-xs font-semibold text-ink-3 group-open:text-accent"><Pencil size={13} aria-hidden /> Rename</span>
+                    </summary>
+                    <div className="mt-2 space-y-3 rounded-lg bg-canvas p-2.5">
+                      <form action={renameRackAction} className="flex items-end gap-2">
+                        <input type="hidden" name="rack" value={rack} />
+                        <label className="flex-1 text-xs">Rack name<input name="to" required maxLength={10} defaultValue={rack} className={field} /></label>
+                        <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename rack</button>
+                      </form>
+                      <form action={renameShelfAction} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+                        <input type="hidden" name="rack" value={rack} />
+                        <label className="text-xs">Shelf<select name="shelf" className={field}>{shelves.map((sh) => <option key={sh}>{sh}</option>)}</select></label>
+                        <label className="text-xs">New name<input name="to" required maxLength={10} className={field} /></label>
+                        <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename</button>
+                      </form>
+                      <p className="text-xs text-ink-3">Renaming changes the scan code of every bin it touches. Stock stays where it is.</p>
+                    </div>
+                  </details>
+                ) : (
+                  <h2 className="font-display text-sm font-bold">{rack === "STG" ? "Staging (awaiting QC)" : `Rack ${rack}`}</h2>
+                )}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {rackBins.map((l) => {
+                    const st = stateOf(l.id);
+                    const on = l.code === sp.bin;
+                    const hi = highlight.has(l.code);
+                    const cls = `flex h-11 items-center justify-center rounded-lg border font-mono text-[11px] ${BIN_STYLE[st]} ${on ? "outline-[3px] outline-offset-2 outline-ink" : ""} ${hi ? "ring-[3px] ring-accent ring-offset-1" : ""}`;
+                    if (!layoutRack) {
+                      // Staging, and the normal view: tap a bin to open it. (Staging bins are never edited.)
+                      return editing ? (
+                        <span key={l.id} className={cls}>{l.code}</span>
+                      ) : (
+                        <Link key={l.id} href={`/stock?view=bins&bin=${l.code}${sp.item ? `&item=${sp.item}` : ""}`} scroll={false}
+                          aria-label={`${l.code}, ${st === "hold" ? "QC hold" : st}`} aria-pressed={on} className={cls}>
+                          {l.code}
+                        </Link>
+                      );
+                    }
+                    const busy = (byLoc.get(l.id)?.length ?? 0) > 0;
+                    return (
+                      <div key={l.id} className="group/b relative has-[details[open]]:col-span-4">
+                        <Drawer label={`Rename bin ${l.code}`} tile={l.code} tileClass={cls} >
+                          <form action={renameBinAction} className="space-y-2 rounded-lg border border-border bg-canvas p-2.5">
+                            <input type="hidden" name="id" value={l.id} />
+                            <p className="text-xs text-ink-2">Rename bin <b className="font-mono">{l.code}</b>. Its scan code changes with it.</p>
+                            <div className="flex items-end gap-2">
+                              <label className="flex-1 text-xs">Bin name<input name="to" required maxLength={10} defaultValue={l.bin} className={field} /></label>
+                              <button className="min-h-10 cursor-pointer rounded-lg bg-accent px-3 text-sm font-semibold text-white">Rename</button>
+                            </div>
+                          </form>
+                        </Drawer>
+                        <form action={removeBinAction} className="group-has-[details[open]]/b:hidden">
+                          <input type="hidden" name="id" value={l.id} />
+                          <RemoveButton label={`Remove bin ${l.code}`} busy={busy} why="Holds stock: move it out first" />
+                        </form>
+                      </div>
+                    );
+                  })}
+                  {layoutRack && (
+                    <Drawer label={`Add a shelf and bin to rack ${rack}`} className="col-span-1 open:col-span-4"
+                      tileClass={`flex h-11 items-center justify-center rounded-lg ${dotted}`} tile={<Plus size={18} aria-hidden />}>
+                      <form action={addBinAction} className="space-y-2 rounded-lg border-2 border-dashed border-accent p-2.5">
+                        <input type="hidden" name="rack" value={rack} />
+                        <p className="text-xs text-ink-2">New bin in rack {rack}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="text-xs">Shelf<input name="shelf" required maxLength={10} list={`shelves-${rack}`} placeholder="e.g. 03" className={field} /></label>
+                          <label className="text-xs">Bin<input name="bin" required maxLength={10} placeholder="e.g. 01" className={field} /></label>
+                        </div>
+                        <datalist id={`shelves-${rack}`}>{shelves.map((sh) => <option key={sh} value={sh} />)}</datalist>
+                        <button className="min-h-10 w-full cursor-pointer rounded-lg bg-accent text-sm font-semibold text-white">Add bin</button>
+                      </form>
+                    </Drawer>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+          {editing && (
+            <Drawer label="Add a new rack" className="open:md:col-span-2 open:xl:col-span-1"
+              tileClass={`flex h-full min-h-32 flex-col items-center justify-center gap-1 rounded-[14px] ${dotted}`}
+              tile={<><Plus size={26} aria-hidden /><span className="text-sm font-semibold">Add rack</span></>}>
+              <form action={addBinAction} className="space-y-2 rounded-[14px] border-2 border-dashed border-accent bg-white p-4">
+                <h2 className="font-display text-sm font-bold">New rack</h2>
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="text-xs">Rack<input name="rack" required maxLength={10} placeholder="e.g. D" className={field} /></label>
+                  <label className="text-xs">First shelf<input name="shelf" required maxLength={10} placeholder="01" className={field} /></label>
+                  <label className="text-xs">First bin<input name="bin" required maxLength={10} placeholder="01" className={field} /></label>
+                </div>
+                <p className="text-xs text-ink-3">A rack exists once it has a bin. Add more shelves and bins to it afterwards with its + tile.</p>
+                <button className="min-h-10 w-full cursor-pointer rounded-lg bg-accent text-sm font-semibold text-white">Create rack</button>
+              </form>
+            </Drawer>
+          )}
         </div>
 
         {selected && (
@@ -265,8 +415,8 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                     Show on bin map
                   </Link>
                 )}
-                {r.status !== "GREEN" && r.category !== "FG" && canView(user, "purchase") && (
-                  <Link href="/purchase" className={`flex min-h-9 items-center rounded-[10px] px-3 text-[13px] font-semibold ${r.status === "RED" ? "bg-danger-bg text-danger" : "bg-warn-bg text-warn-ink"}`}>
+                {r.status !== "GREEN" && r.category !== "FG" && canView(user, "orders") && can(user, "po.manage") && (
+                  <Link href="/orders?new=po" className={`flex min-h-9 items-center rounded-[10px] px-3 text-[13px] font-semibold ${r.status === "RED" ? "bg-danger-bg text-danger" : "bg-warn-bg text-warn-ink"}`}>
                     {r.status === "RED" ? "Raise PO" : "Reorder"}
                   </Link>
                 )}

@@ -31,9 +31,9 @@ export interface MouldMaint {
 }
 
 /** Every mould with its shot counter: shots on the mould's counter at go-live plus every shot booked in production. */
-export async function mouldRows(db: Db = defaultDb): Promise<MouldMaint[]> {
+export async function mouldRows(db: Db = defaultDb, opts: { includeRetired?: boolean } = {}): Promise<MouldMaint[]> {
   const [moulds, booked] = await Promise.all([
-    db.mould.findMany({ orderBy: { code: "asc" }, include: { machine: true, boms: { include: { fgItem: true } } } }),
+    db.mould.findMany({ where: opts.includeRetired ? {} : { active: true }, orderBy: { code: "asc" }, include: { machine: true, boms: { include: { fgItem: true } } } }),
     db.productionBooking.groupBy({ by: ["bomId"], _sum: { shots: true } }),
   ]);
   const boms = await db.bom.findMany({ select: { id: true, mouldId: true } });
@@ -112,7 +112,7 @@ export interface MachineReliability { machineId: string; code: string; breakdown
 export async function machineReliability(days = 30, db: Db = defaultDb, now = new Date()): Promise<MachineReliability[]> {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
   const [machines, bookings, downs, shiftMinutes, pmSlots] = await Promise.all([
-    db.machine.findMany({ orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.productionBooking.findMany({ where: { producedAt: { gte: from } }, select: { machineId: true, shift: true, producedAt: true } }),
     db.downtime.findMany({ where: { day: { gte: from } } }),
     getShiftMinutes(db),
