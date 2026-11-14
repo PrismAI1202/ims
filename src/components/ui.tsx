@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { StackTable } from "./data-table";
 
 export type Tone = "danger" | "warn" | "ok" | "info" | "neutral";
 
@@ -148,8 +149,9 @@ export function SegmentedTabs({
   return (
     <nav
       aria-label="Sections"
-      className="grid gap-1 rounded-xl bg-shell-2 p-1"
-      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      // More than 4 tabs don't fit a phone row: wrap to rows of 3 there, one row from md up.
+      className={`grid gap-1 rounded-xl bg-shell-2 p-1 ${tabs.length > 4 ? "grid-cols-3 md:grid-cols-[repeat(var(--tabs),minmax(0,1fr))]" : "grid-cols-[repeat(var(--tabs),minmax(0,1fr))]"}`}
+      style={{ "--tabs": tabs.length } as React.CSSProperties}
     >
       {tabs.map((t) => (
         <Link
@@ -181,6 +183,7 @@ export function StoresTabs({ active, user }: { active: (typeof STORES_TABS)[numb
   return <SegmentedTabs tabs={tabs.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }
 
+<<<<<<< Updated upstream
 /** Scrollable table wrapper with the design's dividers and mono numerals. */
 /** `scroll`: long lists scroll inside their own box (header stays put) instead of stretching the page. */
 export function DataTable({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
@@ -189,6 +192,13 @@ export function DataTable({ children, scroll = false }: { children: React.ReactN
       <table className={`w-full text-sm [&_td]:border-t [&_td]:border-line [&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3 ${scroll ? "[&_th]:sticky [&_th]:top-0 [&_th]:z-10" : ""}`}>
         {children}
       </table>
+=======
+/** Table with the design's dividers; on phones each row becomes a labelled card. */
+export function DataTable({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-[14px] bg-white md:overflow-x-auto">
+      <StackTable>{children}</StackTable>
+>>>>>>> Stashed changes
     </div>
   );
 }

@@ -34,6 +34,7 @@ const safeBack = (v: FormDataEntryValue | null) => {
   return s.startsWith("/orders") ? s : "/orders";
 };
 
+<<<<<<< Updated upstream
 async function createPo(formData: FormData) {
   "use server";
   const user = await requirePermission("po.manage");
@@ -48,6 +49,29 @@ async function createPo(formData: FormData) {
       lines, userId: user.id,
     });
   }, "/orders?new=po");
+=======
+function OrderCard({ o }: { o: OrderRow }) {
+  const body = (
+    <>
+      <span className="flex items-start justify-between gap-2">
+        <span className="flex min-w-0 flex-col"><Mono className="text-[15px] font-semibold">{o.number}</Mono><span className="truncate text-[13px] text-ink-2">{o.party}</span></span>
+        <span className="flex flex-none flex-col items-end gap-1"><Badge tone={o.tone}>{o.status}</Badge><Badge tone={o.direction === "BUY" ? "neutral" : "info"}>{o.direction === "BUY" ? "Buy" : "Sell"} · {o.kind}</Badge></span>
+      </span>
+      {o.lines.map((l, i) => (
+        <span key={`${l.label}-${i}`} className="flex flex-col gap-1">
+          <span className="flex items-baseline justify-between gap-2 text-[13px]">
+            <span className="min-w-0 truncate"><strong>{l.label}</strong> <span className="text-ink-3">{l.sub}</span></span>
+            <Mono className="flex-none text-xs">{l.done !== undefined && <>{l.done.toLocaleString()} / </>}{l.total.toLocaleString()} {l.uom}</Mono>
+          </span>
+          {l.done !== undefined && <ProgressBar value={l.done} max={l.total} color={l.done >= l.total ? "#1E7A46" : "#1D4ED8"} />}
+        </span>
+      ))}
+      <span className="text-[11px] text-ink-3">{o.direction === "SELL" && o.kind !== "Dispatch" ? "Due" : "Created"} {day(o.date)}</span>
+    </>
+  );
+  const cls = "flex min-w-0 flex-col gap-2.5 rounded-[14px] bg-white p-3.5";
+  return o.href ? <Link href={o.href} className={cls}>{body}</Link> : <article className={cls}>{body}</article>;
+>>>>>>> Stashed changes
 }
 
 async function cancelPo(formData: FormData) {
