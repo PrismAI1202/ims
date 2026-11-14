@@ -168,23 +168,42 @@ export function SegmentedTabs({
 }
 
 const STORES_TABS = [
-  { key: "stock", href: "/stock", label: "Stock" },
-  { key: "bins", href: "/stock?view=bins", label: "Bins" },
-  { key: "requests", href: "/requests", label: "Requisitions" },
-  { key: "issue", href: "/issue", label: "FIFO issue" },
+  { key: "stock", href: "/stock", label: "Stock", view: "stock" },
+  { key: "bins", href: "/stock?view=bins", label: "Bins", view: "stock" },
+  { key: "receive", href: "/grn", label: "Receive (GRN)", view: "grn" },
+  { key: "requests", href: "/requests", label: "Material requests", view: "requests" },
 ] as const;
 
-export function StoresTabs({ active }: { active: (typeof STORES_TABS)[number]["key"] }) {
-  return <SegmentedTabs tabs={STORES_TABS.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
+/** Only the tabs the user's role can open; nothing at all when that leaves just one. */
+export function StoresTabs({ active, user }: { active: (typeof STORES_TABS)[number]["key"]; user: { views: readonly string[]; permissions: readonly string[] } }) {
+  const tabs = STORES_TABS.filter((t) => user.views.includes(t.view));
+  if (tabs.length < 2) return null;
+  return <SegmentedTabs tabs={tabs.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }
 
 /** Scrollable table wrapper with the design's dividers and mono numerals. */
-export function DataTable({ children }: { children: React.ReactNode }) {
+/** `scroll`: long lists scroll inside their own box (header stays put) instead of stretching the page. */
+export function DataTable({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
   return (
-    <div className="overflow-x-auto rounded-[14px] bg-white">
-      <table className="w-full text-sm [&_td]:border-t [&_td]:border-line [&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3">
+    <div className={`overflow-x-auto rounded-[14px] bg-white ${scroll ? "max-h-[min(46dvh,28rem)] overflow-y-auto overscroll-contain" : ""}`}>
+      <table className={`w-full text-sm [&_td]:border-t [&_td]:border-line [&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3 ${scroll ? "[&_th]:sticky [&_th]:top-0 [&_th]:z-10" : ""}`}>
         {children}
       </table>
+    </div>
+  );
+}
+
+/**
+ * A list that scrolls inside its own box, so a page with hundreds of records stays one screen tall and the header and tabs stay in
+ * view. `size="lg"` is for the main work list, `"md"` for a history list under it.
+ */
+export function ScrollArea({ children, size = "lg", label }: { children: React.ReactNode; size?: "lg" | "md"; label?: string }) {
+  return (
+    <div
+      role="region" aria-label={label} tabIndex={0}
+      className={`overflow-y-auto overscroll-contain rounded-[14px] pr-1 [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:outline-accent ${size === "lg" ? "max-h-[min(54dvh,40rem)]" : "max-h-[min(34dvh,22rem)]"}`}
+    >
+      {children}
     </div>
   );
 }

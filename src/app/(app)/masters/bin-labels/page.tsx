@@ -1,13 +1,17 @@
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/auth/guard";
+import { redirect } from "next/navigation";
+import { requireUser } from "@/server/auth/guard";
+import { can, canView } from "@/server/auth/permissions";
 import { DownloadLink } from "@/components/download-link";
 
 export const instant = false;
 
 // Rack/shelf/bin labels: Code 128, so any handheld scanner reads them without a camera.
 export default async function BinLabelsPage() {
-  await requirePermission("masters.manage");
-  const bins = await db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } });
+  // Masters used to own bins; whoever may edit the store layout needs the labels for the bins they add.
+  const user = await requireUser();
+  if (!canView(user, "masters") && !can(user, "bins.manage")) redirect("/dashboard?error=" + encodeURIComponent("You don't have access to that."));
+  const bins = await db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } });
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4 text-sm text-ink-2 print:hidden">

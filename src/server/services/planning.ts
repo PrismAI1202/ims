@@ -26,6 +26,12 @@ export function daysNeeded(qty: number, cavities: number, cycleSec: number | nul
   return Math.max(1, Math.ceil(qty / (cavities * shotsPerDay)));
 }
 
+/** Parts one machine-day makes on this mould at the target OEE (the other way round from `daysNeeded`). null without a cycle time. */
+export function partsPerDay(cavities: number, cycleSec: number | null, shiftMinutes: number): number | null {
+  if (!cycleSec || cycleSec <= 0 || cavities <= 0) return null;
+  return Math.floor(cavities * ((3 * shiftMinutes * 60 * PLAN_OEE) / cycleSec));
+}
+
 /** Why a mould can't go on a machine, or null when it can. */
 export function placementError(machine: { code: string; tonnage: number | null }, mould: { code: string; minTonnage: number | null }): string | null {
   if (mould.minTonnage && (machine.tonnage ?? 0) < mould.minTonnage) {
@@ -55,7 +61,7 @@ export async function planWeek(monday: Date, db: Db = defaultDb, now = new Date(
   const days = weekDays(monday);
   const today = parseDay(iso(now));
   const [machines, slots, demand, boms, fgBalances, shiftMinutes, futureJobSlots] = await Promise.all([
-    db.machine.findMany({ orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.planSlot.findMany({ where: { day: { gte: days[0], lte: days[days.length - 1] } }, include: { mould: true } }),
     db.demandLine.findMany({ where: { type: { in: ["FIRM", "SPOT"] }, dueDate: { gte: today } }, include: { fgItem: true } }),
     db.bom.findMany({ include: { fgItem: true, mould: true, lines: { include: { item: true } } } }),
@@ -67,7 +73,7 @@ export async function planWeek(monday: Date, db: Db = defaultDb, now = new Date(
   const stock = new Map<string, number>();
   for (const b of fgBalances) stock.set(b.lot.itemId, (stock.get(b.lot.itemId) ?? 0) + Number(b.qty));
   const need = new Map<string, number>();
-  for (const d of demand) need.set(d.fgItemId, (need.get(d.fgItemId) ?? 0) + d.qty);
+  for (const d of demand) need.set(d.fgItemId, (need.get(d.fgItemId) ?? 0) + Math.max(d.qty - d.shippedQty, 0));
 
   const jobs: PlanJob[] = [];
   for (const [fgItemId, total] of need) {
@@ -108,7 +114,7 @@ export async function placeJob(
     db.machine.findUnique({ where: { id: input.machineId } }),
     db.bom.findUnique({ where: { fgItemId: input.fgItemId }, include: { mould: true, fgItem: true, lines: { include: { item: true } } } }),
   ]);
-  if (!machine) throw new DomainError("Choose a machine.");
+  if (!machine || !machine.active) throw new DomainError("Choose a machine that is in service.");
   if (!bom) throw new DomainError("That part has no BOM, so there is no mould to plan.");
   const err = placementError(machine, bom.mould);
   if (err) throw new DomainError(err);

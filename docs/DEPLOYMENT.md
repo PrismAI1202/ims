@@ -13,6 +13,7 @@ verified recipe).
 | HTTPS in front of the app | The phone-camera scanner and the weighing-scale connection only work over HTTPS. |
 | A persistent volume for `UPLOAD_DIR` | Uploaded COA certificates are files, not database rows. |
 | `COMPANY_NAME`, `COMPANY_GSTIN`, `COMPANY_ADDRESS` | Printed on delivery challans and used for e-way bill data. |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (optional) | Switch on push notifications to phones. Generate the pair once with `npx web-push generate-vapid-keys`; `VAPID_SUBJECT` is a `mailto:` address. Without them nothing is sent. Needs HTTPS. |
 | `PRINTER_HOST` / `PRINTER_PORT` (optional) | A network Zebra-compatible printer (raw port 9100) for "Send to label printer". |
 
 ## Option A: Docker on one server

@@ -40,3 +40,30 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ── Push notifications ──
+// A notification names the next task (title, body) and where it is done (data.url). Tapping it focuses an open IMS
+// window and goes there, or opens one.
+self.addEventListener("push", (event) => {
+  let p = {};
+  try { p = event.data ? event.data.json() : {}; } catch { /* plain-text push: fall through to the defaults */ }
+  event.waitUntil(
+    self.registration.showNotification(p.title || "IMS", {
+      body: p.body || "You have a new task.",
+      icon: "/icon.svg", badge: "/icon.svg", tag: p.tag, renotify: !!p.tag,
+      data: { url: p.url || "/dashboard" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/dashboard", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (all) => {
+      const open = all.find((c) => new URL(c.url).origin === self.location.origin);
+      if (open) { await open.focus(); if ("navigate" in open) return open.navigate(url); }
+      return self.clients.openWindow(url);
+    }),
+  );
+});

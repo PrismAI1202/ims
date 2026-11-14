@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { Form } from "@/components/form";
+import { notFound, redirect } from "next/navigation";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { boxLabel } from "@/server/services/fg";
 import { DomainError } from "@/server/services/inventory";
 import { printerFromEnv, sendZpl, zplBoxLabel } from "@/server/services/zpl";
@@ -14,7 +15,7 @@ async function printToPrinter(formData: FormData) {
   await requirePermission("fg.pack");
   const boxes = String(formData.get("boxes") || "");
   const target = printerFromEnv();
-  await runAction(`/fg/labels?boxes=${encodeURIComponent(boxes)}`, "Sent to the label printer.", async () => {
+  return runAction(`/fg/labels?boxes=${encodeURIComponent(boxes)}`, "Sent to the label printer.", async () => {
     if (!target) throw new DomainError("No label printer is configured. Set PRINTER_HOST.");
     const labels = (await Promise.all(boxes.split(",").map((c) => c.trim()).filter(Boolean).slice(0, 200).map((c) => boxLabel(c)))).filter((l) => l !== null);
     if (labels.length === 0) throw new DomainError("No labels to print.");
@@ -27,10 +28,11 @@ async function printToPrinter(formData: FormData) {
 }
 
 export default async function LabelsPage({ searchParams }: { searchParams: Promise<{ boxes?: string; error?: string; ok?: string }> }) {
-  await requirePermission("fg.pack");
+  await requireView("fg");
   const { boxes, error, ok } = await searchParams;
   const codes = (boxes ?? "").split(",").map((c) => c.trim()).filter(Boolean).slice(0, 200);
-  if (codes.length === 0) notFound();
+  // Opened from a menu or bookmark rather than after packing: send them where labels are made.
+  if (codes.length === 0) redirect("/fg?error=" + encodeURIComponent("Pack or pick boxes first, then print their labels from here."));
 
   const labels = (await Promise.all(codes.map((c) => boxLabel(c)))).filter((l) => l !== null);
   if (labels.length === 0) notFound();
@@ -42,7 +44,7 @@ export default async function LabelsPage({ searchParams }: { searchParams: Promi
         <span>{labels.length} label{labels.length > 1 ? "s" : ""}. Use your browser&apos;s Print for a normal printer.</span>
         <DownloadLink href={`/api/v1/zpl?boxes=${encodeURIComponent(codes.join(","))}`}>Download ZPL for a thermal printer</DownloadLink>
         {printerFromEnv() && (
-          <form action={printToPrinter}><input type="hidden" name="boxes" value={codes.join(",")} /><button className={btnCls}>Send to label printer</button></form>
+          <Form action={printToPrinter}><input type="hidden" name="boxes" value={codes.join(",")} /><button className={btnCls}>Send to label printer</button></Form>
         )}
       </div>
       <div className="flex flex-wrap gap-4 print:block">

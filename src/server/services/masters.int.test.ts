@@ -1,8 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { transferStock } from "./inventory";
+import { mouldRows, machineReliability } from "./maintenance";
+import { logDowntime } from "./downtime";
+import { saveBom } from "./production";
 import {
-  createCustomer, createItem, createLocation, createMachine, createMould, createSupplier,
-  setActive, updateItem,
+  addBin, removeMachine, removeMould, reactivateEquipment, updateMachine, updateMould, removeBin, removeCustomer, removeSupplier, updateCustomer, updateSupplier, removeRack, renameBin, renameRack, renameShelf, createCustomer, createItem, createLocation, createMachine, createMould, createSupplier,
+  setActive, updateItem, createItemWithSupplier, saveItemWithSuppliers, syncItemSuppliers, syncSupplierCatalogue,
 } from "./masters";
 import { DomainError } from "./inventory";
 
@@ -11,7 +15,7 @@ const db = new PrismaClient({ datasourceUrl: url });
 
 beforeEach(async () => {
   expect(url).toContain("ims_test");
-  for (const t of ["Mould", "Machine", "Customer", "Location", "Warehouse", "PriceMaster", "Item", "Supplier"]) {
+  for (const t of ["ReturnToVendor", "EquivalentGrade", "PurchaseOrder", "ReturnableLedger", "DemandLine", "DispatchLine", "Dispatch", "StockCount", "FgBox", "StockTransaction", "StockBalance", "Lot", "Mould", "Machine", "Customer", "Location", "Warehouse", "PriceMaster", "Item", "Supplier"]) {
     await db.$executeRawUnsafe(`TRUNCATE TABLE "${t}" RESTART IDENTITY CASCADE`);
   }
 });
@@ -107,11 +111,339 @@ describe("other masters", () => {
     await expect(createLocation({ warehouseId: wh.id, rack: "D", shelf: "1", bin: "2" }, db)).rejects.toThrow(/already exists/);
   });
 
+  it("adds a bin to an existing rack in that rack's warehouse, or starts a new rack in the first warehouse", async () => {
+    const a = await db.warehouse.create({ data: { code: "WH-A", name: "A" } });
+    const b = await db.warehouse.create({ data: { code: "WH-B", name: "B" } });
+    await createLocation({ warehouseId: b.id, rack: "Q", shelf: "1", bin: "1" }, db);
+    const more = await addBin({ rack: "q", shelf: "2", bin: "1" }, db);
+    expect(more).toMatchObject({ code: "Q-2-1", warehouseId: b.id, type: "STORAGE" });
+    const fresh = await addBin({ rack: "R", shelf: "1", bin: "1" }, db);
+    expect(fresh).toMatchObject({ code: "R-1-1", warehouseId: a.id });
+    await expect(addBin({ rack: "R", shelf: "1", bin: "1" }, db)).rejects.toThrow(/already exists/);
+    await expect(addBin({ rack: "stg", shelf: "1", bin: "1" }, db)).rejects.toThrow(/staging/);
+    await expect(addBin({ rack: "", shelf: "1", bin: "1" }, db)).rejects.toBeInstanceOf(DomainError);
+  });
+
+  describe("customers and suppliers: edit and remove", () => {
+    it("updates a customer and clears optional fields that are blanked out", async () => {
+      const c = await createCustomer({ code: "c1", name: "Apex", segment: "AUTOMOTIVE", labelFormat: "OEM", gstin: "27AAAAA0000A1Z5", address: "Pune" }, db);
+      const u = await updateCustomer(c.id, { code: "C1", name: "Apex Motors", segment: "NON_AUTOMOTIVE", labelFormat: "GENERIC", gstin: "", address: "" }, db);
+      expect(u).toMatchObject({ name: "Apex Motors", segment: "NON_AUTOMOTIVE", labelFormat: "GENERIC", gstin: null, address: null });
+      await expect(updateCustomer(c.id, { code: "C1", name: "Xylem Ltd", segment: "AUTOMOTIVE", labelFormat: "OEM", gstin: "nope" }, db)).rejects.toThrow(/GSTIN/);
+    });
+
+    it("deletes a supplier that was never used, along with its price list rows", async () => {
+      const s = await createSupplier({ code: "s1", name: "Poly", leadTimeDays: 5 }, db);
+      const it = await createItem(item({ code: "rm-a" }), db);
+      await db.priceMaster.create({ data: { itemId: it.id, supplierId: s.id, price: 10 } });
+      await expect(removeSupplier(s.id, db)).resolves.toBe("deleted");
+      expect(await db.supplier.findUnique({ where: { id: s.id } })).toBeNull();
+      expect(await db.priceMaster.count()).toBe(0);
+      await expect(removeSupplier(s.id, db)).rejects.toThrow(/doesn't exist/);
+    });
+
+    it("deactivates a supplier with order history, but refuses while a PO is open", async () => {
+      const s = await createSupplier({ code: "s2", name: "Poly", leadTimeDays: 5 }, db);
+      const po = await db.purchaseOrder.create({ data: { poNumber: "PO-1", supplierId: s.id, segment: "NON_AUTOMOTIVE", status: "APPROVED" } });
+      await expect(removeSupplier(s.id, db)).rejects.toThrow(/1 open PO/);
+      await db.purchaseOrder.update({ where: { id: po.id }, data: { status: "CLOSED" } });
+      await expect(removeSupplier(s.id, db)).resolves.toBe("deactivated");
+      expect(await db.supplier.findUniqueOrThrow({ where: { id: s.id } })).toMatchObject({ active: false });
+      await expect(removeSupplier(s.id, db)).rejects.toThrow(/already inactive/);
+      await setActive("supplier", s.id, true, db);
+      expect((await db.supplier.findUniqueOrThrow({ where: { id: s.id } })).active).toBe(true);
+      await expect(updateSupplier(s.id, { code: "s2", name: "Poly Chem", leadTimeDays: 9 }, db)).resolves.toMatchObject({ name: "Poly Chem", leadTimeDays: 9 });
+    });
+
+    it("deletes an unused customer, deactivates one with history, and refuses while a dispatch is loading", async () => {
+      const a = await createCustomer({ code: "ca", name: "Alpha Auto", segment: "AUTOMOTIVE", labelFormat: "OEM" }, db);
+      await expect(removeCustomer(a.id, db)).resolves.toBe("deleted");
+      expect(await db.customer.findUnique({ where: { id: a.id } })).toBeNull();
+
+      const b = await createCustomer({ code: "cb", name: "Beta Parts", segment: "AUTOMOTIVE", labelFormat: "OEM" }, db);
+      const d = await db.dispatch.create({ data: { dcNumber: "DC-1", customerId: b.id, vehicleNumber: "MH12", status: "LOADING" } });
+      await expect(removeCustomer(b.id, db)).rejects.toThrow(/being loaded/);
+      await db.dispatch.update({ where: { id: d.id }, data: { status: "DISPATCHED" } });
+      await expect(removeCustomer(b.id, db)).resolves.toBe("deactivated");
+      expect((await db.customer.findUniqueOrThrow({ where: { id: b.id } })).active).toBe(false);
+    });
+  });
+
+  describe("machines and moulds: edit and remove", () => {
+    const day = (offset: number) => new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z").getTime() + offset * 86_400_000;
+
+    it("edits details but never the code, and only fits a mould to a machine that is in service", async () => {
+      const m = await createMachine({ code: "imm-1", name: "90T", tonnage: "90" }, db);
+      expect(await updateMachine(m.id, { code: "SOMETHING-ELSE", name: "90T press", tonnage: "" }, db)).toMatchObject({ code: "IMM-1", name: "90T press", tonnage: null });
+      const mould = await createMould({ code: "mld-1", name: "Clip", cavities: "4", shotWeightG: "38.5", runnerWeightG: "6", machineId: m.id }, db);
+      const u = await updateMould(mould.id, { code: "xx", name: "Clip v2", cavities: "8", shotWeightG: "", runnerWeightG: "7.5", machineId: "" }, db);
+      expect(u).toMatchObject({ code: "MLD-1", name: "Clip v2", cavities: 8, shotWeightG: null, machineId: null });
+      expect(Number(u.runnerWeightG)).toBe(7.5);
+      await db.machine.update({ where: { id: m.id }, data: { active: false } });
+      await expect(updateMould(mould.id, { code: "MLD-1", name: "Clip", cavities: "4", machineId: m.id }, db)).rejects.toThrow(/still in service/);
+      await expect(createMould({ code: "mld-2", name: "Other", cavities: "1", machineId: m.id }, db)).rejects.toThrow(/still in service/);
+    });
+
+    it("deletes equipment that was never used, and retires equipment with history", async () => {
+      const fresh = await createMachine({ code: "imm-a", name: "Fresh" }, db);
+      await expect(removeMachine(fresh.id, db)).resolves.toBe("deleted");
+      expect(await db.machine.findUnique({ where: { id: fresh.id } })).toBeNull();
+      await expect(removeMachine(fresh.id, db)).rejects.toThrow(/doesn't exist/);
+
+      const used = await createMachine({ code: "imm-b", name: "Used" }, db);
+      const mould = await createMould({ code: "mld-b", name: "Fitted", cavities: "2", machineId: used.id }, db);
+      await db.downtime.create({ data: { machineId: used.id, day: new Date(day(-3)), shift: "A", reason: "MACHINE_BREAKDOWN", minutes: 30 } });
+      await expect(removeMachine(used.id, db)).resolves.toBe("deactivated");
+      expect(await db.machine.findUniqueOrThrow({ where: { id: used.id } })).toMatchObject({ active: false });
+      expect((await db.mould.findUniqueOrThrow({ where: { id: mould.id } })).machineId).toBeNull(); // its mould is set free
+      await expect(removeMachine(used.id, db)).rejects.toThrow(/already retired/);
+      await reactivateEquipment("machine", used.id, db);
+      expect((await db.machine.findUniqueOrThrow({ where: { id: used.id } })).active).toBe(true);
+
+      await db.repairTicket.create({ data: { mouldId: mould.id, summary: "Polished" } });
+      await expect(removeMould(mould.id, db)).resolves.toBe("deactivated");
+      expect((await db.mould.findUniqueOrThrow({ where: { id: mould.id } })).active).toBe(false);
+      await reactivateEquipment("mould", mould.id, db);
+      await expect(reactivateEquipment("mould", "nope", db)).rejects.toThrow(/doesn't exist/);
+    });
+
+    it("won't remove a mould a BOM uses, or any equipment with plan days coming up", async () => {
+      const m = await createMachine({ code: "imm-c", name: "Planned" }, db);
+      const mould = await createMould({ code: "mld-c", name: "On a BOM", cavities: "2", machineId: m.id }, db);
+      const fg = await db.item.create({ data: { code: "FG-EQ", name: "Eq part", category: "FG", uom: "NOS" } });
+      const rm = await db.item.create({ data: { code: "RM-EQ", name: "Eq resin", category: "RM_RESIN", uom: "KG" } });
+      await saveBom({ fgItemId: fg.id, mouldId: mould.id, partWeightG: 10, lines: [{ itemId: rm.id, kind: "RESIN", pct: 100 }] }, db);
+      await expect(removeMould(mould.id, db)).rejects.toThrow(/used by the BOM for FG-EQ/);
+
+      const other = await createMould({ code: "mld-d", name: "Planned mould", cavities: "1" }, db);
+      await db.planSlot.create({ data: { machineId: m.id, day: new Date(day(2)), kind: "JOB", mouldId: other.id } });
+      await expect(removeMachine(m.id, db)).rejects.toThrow(/1 planned day coming up/);
+      await expect(removeMould(other.id, db)).rejects.toThrow(/1 planned day coming up/);
+      await db.planSlot.deleteMany();
+      await db.planSlot.create({ data: { machineId: m.id, day: new Date(day(-5)), kind: "JOB", mouldId: other.id } }); // a past plan is only history
+      await expect(removeMould(other.id, db)).resolves.toBe("deactivated");
+      await expect(removeMachine(m.id, db)).resolves.toBe("deactivated");
+    });
+
+    it("keeps retired equipment out of the lists and out of new records, but not out of history", async () => {
+      const m = await createMachine({ code: "imm-e", name: "Old press" }, db);
+      const live = await createMachine({ code: "imm-f", name: "Live press" }, db);
+      const mould = await createMould({ code: "mld-e", name: "Old mould", cavities: "1" }, db);
+      await db.downtime.create({ data: { machineId: m.id, day: new Date(day(-2)), shift: "A", reason: "NO_PLAN", minutes: 10 } });
+      await db.repairTicket.create({ data: { mouldId: mould.id, summary: "Old repair" } });
+      await removeMachine(m.id, db); await removeMould(mould.id, db);
+
+      expect((await mouldRows(db)).map((r) => r.code)).not.toContain("MLD-E");
+      expect((await mouldRows(db, { includeRetired: true })).map((r) => r.code)).toContain("MLD-E");
+      expect((await machineReliability(30, db)).map((r) => r.code)).toEqual(["IMM-F"]);
+      await expect(logDowntime({ machineId: m.id, day: new Date(day(0)).toISOString().slice(0, 10), shift: "A", reason: "NO_PLAN", minutes: 15 }, db)).rejects.toThrow(/in service/);
+      await expect(logDowntime({ machineId: live.id, day: new Date(day(0)).toISOString().slice(0, 10), shift: "A", reason: "NO_PLAN", minutes: 15 }, db)).resolves.toBeTruthy();
+      expect(await db.repairTicket.count({ where: { mouldId: mould.id } })).toBe(1); // history is still there
+    });
+  });
+
+  describe("editing the layout", () => {
+    let wh: string;
+    const mk = async (rack: string, shelf: string, bin: string, type: "STORAGE" | "STAGING" = "STORAGE") =>
+      db.location.create({ data: { code: `${rack}-${shelf}-${bin}`, rack, shelf, bin, type, warehouseId: wh } });
+    // puts qty of a lot into a bin the way the app does: a balance row and a ledger row
+    const stock = async (locationId: string, qty: number) => {
+      const it = (await db.item.findFirst()) ?? (await db.item.create({ data: { code: "RM-X", name: "X", category: "RM_RESIN" } }));
+      const lot = await db.lot.create({ data: { lotNumber: `L-${Math.random().toString(36).slice(2, 8)}`, itemId: it.id, supplierLotNo: "S", receivedQty: qty, qcStatus: "APPROVED" } });
+      await db.stockBalance.create({ data: { lotId: lot.id, locationId, qty } });
+      await db.stockTransaction.create({ data: { type: "GRN_IN", lotId: lot.id, locationId, qty } });
+      return lot;
+    };
+    beforeEach(async () => { wh = (await db.warehouse.create({ data: { code: "WH", name: "Main" } })).id; });
+
+    it("deletes a bin that was never used", async () => {
+      const b = await mk("A", "1", "1");
+      await removeBin(b.id, db);
+      expect(await db.location.findUnique({ where: { id: b.id } })).toBeNull();
+    });
+
+    it("only hides a bin that has history, and adding the same code again brings it back", async () => {
+      const b = await mk("A", "1", "1");
+      const lot = await stock(b.id, 10);
+      await expect(removeBin(b.id, db)).rejects.toThrow(/still holds stock/);
+      await db.stockBalance.updateMany({ where: { lotId: lot.id }, data: { qty: 0 } });
+      await removeBin(b.id, db);
+      expect(await db.location.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ active: false });
+      expect(await db.stockTransaction.count({ where: { locationId: b.id } })).toBe(1); // the ledger still points at it
+      await expect(removeBin(b.id, db)).rejects.toThrow(/doesn't exist/);
+      const back = await addBin({ rack: "a", shelf: "1", bin: "1" }, db);
+      expect(back.id).toBe(b.id);
+      expect(back.active).toBe(true);
+    });
+
+    it("won't remove a bin with labelled boxes or a count in progress, or the staging area", async () => {
+      const b = await mk("A", "1", "1");
+      const c = await mk("A", "1", "2");
+      const stg = await mk("STG", "01", "01", "STAGING");
+      const it = await db.item.create({ data: { code: "FG-1", name: "FG", category: "FG" } });
+      const lot = await db.lot.create({ data: { lotNumber: "L-FG", itemId: it.id, supplierLotNo: "S", receivedQty: 5, qcStatus: "APPROVED" } });
+      const cust = await db.customer.create({ data: { code: "C", name: "C", segment: "AUTOMOTIVE", labelFormat: "OEM" } });
+      await db.fgBox.create({ data: { boxCode: "BX-1", lotId: lot.id, customerId: cust.id, locationId: b.id, qty: 5, producedDate: new Date() } });
+      await expect(removeBin(b.id, db)).rejects.toThrow(/holds stock/);
+      await db.stockCount.create({ data: { countNumber: "SC-1", locationId: c.id } });
+      await expect(removeBin(c.id, db)).rejects.toThrow(/count in progress/);
+      await expect(removeBin(stg.id, db)).rejects.toThrow(/staging/);
+    });
+
+    it("removes a whole rack only when every bin in it is empty", async () => {
+      const a = await mk("R", "1", "1"); await mk("R", "1", "2"); const c = await mk("R", "2", "1");
+      await stock(c.id, 4);
+      await expect(removeRack("r", db)).rejects.toThrow(/R-2-1 is not empty/);
+      expect(await db.location.count({ where: { rack: "R" } })).toBe(3); // nothing was removed
+      await db.stockBalance.updateMany({ where: { locationId: c.id }, data: { qty: 0 } });
+      expect(await removeRack("R", db)).toBe(3);
+      expect(await db.location.count({ where: { rack: "R", active: true } })).toBe(0);
+      expect(await db.location.findUnique({ where: { id: a.id } })).toBeNull(); // never used: really deleted
+      expect(await db.location.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ active: false }); // had history: hidden
+      await expect(removeRack("R", db)).rejects.toThrow(/doesn't exist/);
+      await mk("STG", "01", "01", "STAGING");
+      await expect(removeRack("STG", db)).rejects.toThrow(/staging/);
+    });
+
+    it("renames a bin, a shelf or a rack and rebuilds the scan codes, leaving stock where it is", async () => {
+      const a = await mk("A", "1", "1"); await mk("A", "1", "2"); await mk("A", "2", "1");
+      const lot = await stock(a.id, 7);
+      await renameBin(a.id, "x", db);
+      expect((await db.location.findUniqueOrThrow({ where: { id: a.id } })).code).toBe("A-1-X");
+      expect(Number((await db.stockBalance.findFirstOrThrow({ where: { lotId: lot.id } })).qty)).toBe(7);
+      expect(await renameShelf("A", "1", "top", db)).toBe(2);
+      expect((await db.location.findMany({ where: { rack: "A" }, orderBy: { code: "asc" } })).map((l) => l.code)).toEqual(["A-2-1", "A-TOP-2", "A-TOP-X"]);
+      expect(await renameRack("A", "m", db)).toBe(3);
+      expect((await db.location.findMany({ orderBy: { code: "asc" } })).map((l) => l.code)).toEqual(["M-2-1", "M-TOP-2", "M-TOP-X"]);
+      expect((await db.location.findUniqueOrThrow({ where: { id: a.id } })).rack).toBe("M");
+    });
+
+    it("refuses a rename that would clash, change nothing, or touch staging", async () => {
+      const a = await mk("A", "1", "1"); await mk("A", "1", "2"); await mk("B", "1", "1");
+      await expect(renameBin(a.id, "2", db)).rejects.toThrow(/A-1-2 already exists/);
+      await expect(renameBin(a.id, "1", db)).rejects.toThrow(/already the name/);
+      await expect(renameRack("A", "B", db)).rejects.toThrow(/Rack B already exists/);
+      await expect(renameShelf("A", "9", "3", db)).rejects.toThrow(/doesn't exist/);
+      await expect(renameBin(a.id, "", db)).rejects.toThrow(/1 to 10 characters/);
+      await mk("STG", "01", "01", "STAGING");
+      await expect(renameRack("STG", "Z", db)).rejects.toThrow(/staging/);
+      await expect(renameRack("A", "stg", db)).rejects.toThrow(/staging/);
+      // a removed bin still owns its code, and the message says so
+      const gone = await mk("C", "1", "1"); await stock(gone.id, 1);
+      await db.stockBalance.updateMany({ where: { locationId: gone.id }, data: { qty: 0 } });
+      await removeBin(gone.id, db);
+      await expect(renameBin(a.id, "x", db)).resolves.toBeTruthy();
+      await expect(renameRack("B", "C", db)).rejects.toThrow(/Rack C already exists/);
+    });
+
+    it("keeps removed bins out of stock moves", async () => {
+      const a = await mk("A", "1", "1"); const b = await mk("A", "1", "2");
+      const lot = await stock(a.id, 5);
+      await db.stockBalance.updateMany({ where: { locationId: b.id }, data: { qty: 0 } });
+      await removeBin(b.id, db); // never used, so deleted
+      await expect(transferStock({ lotNumber: lot.lotNumber, fromCode: "A-1-1", toCode: "A-1-2", qty: 1 }, db)).rejects.toThrow(/Unknown bin/);
+      const c = await mk("A", "1", "3"); await stock(c.id, 1);
+      await db.stockBalance.updateMany({ where: { locationId: c.id }, data: { qty: 0 } });
+      await removeBin(c.id, db); // had history, so hidden
+      await expect(transferStock({ lotNumber: lot.lotNumber, fromCode: "A-1-1", toCode: "A-1-3", qty: 1 }, db)).rejects.toThrow(/Unknown bin/);
+    });
+  });
+
+  it("refuses a bin when there is no warehouse", async () => {
+    await expect(addBin({ rack: "Z", shelf: "1", bin: "1" }, db)).rejects.toThrow(/No warehouse/);
+  });
+
   it("creates machines and moulds, linking a mould to a machine", async () => {
     const m = await createMachine({ code: "imm-9", name: "90T", tonnage: "90" }, db);
     const mould = await createMould({ code: "mld-9", name: "Clip", cavities: "4", shotWeightG: "38.5", machineId: m.id }, db);
     expect(mould.machineId).toBe(m.id);
     expect(mould.cavities).toBe(4);
     await expect(createMould({ code: "mld-x", name: "Bad", cavities: "0" }, db)).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("suppliers and products, from both ends", () => {
+  let a: string, b: string, c: string;
+  beforeEach(async () => {
+    const mk = (code: string) => createSupplier({ code, name: `Supplier ${code}`, leadTimeDays: "7" }, db).then((x) => x.id);
+    [a, b, c] = [await mk("SA"), await mk("SB"), await mk("SC")];
+  });
+  const prices = async (code: string) => (await db.priceMaster.findMany({ where: { item: { code } }, orderBy: { price: "asc" } })).map((p) => [p.supplierId, Number(p.price)]);
+
+  it("creates an item with several suppliers, each with its own price", async () => {
+    await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }, { supplierId: b, price: 110 }, { supplierId: c, price: 130 }], db);
+    expect(await prices("RM-PP-9")).toEqual([[b, 110], [a, 120], [c, 130]]);
+  });
+
+  it("refuses a duplicate supplier, a supplier on a made-here item, and rolls back so no half-made item is left", async () => {
+    await expect(createItemWithSupplier(item(), [{ supplierId: a, price: 1 }, { supplierId: a, price: 2 }], db)).rejects.toThrow(/more than once/);
+    expect(await db.item.count()).toBe(0);
+    await expect(createItemWithSupplier(item({ code: "FG-1", category: "FG" }), [{ supplierId: a, price: 1 }], db)).rejects.toThrow(/made here/);
+    expect(await db.item.count()).toBe(0);
+    await expect(createItemWithSupplier(item(), [{ supplierId: a, price: -1 }], db)).rejects.toThrow(/negative/);
+    expect(await db.item.count()).toBe(0);
+  });
+
+  it("makes an item's suppliers exactly the list given: add, re-price and remove in one save", async () => {
+    const i = await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }, { supplierId: b, price: 110 }], db);
+    await syncItemSuppliers(i.id, [{ supplierId: b, price: 105 }, { supplierId: c, price: 99 }], db);
+    expect(await prices("RM-PP-9")).toEqual([[c, 99], [b, 105]]); // a removed, b re-priced, c added
+    await syncItemSuppliers(i.id, [], db);
+    expect(await prices("RM-PP-9")).toEqual([]);
+  });
+
+  it("saves the details and the suppliers together, or neither", async () => {
+    const i = await createItemWithSupplier(item(), [{ supplierId: a, price: 120 }], db);
+    await saveItemWithSuppliers(i.id, item({ name: "PP renamed" }), [{ supplierId: b, price: 90 }], db);
+    expect((await db.item.findUniqueOrThrow({ where: { id: i.id } })).name).toBe("PP renamed");
+    expect(await prices("RM-PP-9")).toEqual([[b, 90]]);
+    // a bad supplier list rolls the rename back too
+    await expect(saveItemWithSuppliers(i.id, item({ name: "Should not stick" }), [{ supplierId: b, price: 1 }, { supplierId: b, price: 2 }], db)).rejects.toThrow(/more than once/);
+    expect((await db.item.findUniqueOrThrow({ where: { id: i.id } })).name).toBe("PP renamed");
+    // null leaves the supplier list alone (an item that shows none)
+    await saveItemWithSuppliers(i.id, item({ name: "Again" }), null, db);
+    expect(await prices("RM-PP-9")).toEqual([[b, 90]]);
+  });
+
+  it("makes a supplier's products exactly the list given, and the item side sees the same prices", async () => {
+    const x = await createItem(item({ code: "RM-X" }), db), y = await createItem(item({ code: "RM-Y" }), db), z = await createItem(item({ code: "PK-Z", category: "PACKAGING" }), db);
+    await syncSupplierCatalogue(a, [{ itemId: x.id, price: 10 }, { itemId: y.id, price: 20 }], db);
+    expect(await prices("RM-X")).toEqual([[a, 10]]);
+    await syncSupplierCatalogue(b, [{ itemId: x.id, price: 8 }], db);
+    expect(await prices("RM-X")).toEqual([[b, 8], [a, 10]]); // two suppliers for one product
+    await syncSupplierCatalogue(a, [{ itemId: z.id, price: 5 }, { itemId: y.id, price: 22 }], db);
+    expect(await prices("RM-X")).toEqual([[b, 8]]);   // a no longer lists X
+    expect(await prices("RM-Y")).toEqual([[a, 22]]);
+    expect(await prices("PK-Z")).toEqual([[a, 5]]);
+    expect(await db.priceMaster.count({ where: { supplierId: b } })).toBe(1); // b untouched by a's edits
+  });
+
+  it("refuses a made-here product, a duplicate, or a product that doesn't exist on a supplier's list", async () => {
+    const fg = await createItem(item({ code: "FG-1", category: "FG" }), db), x = await createItem(item({ code: "RM-X" }), db);
+    await expect(syncSupplierCatalogue(a, [{ itemId: fg.id, price: 1 }], db)).rejects.toThrow(/made here/);
+    await expect(syncSupplierCatalogue(a, [{ itemId: x.id, price: 1 }, { itemId: x.id, price: 2 }], db)).rejects.toThrow(/more than once/);
+    await expect(syncSupplierCatalogue(a, [{ itemId: "nope", price: 1 }], db)).rejects.toThrow(/doesn't exist/);
+    await expect(syncSupplierCatalogue("nope", [], db)).rejects.toThrow(/doesn't exist/);
+    expect(await db.priceMaster.count()).toBe(0);
+  });
+});
+
+describe("locating a scanned code", () => {
+  it("tells a bin, a lot, a box and an item apart, and where the stock is", async () => {
+    const { locateCode } = await import("./locate");
+    const wh = await db.warehouse.create({ data: { code: "WH", name: "Main" } });
+    const bin = await db.location.create({ data: { code: "A-01-01", rack: "A", shelf: "01", bin: "01", type: "STORAGE", warehouseId: wh.id } });
+    const it = await createItem(item({ code: "RM-LOC" }), db);
+    const lot = await db.lot.create({ data: { lotNumber: "LOT-LOC-1", itemId: it.id, supplierLotNo: "heat-77", receivedQty: 50, qcStatus: "APPROVED" } });
+    await db.stockBalance.create({ data: { lotId: lot.id, locationId: bin.id, qty: 50 } });
+
+    expect(await locateCode(" a-01-01 \n", db)).toEqual({ kind: "bin", bin: "A-01-01" });
+    expect(await locateCode("lot-loc-1", db)).toMatchObject({ kind: "lot", lotNumber: "LOT-LOC-1", itemCode: "RM-LOC", bins: ["A-01-01"] });
+    expect(await locateCode("HEAT-77", db)).toMatchObject({ kind: "lot", lotNumber: "LOT-LOC-1" }); // the supplier's own heat number finds it too
+    expect(await locateCode("rm-loc", db)).toEqual({ kind: "item", itemCode: "RM-LOC" });
+    expect(await locateCode("nothing-like-this", db)).toEqual({ kind: "none" });
+    expect(await locateCode("   ", db)).toEqual({ kind: "none" });
+    await db.location.update({ where: { id: bin.id }, data: { active: false } });
+    expect(await locateCode("A-01-01", db)).toEqual({ kind: "none" }); // a retired bin is not a destination
   });
 });

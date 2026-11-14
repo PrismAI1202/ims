@@ -17,3 +17,19 @@ export async function setShiftMinutes(minutes: number, db: Db = defaultDb) {
   if (!Number.isInteger(minutes) || minutes < 60 || minutes > 720) throw new DomainError("A shift must be between 60 and 720 minutes.");
   await db.appSetting.upsert({ where: { key: "shiftMinutes" }, update: { value: String(minutes) }, create: { key: "shiftMinutes", value: String(minutes) } });
 }
+
+// Plant rules an admin can switch on or off under Settings. Stored as "1" / "0" in AppSetting.
+export const PLANT_RULES = {
+  requirePdi: { label: "Final inspection (PDI) required before dispatch", default: true },
+  requireFirstOff: { label: "First-off approval required before production can be booked", default: false },
+} as const;
+export type PlantRule = keyof typeof PLANT_RULES;
+
+export async function getRule(rule: PlantRule, db: Db = defaultDb): Promise<boolean> {
+  const row = await db.appSetting.findUnique({ where: { key: rule } });
+  return row ? row.value === "1" : PLANT_RULES[rule].default;
+}
+
+export async function setRule(rule: PlantRule, on: boolean, db: Db = defaultDb) {
+  await db.appSetting.upsert({ where: { key: rule }, update: { value: on ? "1" : "0" }, create: { key: rule, value: on ? "1" : "0" } });
+}

@@ -40,11 +40,11 @@ export async function POST(req: Request) {
   for (const op of parsed.data.ops) {
     try {
       if (op.type === "TRANSFER") {
-        if (!can(user.role, "stock.transfer")) throw new DomainError("Not allowed to transfer stock.");
+        if (!can(user, "stock.transfer")) throw new DomainError("Not allowed to transfer stock.");
         const r = await transferStock({ ...op, userId: user.id });
         results.push({ clientUuid: op.clientUuid, status: r.replayed ? "replayed" : "ok" });
       } else if (op.type === "DISPATCH_SCAN") {
-        if (!can(user.role, "dispatch.manage")) throw new DomainError("Not allowed to load dispatches.");
+        if (!can(user, "dispatch.manage")) throw new DomainError("Not allowed to load dispatches.");
         try {
           await scanBox({ dispatchId: op.dispatchId, scan: op.scan });
           results.push({ clientUuid: op.clientUuid, status: "ok" });
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
           results.push({ clientUuid: op.clientUuid, status: "replayed" });
         }
       } else {
-        if (!can(user.role, "stock.issue")) throw new DomainError("Not allowed to issue stock.");
+        if (!can(user, "stock.issue")) throw new DomainError("Not allowed to issue stock.");
         const r = await issueStock({ ...op, userId: user.id });
         results.push({ clientUuid: op.clientUuid, status: r.replayed ? "replayed" : "ok" });
       }

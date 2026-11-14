@@ -23,7 +23,7 @@ export async function logDowntime(input: LogDowntimeInput, db: Db = defaultDb) {
   const err = validateDowntime(input, await getShiftMinutes(db));
   if (err) throw new DomainError(err);
   const machine = await db.machine.findUnique({ where: { id: input.machineId } });
-  if (!machine) throw new DomainError("Choose a machine.");
+  if (!machine || !machine.active) throw new DomainError("Choose a machine that is in service.");
   return db.downtime.create({
     data: {
       machineId: machine.id, mouldId: input.mouldId || null, day: new Date(`${input.day}T00:00:00.000Z`), shift: input.shift,

@@ -92,14 +92,14 @@ export async function computeMetrics(db: Db = defaultDb, now = new Date()): Prom
     const overdue = maint.filter((m) => m.state === "OVERDUE");
     const out = returnables.reduce((a, r) => a + r.balance, 0);
     return [
-      { label: "QC lot rejects", value: `${rejected} of ${lots.length}`, note: lots.length ? `${(rate * 100).toFixed(1)}% of lots` : "No lots received", tone: tone(rejected === 0, rate < 0.1), href: "/qc" },
+      { label: "QC lot rejects", value: `${rejected} of ${lots.length}`, note: lots.length ? `${(rate * 100).toFixed(1)}% of lots` : "No lots received", tone: tone(rejected === 0, rate < 0.1), href: "/quality?tab=inward" },
       { label: "Items below min", value: String(belowMin), note: belowMin ? "Raise POs · live count" : "All above min · live count", tone: tone(belowMin === 0), href: "/stock?status=RED" },
       { label: "Regrind usage", value: rpct === null ? "—" : `${rpct.toFixed(1)}%`, note: "Limit 20%", tone: rpct === null ? "neutral" : tone(rpct <= 20), href: "/production" },
-      { label: "Dispatches", value: String(dispatched), note: "Loads shipped", tone: "neutral", href: "/dispatch" },
+      { label: "Dispatches", value: String(dispatched), note: "Loads shipped", tone: "neutral", href: "/orders?kind=dispatch" },
       { label: "MTBF (plant)", value: rel.mtbfHours === null ? "—" : `${rel.mtbfHours} h`, note: "Run h ÷ breakdowns · 30 d", tone: "neutral", href: "/maintenance?tab=machines" },
       { label: "MTTR (plant)", value: rel.mttrMin === null ? "—" : `${rel.mttrMin} min`, note: "Repair min ÷ breakdowns · 30 d", tone: "neutral", href: "/maintenance?tab=machines" },
       { label: "PM compliance", value: `${maint.length - overdue.length} of ${maint.length}`, note: overdue.length ? `${overdue.map((m) => m.code).join(", ")} overdue` : "All moulds in date", tone: tone(overdue.length === 0, true), href: "/maintenance" },
-      { label: "Returnables out", value: String(out), note: `${new Set(returnables.filter((r) => r.balance > 0).map((r) => r.customerId)).size} customers holding`, tone: "neutral", href: "/returnables" },
+      { label: "Returnables out", value: String(out), note: `${new Set(returnables.filter((r) => r.balance > 0).map((r) => r.customerId)).size} customers holding`, tone: "neutral", href: "/fg?tab=crates" },
     ];
   };
 

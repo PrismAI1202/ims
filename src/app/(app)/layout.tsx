@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { auth } from "@/auth";
-import { can } from "@/server/auth/permissions";
 import { BottomNav } from "@/components/bottom-nav";
 import { SideNav } from "@/components/side-nav";
-import { NAV_GROUPS } from "@/components/nav-data";
+import { navFor, tabsFor } from "@/components/nav-data";
 import { SignOutButton } from "@/components/sign-out";
 
 export const instant = false;
@@ -13,25 +12,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   await connection(); // session reads are request-time; opt out of prerendering
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const role = session.user.role;
-
-  const groups = NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((n) => !n.perm || can(role, n.perm)),
-  })).filter((g) => g.items.length > 0);
+  const { views, roleName } = session.user;
 
   return (
     <div className="min-h-screen bg-canvas md:flex">
-      <aside className="hidden bg-shell p-4 text-on-shell md:block md:min-h-screen md:w-64 md:flex-none print:hidden">
+      <aside className="hidden bg-shell p-4 text-on-shell md:sticky md:top-0 md:block md:h-screen md:w-64 md:flex-none md:overflow-y-auto print:hidden">
         <div className="font-mono text-xs tracking-[0.06em] text-on-shell-2">PLANT 2 · MOULDING SHOP</div>
         <div className="font-display text-xl font-extrabold">IMS · Moulding</div>
-        <SideNav groups={groups} />
+        <div className="mt-1 text-xs text-on-shell-2">{roleName}</div>
+        <SideNav groups={navFor(views)} />
       </aside>
       <main className="relative min-w-0 flex-1 p-4 pb-28 md:p-8 md:pb-8 print:p-0">
         <div className="absolute right-4 top-2 z-20 md:right-8 print:hidden"><SignOutButton /></div>
         {children}
       </main>
-      <BottomNav />
+      <BottomNav tabs={tabsFor(views)} />
     </div>
   );
 }

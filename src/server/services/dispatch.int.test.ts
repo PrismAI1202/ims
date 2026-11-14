@@ -1,9 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { cancelDispatch, completeDispatch, createDispatch, dispatchProgress, recordReturnable, returnableBalances, scanBox, unscanBox } from "./dispatch";
+import { cancelDispatch, completeDispatch, createDispatch, dispatchProgress, recordReturnable, returnableBalances, scanBox, unscanBox, updateTransport } from "./dispatch";
 import { boxLabel, packBoxes, unboxedQty } from "./fg";
 import { transferStock } from "./inventory";
 import { bookProduction, saveBom } from "./production";
+import { decidePdi, pdiQueue } from "./pdi";
+import { setRule } from "./settings";
 
 const url = process.env.TEST_DATABASE_URL ?? "postgresql://ims:ims@localhost:5433/ims_test?schema=public";
 const db = new PrismaClient({ datasourceUrl: url });
@@ -16,7 +18,7 @@ let fgLotId: string;
 beforeEach(async () => {
   expect(url).toContain("ims_test");
   for (const t of [
-    "ReturnableLedger", "FgBox", "DispatchLine", "Dispatch", "BookingConsumption", "ProductionBooking", "BomLine", "Bom",
+    "DemandLine", "ReturnableLedger", "FgBox", "DispatchLine", "Dispatch", "BookingConsumption", "ProductionBooking", "BomLine", "Bom",
     "IssueLine", "MaterialRequestLine", "MaterialRequest", "StockTransaction", "StockBalance", "QcInspection", "Lot",
     "Mould", "Machine", "Location", "Warehouse", "Customer", "Item",
   ]) await db.$executeRawUnsafe(`TRUNCATE TABLE "${t}" RESTART IDENTITY CASCADE`);
@@ -41,6 +43,7 @@ beforeEach(async () => {
   const r = await bookProduction({ bomId: bom.id, machineId: ids.machine, shift: "B", shots: 1000, goodParts: 3000, rejectParts: 100 }, db);
   fgLotId = r.fgLotId!;
   lotNumber = (await db.lot.findUniqueOrThrow({ where: { id: fgLotId } })).lotNumber;
+  await db.lot.update({ where: { id: fgLotId }, data: { pdiStatus: "RELEASED" } }); // most tests are about loading, not final inspection
 });
 
 const pack = (over: Record<string, unknown> = {}) =>
@@ -174,6 +177,26 @@ describe("completeDispatch", () => {
     expect(Number(ledger._sum.qty)).toBe(Number(bals._sum.qty));
   });
 
+  it("closes the customer's open orders for that part, oldest due date first, and never touches forecast", async () => {
+    const line = (qty: number, due: string, type: "FIRM" | "SPOT" | "FORECAST", customerId = ids.apex, fgItemId = ids.fg) =>
+      db.demandLine.create({ data: { customerId, fgItemId, qty, dueDate: new Date(due), type } });
+    const late = await line(600, "2026-10-01", "FIRM");
+    const next = await line(700, "2026-11-20", "SPOT");
+    const forecast = await line(5000, "2026-10-02", "FORECAST");
+    const other = await line(900, "2026-10-01", "FIRM", ids.bright); // another customer's order for the same part
+    const otherPart = await line(900, "2026-10-01", "FIRM", ids.apex, ids.fg2);
+
+    const { d } = await fullyLoaded(); // ships 1000 parts
+    await completeDispatch({ dispatchId: d.id }, db);
+
+    const shipped = async (id: string) => (await db.demandLine.findUniqueOrThrow({ where: { id } })).shippedQty;
+    expect(await shipped(late.id)).toBe(600);   // the overdue order is closed first
+    expect(await shipped(next.id)).toBe(400);   // the rest goes to the next one
+    expect(await shipped(forecast.id)).toBe(0); // a forecast is not an order
+    expect(await shipped(other.id)).toBe(0);
+    expect(await shipped(otherPart.id)).toBe(0);
+  });
+
   it("refuses to dispatch a short or empty load and can't be completed twice", async () => {
     const boxes = await pack();
     const d = await openDispatch(1000);
@@ -229,14 +252,64 @@ describe("returnable ledger", () => {
 });
 
 describe("createDispatch validation", () => {
-  it("needs a vehicle, lines, FG parts and no duplicate parts", async () => {
+  it("needs lines, FG parts and no duplicate parts, but not a vehicle", async () => {
     const base = { customerId: ids.apex, vehicleNumber: "MH12", lines: [{ itemId: ids.fg, qty: 10 }] };
-    await expect(createDispatch({ ...base, vehicleNumber: " " }, db)).rejects.toThrow(/Vehicle/);
+    const noVehicle = await createDispatch({ customerId: ids.apex, lines: [{ itemId: ids.fg, qty: 10 }] }, db);
+    expect(noVehicle.vehicleNumber).toBeNull();
+    expect((await createDispatch({ ...base, vehicleNumber: " " }, db)).vehicleNumber).toBeNull();
     await expect(createDispatch({ ...base, lines: [] }, db)).rejects.toThrow(/at least one/);
     await expect(createDispatch({ ...base, lines: [{ itemId: ids.pp, qty: 1 }] }, db)).rejects.toThrow(/finished-goods/);
     await expect(createDispatch({ ...base, lines: [{ itemId: ids.fg, qty: 1 }, { itemId: ids.fg, qty: 2 }] }, db)).rejects.toThrow(/once/);
     const d = await createDispatch({ ...base, vehicleNumber: "mh12 ab" }, db);
     expect(d.vehicleNumber).toBe("MH12 AB");
     expect(d.dcNumber).toMatch(/^DC-/);
+  });
+});
+
+describe("final inspection (PDI)", () => {
+  it("books FG lots as pending, and the rule can be switched off", async () => {
+    const bom = await db.bom.findFirstOrThrow();
+    const book = async () => (await db.lot.findUniqueOrThrow({ where: { id: (await bookProduction({ bomId: bom.id, machineId: ids.machine, shift: "A", shots: 10, goodParts: 40, rejectParts: 0 }, db)).fgLotId! } })).pdiStatus;
+    expect(await book()).toBe("PENDING");
+    await setRule("requirePdi", false, db);
+    try { expect(await book()).toBe("NOT_REQUIRED"); } finally { await setRule("requirePdi", true, db); }
+  });
+
+  it("blocks loading until QA releases the lot, and blocks holding once boxes are on a truck", async () => {
+    await db.lot.update({ where: { id: fgLotId }, data: { pdiStatus: "PENDING" } });
+    const [b1, b2] = await pack();
+    const d = await openDispatch(1000);
+    expect((await pdiQueue(db))[0]).toMatchObject({ lotNumber, status: "PENDING", boxes: 2 });
+    await expect(scanBox({ dispatchId: d.id, scan: b1.boxCode }, db)).rejects.toThrow(/waiting for final inspection/);
+
+    await expect(decidePdi({ lotNumber, release: false }, db)).rejects.toThrow(/why/);
+    await decidePdi({ lotNumber, release: false, remarks: "Flash on cavity 3" }, db);
+    await expect(scanBox({ dispatchId: d.id, scan: b1.boxCode }, db)).rejects.toThrow(/on hold/);
+
+    await decidePdi({ lotNumber, release: true, userId: "qa" }, db);
+    expect(await db.lot.findUniqueOrThrow({ where: { id: fgLotId } })).toMatchObject({ pdiStatus: "RELEASED", pdiById: "qa" });
+    await scanBox({ dispatchId: d.id, scan: b1.boxCode }, db);
+    await scanBox({ dispatchId: d.id, scan: b2.boxCode }, db);
+    await expect(decidePdi({ lotNumber, release: false, remarks: "late find" }, db)).rejects.toThrow(/being loaded/);
+    expect(await pdiQueue(db)).toEqual([]);
+  });
+
+  it("only applies to FG lots that need it", async () => {
+    await db.lot.update({ where: { id: fgLotId }, data: { pdiStatus: "NOT_REQUIRED" } });
+    await expect(decidePdi({ lotNumber, release: true }, db)).rejects.toThrow(/doesn't need/);
+    await expect(decidePdi({ lotNumber: "NOPE", release: true }, db)).rejects.toThrow(/Unknown lot/);
+  });
+});
+
+describe("transport details", () => {
+  it("are added later, normalised, cleared by blanking, and refused for a cancelled dispatch", async () => {
+    const d = await createDispatch({ customerId: ids.apex, lines: [{ itemId: ids.fg, qty: 10 }] }, db);
+    expect(d.vehicleNumber).toBeNull();
+    expect(await updateTransport(d.id, { vehicleNumber: " mh12 ab1234 ", driverName: " Ravi " }, db)).toMatchObject({ vehicleNumber: "MH12 AB1234", driverName: "Ravi" });
+    await expect(updateTransport(d.id, { vehicleNumber: "!!" }, db)).rejects.toThrow(/letters and digits/);
+    expect(await updateTransport(d.id, { vehicleNumber: "", driverName: "" }, db)).toMatchObject({ vehicleNumber: null, driverName: null });
+    await cancelDispatch(d.id, db);
+    await expect(updateTransport(d.id, { vehicleNumber: "MH12" }, db)).rejects.toThrow(/cancelled/);
+    await expect(updateTransport("nope", {}, db)).rejects.toThrow(/Unknown dispatch/);
   });
 });

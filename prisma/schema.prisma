@@ -11,14 +11,6 @@ datasource db {
 
 // ───────── Enums ─────────
 
-enum Role {
-  ADMIN
-  STORE_INCHARGE
-  QA_INSPECTOR
-  PRODUCTION_LEAD
-  DISPATCH_OFFICER
-}
-
 enum Segment {
   AUTOMOTIVE
   NON_AUTOMOTIVE
@@ -44,6 +36,15 @@ enum PoStatus {
   CANCELLED
 }
 
+// Final inspection of a finished-goods lot before it may ship. NOT_REQUIRED covers everything that isn't FG
+// production (and lots made before PDI existed).
+enum PdiStatus {
+  NOT_REQUIRED
+  PENDING
+  RELEASED
+  HOLD
+}
+
 enum QcStatus {
   PENDING_QC
   APPROVED
@@ -66,6 +67,7 @@ enum TxnType {
   REGRIND_IN
   SCRAP
   DISPATCH
+  RTV_OUT
   ADJUST
 }
 
@@ -83,10 +85,28 @@ model User {
   email        String     @unique
   name         String
   passwordHash String
-  role         Role
+  role         String // AccessRole.key
+  access       AccessRole @relation(fields: [role], references: [key])
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   tokens       ApiToken[]
+  pushes       PushSubscription[]
+}
+
+// A role is a named set of screens (views) and actions (permissions); see src/lib/views.ts and
+// src/server/auth/permissions.ts. System roles come from the migration; admins add their own under Settings.
+model AccessRole {
+  key         String   @id
+  name        String   @unique
+  description String   @default("")
+  system      Boolean  @default(false)
+  allAccess   Boolean  @default(false) // every view and permission, including ones added later
+  views       String[]
+  permissions String[]
+  home        String[] // Home widgets in order; see src/lib/home-widgets.ts
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
 }
 
 model ApiToken {
@@ -125,6 +145,7 @@ model Supplier {
   active           Boolean           @default(true)
   pos              PurchaseOrder[]
   prices           PriceMaster[]
+  returns          ReturnToVendor[]
 }
 
 model Item {
@@ -186,9 +207,11 @@ model Location {
   shelf       String
   bin         String
   type        LocationType       @default(STORAGE)
+  active      Boolean            @default(true) // false: removed from the layout but kept, because stock history points at it
   balances    StockBalance[]
   txns        StockTransaction[]
   boxes       FgBox[]
+  counts      StockCount[]
 }
 
 model Machine {
@@ -196,10 +219,12 @@ model Machine {
   code      String              @unique
   name      String
   tonnage   Int?
+  active    Boolean             @default(true) // false: retired, but kept because bookings, stops and plans point at it
   moulds    Mould[]
   bookings  ProductionBooking[]
   downtimes Downtime[]
   planSlots PlanSlot[]
+  firstOffs FirstOff[]
 }
 
 model Mould {
@@ -211,6 +236,7 @@ model Mould {
   runnerWeightG   Decimal?       @db.Decimal(10, 2)
   machineId       String?
   machine         Machine?       @relation(fields: [machineId], references: [id])
+  active          Boolean        @default(true) // false: retired, but kept because PM and repair history points at it
   boms            Bom[]
   // Performance and planning: standard cycle time and the smallest press this mould can run on.
   idealCycleSec   Decimal?       @db.Decimal(7, 2)
@@ -255,6 +281,7 @@ model Bom {
   updatedAt   DateTime            @updatedAt
   lines       BomLine[]
   bookings    ProductionBooking[]
+  firstOffs   FirstOff[]
 }
 
 model BomLine {
@@ -307,15 +334,20 @@ model BookingConsumption {
 model PurchaseOrder {
   id          String              @id @default(cuid())
   poNumber    String              @unique
+  externalRef String? // the supplier-facing or other system's PO number, when POs are also tracked elsewhere
   supplierId  String
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
   segment     Segment             @default(NON_AUTOMOTIVE)
   status      PoStatus            @default(DRAFT)
+  expedite    Boolean             @default(false) // the supplier is asked to deliver faster than its lead time
+  expediteNote String?
   createdAt   DateTime            @default(now())
   createdById String?
   lines       PurchaseOrderLine[]
   gateEntries GateEntry[]
   grns        Grn[]
+
+  @@unique([supplierId, externalRef]) // an imported PO can't be loaded twice
 }
 
 model PurchaseOrderLine {
@@ -379,12 +411,18 @@ model Lot {
   receivedAt    DateTime           @default(now())
   expiryDate    DateTime?
   qcStatus      QcStatus           @default(PENDING_QC)
+  pdiStatus     PdiStatus          @default(NOT_REQUIRED)
+  pdiNote       String?
+  pdiById       String?
+  pdiAt         DateTime?
   inspections   QcInspection[]
   balances      StockBalance[]
   txns          StockTransaction[]
   issueLines    IssueLine[]
   boxes         FgBox[]
   lotUses       ProductionLotUse[]
+  countLines    StockCountLine[]
+  returns       ReturnToVendor[]
 
   @@index([itemId, qcStatus, receivedAt])
 }
@@ -400,6 +438,7 @@ model QcInspection {
   decision      QcStatus
   remarks       String?
   coaUrl        String?
+  countedQty    Decimal? @db.Decimal(14, 3) // what the inspector counted in staging, against the GRN quantity
   inspectedAt   DateTime @default(now())
   inspectedById String?
 }
@@ -519,7 +558,7 @@ model Dispatch {
   dcNumber      String             @unique
   customerId    String
   customer      Customer           @relation(fields: [customerId], references: [id])
-  vehicleNumber String
+  vehicleNumber String? // optional: bulk OEM orders aren't tied to one vehicle; it is added when the load leaves (e-way bill, challan)
   driverName    String?
   status        DispatchStatus     @default(LOADING)
   createdAt     DateTime           @default(now())
@@ -585,11 +624,14 @@ model DemandLine {
   fgItem     Item          @relation(fields: [fgItemId], references: [id])
   dueDate    DateTime      @db.Date
   qty        Int
+  shippedQty Int           @default(0) // how much of a firm or spot order has gone out on completed dispatches (see allocateShipment)
+  customerRef String? // the customer's own PO number, when the order was entered or loaded with one
   type       DemandType
   createdAt  DateTime      @default(now())
 
   @@index([dueDate])
   @@index([customerId, fgItemId, type])
+  @@index([customerId, customerRef])
 }
 
 // ───────── Phase 5: traceability and scrap ─────────
@@ -765,4 +807,109 @@ model PlanSlot {
 model AppSetting {
   key   String @id
   value String
+}
+
+// ───────── Stock count and adjustment ─────────
+
+enum CountStatus {
+  OPEN
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// A physical count of one bin. Store snapshots the system quantities, enters what is really there, and submits;
+// an approver decides. Approval writes ADJUST ledger rows for the differences.
+model StockCount {
+  id          String           @id @default(cuid())
+  countNumber String           @unique
+  locationId  String
+  location    Location         @relation(fields: [locationId], references: [id])
+  status      CountStatus      @default(OPEN)
+  countedById String?
+  submittedAt DateTime?
+  decidedById String?
+  decidedAt   DateTime?
+  note        String? // the approver's remark (required to reject)
+  createdAt   DateTime         @default(now())
+  lines       StockCountLine[]
+
+  @@index([status])
+}
+
+model StockCountLine {
+  id         String     @id @default(cuid())
+  countId    String
+  count      StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  lotId      String
+  lot        Lot        @relation(fields: [lotId], references: [id])
+  systemQty  Decimal    @db.Decimal(14, 3) // what the system held when the count started
+  countedQty Decimal?   @db.Decimal(14, 3) // null until entered
+
+  @@unique([countId, lotId])
+}
+
+// ───────── Returns to supplier ─────────
+
+// A rejected lot sent back to its supplier. Posting removes the stock and the debit note is the paperwork that goes with it.
+model ReturnToVendor {
+  id              String   @id @default(cuid())
+  rtvNumber       String   @unique
+  debitNoteNumber String   @unique
+  supplierId      String
+  supplier        Supplier @relation(fields: [supplierId], references: [id])
+  lotId           String
+  lot             Lot      @relation(fields: [lotId], references: [id])
+  qty             Decimal  @db.Decimal(14, 3)
+  unitPrice       Decimal  @db.Decimal(14, 4) // from the PO line the lot was received against
+  reason          String
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  @@index([lotId])
+}
+
+// ───────── First-off approval ─────────
+
+enum FirstOffStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Production asks QA to check the first parts off a new set-up; once approved, the run may be booked
+// (when the plant rule is on). An approval holds for 24 hours for that machine, part and shift.
+model FirstOff {
+  id            String         @id @default(cuid())
+  machineId     String
+  machine       Machine        @relation(fields: [machineId], references: [id])
+  bomId         String
+  bom           Bom            @relation(fields: [bomId], references: [id])
+  shift         Shift
+  status        FirstOffStatus @default(PENDING)
+  note          String? // from the requester
+  requestedById String?
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime       @default(now())
+
+  @@index([machineId, bomId, status])
+  @@index([status])
+}
+
+// ───────── Push notifications ─────────
+
+// One browser or phone that has agreed to notifications. Dead ones (the push service answers 404/410) are deleted on send.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

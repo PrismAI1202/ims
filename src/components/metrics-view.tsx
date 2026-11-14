@@ -6,6 +6,7 @@ import { ArrowRight, Check, HelpCircle, TriangleAlert } from "lucide-react";
 import { Badge, Card, LegendDot, Mono, PageHeader } from "@/components/ui";
 import { METRIC_DEFS } from "@/lib/metric-defs";
 import type { KpiTile, MetricsData } from "@/server/services/metrics";
+import { VIEWS } from "@/lib/views";
 
 const pct = (x: number | null) => (x === null ? "—" : `${(x * 100).toFixed(1)}%`);
 const pct0 = (x: number | null) => (x === null ? "—" : `${(x * 100).toFixed(0)}%`);
@@ -35,7 +36,9 @@ function Tip({ k, openKey, setOpen, align = "right" }: { k: string; openKey: str
   );
 }
 
-export function MetricsView({ data, footer }: { data: MetricsData; footer?: React.ReactNode }) {
+// `views` is the user's role: tiles only link to screens that role can open.
+export function MetricsView({ data, footer, views }: { data: MetricsData; footer?: React.ReactNode; views: readonly string[] }) {
+  const opens = (href: string) => VIEWS.some((v) => v.href === href.split("?")[0] && views.includes(v.key));
   const [mode, setMode] = useState(0);
   const [selIdx, setSel] = useState<number | null>(null);
   const [tip, setTip] = useState<string | null>(null);
@@ -182,16 +185,22 @@ export function MetricsView({ data, footer }: { data: MetricsData; footer?: Reac
           <div className="grid grid-cols-2 gap-2.5">
             {kpis.map((k, i) => (
               <div key={k.label} className="relative rounded-[10px] bg-[#f4f3ef]">
-                <Link href={k.href} className="flex min-h-[4.5rem] flex-col gap-0.5 p-2.5">
-                  <span className="text-[11px] font-semibold text-ink-3">{k.label}</span>
-                  <Mono className="text-lg">{k.value}</Mono>
-                  <span className={`text-[11px] font-semibold ${TONE_FG[k.tone]}`}>{k.note}</span>
-                </Link>
+                {(() => {
+                  const body = (
+                    <>
+                      <span className="text-[11px] font-semibold text-ink-3">{k.label}</span>
+                      <Mono className="text-lg">{k.value}</Mono>
+                      <span className={`text-[11px] font-semibold ${TONE_FG[k.tone]}`}>{k.note}</span>
+                    </>
+                  );
+                  const cls = "flex min-h-[4.5rem] flex-col gap-0.5 p-2.5";
+                  return opens(k.href) ? <Link href={k.href} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
+                })()}
                 <span className="absolute right-1 top-1"><Tip k={k.label} openKey={tip} setOpen={setTip} align={i % 2 === 0 ? "left" : "right"} /></span>
               </div>
             ))}
           </div>
-          <Link href="/reports/variance" className="mt-3 flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border text-sm font-semibold">BOM variance report (live) <ArrowRight size={15} aria-hidden /></Link>
+          {opens("/bom") && <Link href="/bom" className="mt-3 flex min-h-11 items-center justify-center gap-1 rounded-xl border border-border text-sm font-semibold">BOM variance: open a BOM <ArrowRight size={15} aria-hidden /></Link>}
         </Card>
       </div>
       {footer}

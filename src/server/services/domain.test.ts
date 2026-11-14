@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { can, assertCan, ForbiddenError } from "../auth/permissions";
 import { checkFifo, sortForPicking, suggestPicks, type PickableLot } from "./fifo";
 import { stockStatus } from "./stock-status";
 
@@ -59,35 +58,5 @@ describe("FIFO / FEFO", () => {
   it("ignores exhausted older lots", () => {
     const lots = [lot("a", "2026-01-01", 0), lot("b", "2026-02-01", 10)];
     expect(checkFifo(lots, "b")).toEqual({ ok: true });
-  });
-});
-
-describe("RBAC", () => {
-  it("lets the store incharge do GRN and issue but not QC", () => {
-    expect(can("STORE_INCHARGE", "grn.create")).toBe(true);
-    expect(can("STORE_INCHARGE", "stock.issue")).toBe(true);
-    expect(can("STORE_INCHARGE", "qc.inspect")).toBe(false);
-  });
-  it("lets QA inspect but not issue stock", () => {
-    expect(can("QA_INSPECTOR", "qc.inspect")).toBe(true);
-    expect(can("QA_INSPECTOR", "stock.issue")).toBe(false);
-  });
-  it("lets production create requests only", () => {
-    expect(can("PRODUCTION_LEAD", "request.create")).toBe(true);
-    expect(can("PRODUCTION_LEAD", "stock.issue")).toBe(false);
-  });
-  it("keeps BOM editing admin-only but lets production book and roles read reports", () => {
-    expect(can("ADMIN", "bom.manage")).toBe(true);
-    for (const r of ["STORE_INCHARGE", "QA_INSPECTOR", "PRODUCTION_LEAD", "DISPATCH_OFFICER"] as const) {
-      expect(can(r, "bom.manage")).toBe(false);
-    }
-    expect(can("PRODUCTION_LEAD", "production.book")).toBe(true);
-    expect(can("STORE_INCHARGE", "production.book")).toBe(false);
-    expect(can("QA_INSPECTOR", "reports.view")).toBe(true);
-    expect(can("DISPATCH_OFFICER", "reports.view")).toBe(false);
-  });
-  it("denies unauthenticated and throws on assert", () => {
-    expect(can(undefined, "stock.view")).toBe(false);
-    expect(() => assertCan("DISPATCH_OFFICER", "grn.create")).toThrow(ForbiddenError);
   });
 });

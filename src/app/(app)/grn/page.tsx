@@ -1,14 +1,17 @@
+import { ScanField } from "@/components/scan-button";
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { createGrn, DomainError } from "@/server/services/inventory";
 import { saveUpload } from "@/server/services/storage";
+import { pushAfter } from "@/server/push";
 import { CoaRef } from "@/components/coa-ref";
 import { WeightInput } from "@/components/weight-input";
 import { btnCls, Flash, inputCls } from "@/components/flash";
 import { SearchBar } from "@/components/search-bar";
 import { matches } from "@/lib/url";
 import { CreateButton, CreatePanel, CreateProvider } from "@/components/new-panel";
-import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader } from "@/components/ui";
+import { Badge, Card, DataTable, Eyebrow, Mono, PageHeader, StoresTabs } from "@/components/ui";
 
 export const instant = false;
 
@@ -17,7 +20,7 @@ async function receive(formData: FormData) {
   const user = await requirePermission("grn.create");
   const poId = String(formData.get("poId"));
   const po = await db.purchaseOrder.findUniqueOrThrow({ where: { id: poId }, include: { lines: true } });
-  await runAction("/grn", "GRN posted. Lots are in staging, pending QC.", async () => {
+  return runAction("/grn", "GRN posted. Lots are in staging, pending QC.", async () => {
     const lines = po.lines
       .map((l) => ({
         poLineId: l.id,
@@ -36,19 +39,31 @@ async function receive(formData: FormData) {
         throw e instanceof DomainError ? e : new DomainError("The certificate could not be saved.");
       }
     }
-    await createGrn({
-      poId,
-      vehicleNumber: String(formData.get("vehicleNumber")),
-      invoiceNumber: String(formData.get("invoiceNumber")),
-      coaUrl,
-      lines,
-      userId: user.id,
+    // Say which boxes are the problem, so the form comes back with those highlighted and everything else kept.
+    if (lines.length === 0) throw new DomainError("Enter the received quantity on at least one line.", po.lines.map((l) => `qty_${l.id}`));
+    const noLot = lines.filter((l) => !l.supplierLotNo.trim());
+    if (noLot.length) throw new DomainError("Enter the manufacturer lot / heat number for each line you received.", noLot.map((l) => `lot_${l.poLineId}`));
+    try {
+      await createGrn({
+        poId,
+        vehicleNumber: String(formData.get("vehicleNumber")),
+        invoiceNumber: String(formData.get("invoiceNumber")),
+        coaUrl,
+        lines,
+        userId: user.id,
+      });
+    } catch (e) {
+      if (e instanceof DomainError && /COA/.test(e.message)) throw new DomainError(e.message, ["coaFile", "coaUrl"]);
+      throw e;
+    }
+    pushAfter({ view: "quality", perm: "qc.inspect", exceptUserId: user.id }, {
+      title: "Lots waiting for QC", body: `${po.poNumber}: ${lines.length} line${lines.length === 1 ? "" : "s"} received`, url: "/quality?tab=inward", tag: "qc",
     });
   });
 }
 
 export default async function GrnPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; po?: string; q?: string }> }) {
-  await requirePermission("grn.create");
+  const user = await requireView("grn");
   const { error, ok, po: poId, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const openPos = await db.purchaseOrder.findMany({
@@ -67,7 +82,9 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
   return (
     <CreateProvider defaultOpen={!!selected}>
     <div className="space-y-4">
-      <PageHeader right={<CreateButton label="New GRN" />} eyebrow="INWARD" title="Gate entry & GRN" />
+      <PageHeader right={<CreateButton label="New GRN" />} eyebrow="INWARD" title="Gate entry & GRN" subtitle="Receive the truck here, then QC the lots in staging">
+        <StoresTabs active="receive" user={user} />
+      </PageHeader>
       <Flash error={error} ok={ok} />
 
       <CreatePanel>
@@ -85,7 +102,7 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
         </Card>
 
         {selected && (
-          <form action={receive} className="space-y-4">
+          <Form action={receive} className="space-y-4">
             <input type="hidden" name="poId" value={selected.id} />
             <Card className="space-y-3">
               <Eyebrow>GATE</Eyebrow>
@@ -107,19 +124,19 @@ export default async function GrnPage({ searchParams }: { searchParams: Promise<
                   <div className="text-sm"><div className="font-semibold">{l.item.code}</div>
                     <div className="text-ink-3">{l.item.name} · open <Mono>{Number(l.qty) - Number(l.receivedQty)}</Mono> {l.item.uom}</div></div>
                   <div className="text-[13px]"><div>Received qty</div>{l.item.uom === "KG" ? <WeightInput name={`qty_${l.id}`} className={inputCls} /> : <input name={`qty_${l.id}`} type="number" step="any" min="0" aria-label="Received qty" className={inputCls} />}</div>
-                  <label className="text-[13px]">Mfr lot / heat no.<input name={`lot_${l.id}`} className={inputCls} /></label>
+                  <ScanField label="Mfr lot / heat no." name={`lot_${l.id}`} title="Scan the supplier's lot or heat number" hint="The barcode on the supplier's bag, box or certificate." />
                   <label className="text-[13px]">Bags<input name={`bags_${l.id}`} type="number" min="0" className={inputCls} /></label>
                 </div>
               ))}
             </Card>
             <button className={`${btnCls} w-full md:w-auto`}>Post GRN</button>
-          </form>
+          </Form>
         )}
       </div>
       </CreatePanel>
 
       <Eyebrow>RECENT GRNs</Eyebrow>
-      <SearchBar q={q} placeholder="Search GRN, PO, vehicle, invoice or lot" clearHref="/grn" />
+      <SearchBar q={q} scan={{ title: "Scan a lot tag" }} placeholder="Search GRN, PO, vehicle, invoice or lot" clearHref="/grn" />
       <DataTable>
         <thead><tr>
           <th>GRN</th><th>PO</th><th>Vehicle / Invoice</th><th>COA</th><th>Lots (pending QC → QC queue)</th>

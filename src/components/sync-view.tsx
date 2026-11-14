@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CloudOff, RefreshCw, Check } from "lucide-react";
-import { Card, Eyebrow, PageHeader } from "@/components/ui";
+import { Card } from "@/components/ui";
 import { discard, type QueueEntry } from "@/lib/offline-queue";
 import { useQueue } from "@/lib/use-queue";
 
@@ -13,7 +13,8 @@ function describe(e: QueueEntry): { kind: string; title: string; sub: string } {
   return { kind: "TRANSFER", title: `Move ${op.lotNumber} · ${op.qty}`, sub: `${op.fromCode} → ${op.toCode}` };
 }
 
-export function SyncView({ device }: { device: string }) {
+/** Offline outbox and sync status for this device. Lives on the Account page. */
+export function SyncPanel() {
   const queue = useQueue();
   const [busy, setBusy] = useState(false);
   const pending = queue.entries.filter((e) => !e.error);
@@ -34,17 +35,17 @@ export function SyncView({ device }: { device: string }) {
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow={`SYNC CENTRE · ${device}`} title="Sync centre">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex size-11 flex-none items-center justify-center rounded-full text-white" style={{ background: meta.bg }}><meta.Icon size={20} aria-hidden /></span>
-            <span className="flex flex-col"><span className="font-display text-lg font-bold">{meta.title}</span><span className="text-[13px] text-on-shell-2">{meta.sub}</span></span>
-          </div>
-          <button onClick={run} disabled={busy || !queue.online} className="min-h-12 w-full cursor-pointer rounded-xl bg-accent text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            {busy ? "Syncing…" : phase === "done" ? "Sync again" : "Sync now"}
-          </button>
+      <Card className="space-y-3">
+        <h2 className="font-display text-base font-bold">Sync</h2>
+        <div className="flex items-center gap-3">
+          <span className="flex size-11 flex-none items-center justify-center rounded-full text-white" style={{ background: meta.bg }}><meta.Icon size={20} aria-hidden /></span>
+          <span className="flex flex-col"><span className="font-display text-lg font-bold">{meta.title}</span><span className="text-[13px] text-ink-3">{meta.sub}</span></span>
         </div>
-      </PageHeader>
+        <button onClick={run} disabled={busy || !queue.online} className="min-h-12 w-full cursor-pointer rounded-xl bg-accent text-[15px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+          {busy ? "Syncing…" : phase === "done" ? "Sync again" : "Sync now"}
+        </button>
+        <p className="text-xs text-ink-3">Scans are saved on this device and sent automatically every 15 seconds while online. Anything the server rejects stays in the outbox with its reason until you discard it.</p>
+      </Card>
 
       <Card className="space-y-2">
         <div className="flex items-baseline justify-between"><h2 className="font-display text-base font-bold">Outbox</h2><span className="text-xs text-ink-3">Stored on this device until confirmed</span></div>
@@ -68,8 +69,6 @@ export function SyncView({ device }: { device: string }) {
           <strong>{rejected.length} item{rejected.length === 1 ? "" : "s"} rejected by the server.</strong> Check the reason above, then discard and re-enter if needed.
         </div>
       )}
-      <Eyebrow>HOW IT WORKS</Eyebrow>
-      <p className="text-sm text-ink-2">Scans are saved on this device and sent automatically every 15 seconds while online. Anything the server rejects stays here with its reason until you discard it.</p>
     </div>
   );
 }

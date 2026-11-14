@@ -9,7 +9,7 @@ import { sortForPicking } from "@/server/services/fifo";
 export async function GET(req: Request) {
   const user = await getApiUser(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (!can(user.role, "stock.issue")) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, "stock.issue")) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const requests = await db.materialRequest.findMany({
     where: { status: { in: ["OPEN", "PARTIAL"] } }, orderBy: { createdAt: "asc" },

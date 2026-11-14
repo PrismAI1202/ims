@@ -61,3 +61,11 @@ body {
   font-family: var(--font-plex-sans), "Segoe UI", sans-serif;
   font-size: 15px;
 }
+
+/* A field the form says is missing or wrong (components/form.tsx): red outline and a light red fill. */
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  background-color: var(--danger-bg);
+  outline: 3px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  outline-offset: 0;
+}

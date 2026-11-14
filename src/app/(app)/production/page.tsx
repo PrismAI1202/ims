@@ -1,8 +1,12 @@
+import { DomainError } from "@/server/services/inventory";
+import { Form } from "@/components/form";
 import { db } from "@/server/db";
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
 import type { DowntimeReason } from "@prisma/client";
 import { logDowntime } from "@/server/services/downtime";
+import { mouldRows, pmStatus } from "@/server/services/maintenance";
+import { pushAfter } from "@/server/push";
 import { DOWNTIME_LABEL } from "@/server/services/oee";
 import { can } from "@/server/auth/permissions";
 import { btnCls, Flash, inputCls } from "@/components/flash";
@@ -25,7 +29,7 @@ async function book(formData: FormData) {
     regrindSkipped
       ? "Production booked. No regrind item exists for this resin grade, so the runners were logged but not added to stock."
       : "Production booked.";
-  await runAction("/production", message, async () => {
+  return runAction("/production", message, async () => {
     const r = await bookProduction({
       bomId: String(formData.get("bomId")), machineId: String(formData.get("machineId")),
       shift: String(formData.get("shift")) as "A" | "B" | "C",
@@ -39,15 +43,42 @@ async function book(formData: FormData) {
         lotNumber: String(formData.get(`lot_${i}`) || "").trim(), qty: Number(formData.get(`lotqty_${i}`) || 0),
       })).filter((l) => l.lotNumber),
       requireMaterialLots: true,
-    });
+    }).catch((e) => { throw aboutLots(e, formData); });
     regrindSkipped = r.regrindSkipped;
+
+    const b = r.booking;
+    if (b.rejectParts > 0) {
+      pushAfter({ view: "quality", perm: "scrap.approve", exceptUserId: user.id }, { title: "Rejects to decide", body: `${b.bookingNumber}: ${b.rejectParts} rejected parts need a regrind or waste decision.`, url: "/quality?tab=scrap", tag: "scrap" });
+    }
+    if (r.fgLotId) {
+      const lot = await db.lot.findUnique({ where: { id: r.fgLotId }, select: { lotNumber: true, pdiStatus: true } });
+      if (lot?.pdiStatus === "PENDING") {
+        pushAfter({ view: "quality", perm: "pdi.release", exceptUserId: user.id }, { title: "FG lot for final inspection", body: `${lot.lotNumber} was booked and can't ship until released.`, url: "/quality?tab=pdi", tag: "pdi" });
+      }
+    }
+    // Tell maintenance only when this booking pushes a mould across into "PM due", not on every booking after.
+    const bom = await db.bom.findUnique({ where: { id: b.bomId }, select: { mouldId: true } });
+    const mould = bom && (await mouldRows()).find((m) => m.id === bom.mouldId);
+    if (mould && mould.state !== "OK" && pmStatus(mould.shots - b.shots, mould.lastPm, mould.interval).state === "OK") {
+      pushAfter({ view: "maintenance", perm: "maintenance.manage", exceptUserId: user.id }, {
+        title: mould.state === "OVERDUE" ? "Mould overdue for PM" : "Mould due for PM", body: `${mould.code} has run ${mould.shots.toLocaleString()} shots.`, url: "/maintenance", tag: `pm-${mould.code}`,
+      });
+    }
   });
+}
+
+/** A rule about material lots: say which lot boxes it is about, so the form comes back with them highlighted. */
+function aboutLots(e: unknown, formData: FormData) {
+  if (!(e instanceof DomainError) || !/\blot\b/i.test(e.message)) return e;
+  const all = Array.from({ length: LOT_ROWS }, (_, i) => `lot_${i}`);
+  const typed = all.filter((n) => String(formData.get(n) || "").trim());
+  return new DomainError(e.message, /^Scan the lot/.test(e.message) || typed.length === 0 ? all : typed);
 }
 
 async function logStop(formData: FormData) {
   "use server";
   const user = await requirePermission("downtime.log");
-  await runAction("/production", "Stop logged. It counts toward availability on Metrics.", async () => {
+  return runAction("/production", "Stop logged. It counts toward availability on Metrics.", async () => {
     await logDowntime({
       machineId: String(formData.get("machineId")), mouldId: String(formData.get("mouldId") || "") || undefined,
       day: String(formData.get("day")), shift: String(formData.get("shift")) as "A" | "B" | "C",
@@ -58,21 +89,21 @@ async function logStop(formData: FormData) {
 }
 
 export default async function ProductionPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; q?: string }> }) {
-  const user = await requirePermission("production.book");
+  const user = await requireView("production");
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [boms, machines, bins, recent, stops, moulds] = await Promise.all([
     db.bom.findMany({ include: { fgItem: true, mould: true }, orderBy: { fgItem: { code: "asc" } } }),
-    db.machine.findMany({ orderBy: { code: "asc" } }),
-    db.location.findMany({ where: { type: "STORAGE" }, orderBy: { code: "asc" } }),
+    db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
+    db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
     db.productionBooking.findMany({
       orderBy: { producedAt: "desc" }, take: 100,
       include: { bom: { include: { fgItem: true } }, machine: true },
     }),
     db.downtime.findMany({ orderBy: { createdAt: "desc" }, take: 8, include: { machine: true } }),
-    db.mould.findMany({ orderBy: { code: "asc" } }),
+    db.mould.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
   ]);
-  const canLog = can(user.role, "downtime.log");
+  const canLog = can(user, "downtime.log");
 
   return (
     <CreateProvider>
@@ -83,7 +114,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
         <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">No BOMs defined yet. Ask an admin to add one under BOMs.</p>
       ) : (
         <CreatePanel><Card>
-          <form action={book} className="grid gap-3 md:grid-cols-4">
+          <Form action={book} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Part / BOM
               <select name="bomId" required className={inputCls}>
                 {boms.map((b) => <option key={b.id} value={b.id}>{b.fgItem.code} · {b.mould.code} ({b.mould.cavities} cav)</option>)}
@@ -115,7 +146,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
             </div>
             <label className="text-[13px] md:col-span-3">Note<input name="note" className={inputCls} /></label>
             <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Book production</button></div>
-          </form>
+          </Form>
         </Card></CreatePanel>
       )}
 
@@ -123,7 +154,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
         <CreatePanel id="downtime">
           <Card className="space-y-3">
             <Eyebrow>LOG A MACHINE STOP</Eyebrow>
-            <form action={logStop} className="grid gap-3 md:grid-cols-4">
+            <Form action={logStop} className="grid gap-3 md:grid-cols-4">
               <label className="text-[13px]">Machine<select name="machineId" required className={inputCls}>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
               <label className="text-[13px]">Mould (optional)<select name="mouldId" className={inputCls}><option value="">—</option>{moulds.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select></label>
               <label className="text-[13px]">Date<input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} max={new Date().toISOString().slice(0, 10)} className={inputCls} /></label>
@@ -134,7 +165,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
               <label className="text-[13px]">Stopped for (min)<input name="minutes" type="number" min="1" step="1" required className={inputCls} /></label>
               <label className="text-[13px]">Note<input name="note" className={inputCls} /></label>
               <div className="md:col-span-4"><button className={`${btnCls} w-full md:w-auto`}>Log stop</button></div>
-            </form>
+            </Form>
           </Card>
         </CreatePanel>
       )}

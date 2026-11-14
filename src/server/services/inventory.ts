@@ -6,7 +6,8 @@ type Db = PrismaClient;
 type Tx = Prisma.TransactionClient;
 
 export class DomainError extends Error {
-  constructor(message: string) {
+  /** `fields`: names of the form inputs the message is about, so the page can highlight them. */
+  constructor(message: string, public fields: string[] = []) {
     super(message);
     this.name = "DomainError";
   }
@@ -14,7 +15,8 @@ export class DomainError extends Error {
 
 export async function nextNumber(
   tx: Tx, prefix: string,
-  table: "purchaseOrder" | "grn" | "gateEntry" | "materialRequest" | "lot" | "productionBooking" | "fgBox" | "dispatch",
+  table: "purchaseOrder" | "grn" | "gateEntry" | "materialRequest" | "lot" | "productionBooking" | "fgBox" | "dispatch"
+    | "stockCount" | "returnToVendor",
 ) {
   const count = await (tx[table] as unknown as { count: () => Promise<number> }).count();
   const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
@@ -27,33 +29,51 @@ export interface CreatePoInput {
   supplierId: string;
   segment: "AUTOMOTIVE" | "NON_AUTOMOTIVE";
   lines: { itemId: string; qty: number; price?: number; expectedDate?: Date }[];
+  externalRef?: string; // the PO number from another tool, when POs are also tracked elsewhere
+  expedite?: boolean; // ask the supplier to deliver faster than its usual lead time
+  expediteNote?: string;
   userId?: string;
 }
 
-export async function createPurchaseOrder(input: CreatePoInput, db: Db = defaultDb) {
+/** Creates and approves a PO inside a transaction you already have, so a batch of POs can succeed or fail together. */
+export async function createPurchaseOrderIn(tx: Tx, input: CreatePoInput) {
   if (input.lines.length === 0) throw new DomainError("A PO needs at least one line.");
-  const supplier = await db.supplier.findUniqueOrThrow({ where: { id: input.supplierId } });
-  return db.$transaction(async (tx) => {
-    const poNumber = await nextNumber(tx, "PO", "purchaseOrder");
-    const lines = [];
-    for (const l of input.lines) {
-      if (!(l.qty > 0)) throw new DomainError("PO line quantity must be positive.");
-      const master = await tx.priceMaster.findUnique({
-        where: { itemId_supplierId: { itemId: l.itemId, supplierId: input.supplierId } },
-      });
-      const price = l.price ?? Number(master?.price ?? 0);
-      const expectedDate = l.expectedDate ?? new Date(Date.now() + supplier.leadTimeDays * 86_400_000);
-      lines.push({ itemId: l.itemId, qty: l.qty, price, expectedDate });
-    }
-    return tx.purchaseOrder.create({
-      data: {
-        poNumber, supplierId: input.supplierId, segment: input.segment,
-        createdById: input.userId, status: "APPROVED",
-        lines: { create: lines },
-      },
-      include: { lines: true },
+  if (new Set(input.lines.map((l) => l.itemId)).size !== input.lines.length) throw new DomainError("Each item may appear once on a PO.");
+  const supplier = await tx.supplier.findUnique({ where: { id: input.supplierId } });
+  if (!supplier || !supplier.active) throw new DomainError("Choose an active supplier.");
+  const known = await tx.item.count({ where: { id: { in: input.lines.map((l) => l.itemId) } } });
+  if (known !== input.lines.length) throw new DomainError("A line uses an item that doesn't exist.");
+  const externalRef = input.externalRef?.trim() || null;
+  if (externalRef) {
+    const dup = await tx.purchaseOrder.findUnique({ where: { supplierId_externalRef: { supplierId: input.supplierId, externalRef } } });
+    if (dup) throw new DomainError(`${supplier.name} already has a PO with reference ${externalRef} (${dup.poNumber}).`);
+  }
+
+  const poNumber = await nextNumber(tx, "PO", "purchaseOrder");
+  const lines = [];
+  for (const l of input.lines) {
+    if (!(l.qty > 0)) throw new DomainError("PO line quantity must be positive.");
+    if (l.price !== undefined && !(l.price >= 0)) throw new DomainError("Prices can't be negative.");
+    const master = await tx.priceMaster.findUnique({
+      where: { itemId_supplierId: { itemId: l.itemId, supplierId: input.supplierId } },
     });
+    const price = l.price ?? Number(master?.price ?? 0);
+    const expectedDate = l.expectedDate ?? new Date(Date.now() + supplier.leadTimeDays * 86_400_000);
+    lines.push({ itemId: l.itemId, qty: l.qty, price, expectedDate });
+  }
+  return tx.purchaseOrder.create({
+    data: {
+      poNumber, externalRef, supplierId: input.supplierId, segment: input.segment,
+      createdById: input.userId, status: "APPROVED",
+      expedite: !!input.expedite, expediteNote: input.expedite ? input.expediteNote?.trim() || null : null,
+      lines: { create: lines },
+    },
+    include: { lines: true },
   });
+}
+
+export async function createPurchaseOrder(input: CreatePoInput, db: Db = defaultDb) {
+  return db.$transaction((tx) => createPurchaseOrderIn(tx, input));
 }
 
 // ───────── GRN ─────────
@@ -148,6 +168,8 @@ export interface QcInput {
   mfi?: number; moisturePct?: number; density?: number; tensile?: number;
   remarks?: string; coaUrl?: string;
   putawayLocationCode?: string; // required to move an approved lot out of staging
+  /** The quantity counted in staging while inspecting. A difference from the GRN goes for approval and keeps the lot in staging. */
+  countedQty?: number;
   userId?: string;
 }
 
@@ -159,17 +181,33 @@ export async function recordQc(input: QcInput, db: Db = defaultDb) {
       throw new DomainError("A deviation needs remarks.");
     }
 
+    if (input.countedQty !== undefined && (!Number.isFinite(input.countedQty) || input.countedQty < 0)) throw new DomainError("The counted quantity can't be negative.");
     await tx.qcInspection.create({
       data: {
         lotId: lot.id, decision: input.decision, mfi: input.mfi, moisturePct: input.moisturePct,
         density: input.density, tensile: input.tensile, remarks: input.remarks, coaUrl: input.coaUrl,
-        inspectedById: input.userId,
+        countedQty: input.countedQty, inspectedById: input.userId,
       },
     });
     await tx.lot.update({ where: { id: lot.id }, data: { qcStatus: input.decision } });
 
-    if (input.decision !== "REJECTED" && input.putawayLocationCode) {
-      const dest = await tx.location.findUnique({ where: { code: input.putawayLocationCode } });
+    // The count and the inspection are one visit to the pallet. A difference from the GRN is a stock adjustment, so it goes to the
+    // same approver as any other count; until it is decided the lot stays in staging, so nothing is stored on a quantity nobody agreed.
+    const inStaging = lot.balances.filter((x) => x.location.type === "STAGING" && Number(x.qty) > 0);
+    const system = inStaging.reduce((a, b) => a + Number(b.qty), 0);
+    const differs = input.countedQty !== undefined && inStaging.length > 0 && Math.abs(input.countedQty - system) > 1e-9;
+    if (differs) {
+      await tx.stockCount.create({
+        data: {
+          countNumber: await nextNumber(tx, "SC", "stockCount"), locationId: inStaging[0].locationId, status: "SUBMITTED",
+          countedById: input.userId, submittedAt: new Date(),
+          lines: { create: [{ lotId: lot.id, systemQty: system, countedQty: input.countedQty! }] },
+        },
+      });
+    }
+
+    if (input.decision !== "REJECTED" && input.putawayLocationCode && !differs) {
+      const dest = await tx.location.findFirst({ where: { code: input.putawayLocationCode, active: true } });
       if (!dest) throw new DomainError(`Unknown bin ${input.putawayLocationCode}.`);
       if (dest.type !== "STORAGE") throw new DomainError("Put-away bin must be a storage location.");
       for (const b of lot.balances.filter((x) => x.location.type === "STAGING" && Number(x.qty) > 0)) {
@@ -178,7 +216,8 @@ export async function recordQc(input: QcInput, db: Db = defaultDb) {
         });
       }
     }
-    return tx.lot.findUniqueOrThrow({ where: { id: lot.id } });
+    const done = await tx.lot.findUniqueOrThrow({ where: { id: lot.id } });
+    return Object.assign(done, { countDifference: differs ? Math.round((input.countedQty! - system) * 1000) / 1000 : null });
   });
 }
 
@@ -224,8 +263,8 @@ export async function transferStock(input: TransferInput, db: Db = defaultDb) {
       throw new DomainError(`Lot ${lot.lotNumber} is ${lot.qcStatus}; it cannot be moved into storage.`);
     }
     const [from, to] = await Promise.all([
-      tx.location.findUnique({ where: { code: input.fromCode } }),
-      tx.location.findUnique({ where: { code: input.toCode } }),
+      tx.location.findFirst({ where: { code: input.fromCode, active: true } }),
+      tx.location.findFirst({ where: { code: input.toCode, active: true } }),
     ]);
     if (!from) throw new DomainError(`Unknown bin ${input.fromCode}.`);
     if (!to) throw new DomainError(`Unknown bin ${input.toCode}.`);

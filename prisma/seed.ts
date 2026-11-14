@@ -1,17 +1,27 @@
-import { PrismaClient, Role, Segment, ItemCategory, LocationType } from "@prisma/client";
+import { PrismaClient, Segment, ItemCategory, LocationType } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { SYSTEM_ROLES } from "../src/server/auth/permissions";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
 
-  const users: { email: string; name: string; role: Role }[] = [
+  // The migration creates these too; this covers a database built some other way. Existing roles are left alone so
+  // changes made under Settings · Roles & access survive a re-seed.
+  for (const { key, ...r } of SYSTEM_ROLES) {
+    await prisma.accessRole.upsert({ where: { key }, update: {}, create: { key, ...r, system: true } });
+  }
+
+  // One user per role. demo@ims.local holds the full-access Demo role for walkthroughs; the rest see only their own screens.
+  const users: { email: string; name: string; role: string }[] = [
+    { email: "demo@ims.local", name: "Demo User", role: "DEMO" },
     { email: "admin@ims.local", name: "Admin", role: "ADMIN" },
     { email: "store@ims.local", name: "Store Incharge", role: "STORE_INCHARGE" },
     { email: "qa@ims.local", name: "QA Inspector", role: "QA_INSPECTOR" },
     { email: "production@ims.local", name: "Production Lead", role: "PRODUCTION_LEAD" },
     { email: "dispatch@ims.local", name: "Dispatch Officer", role: "DISPATCH_OFFICER" },
+    { email: "planner@ims.local", name: "Planner", role: "PLANNER" },
   ];
   for (const u of users) {
     await prisma.user.upsert({
@@ -155,7 +165,7 @@ async function main() {
     });
   }
 
-  console.log("Seed complete. Login: <role>@ims.local / password123");
+  console.log("Seed complete. Login: demo@ims.local (every screen) or <role>@ims.local (that role's screens) / password123");
 }
 
 main()

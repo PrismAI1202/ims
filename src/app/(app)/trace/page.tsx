@@ -1,5 +1,6 @@
+import { ScanSearch } from "@/components/scan-search";
 import Link from "next/link";
-import { requirePermission } from "@/server/auth/guard";
+import { requireView } from "@/server/auth/guard";
 import { traceQuery, type FgTrace, type MaterialOrigin, type MaterialTrace } from "@/server/services/trace";
 import { btnCls, inputCls } from "@/components/flash";
 import { CoaRef } from "@/components/coa-ref";
@@ -65,7 +66,7 @@ function Fg({ t }: { t: FgTrace }) {
       <section className="space-y-2">
         <h3 className="font-display text-sm font-bold">Shipped to customers</h3>
         {t.dispatches.length === 0 ? <p className="text-sm text-ink-3">Not dispatched yet.</p> : (
-          <ul className="space-y-1 text-sm">{t.dispatches.map((x) => <li key={x.dcNumber} className="rounded-xl bg-white p-3"><b>{x.dcNumber}</b> · {x.customer} · {d(x.date)} · vehicle {x.vehicle} · {x.boxes} box{x.boxes === 1 ? "" : "es"} ({x.qty.toLocaleString()} parts)</li>)}</ul>
+          <ul className="space-y-1 text-sm">{t.dispatches.map((x) => <li key={x.dcNumber} className="rounded-xl bg-white p-3"><b>{x.dcNumber}</b> · {x.customer} · {d(x.date)}{x.vehicle ? ` · vehicle ${x.vehicle}` : ""} · {x.boxes} box{x.boxes === 1 ? "" : "es"} ({x.qty.toLocaleString()} parts)</li>)}</ul>
         )}
       </section>
     </div>
@@ -112,7 +113,7 @@ function Material({ t }: { t: MaterialTrace }) {
 }
 
 export default async function TracePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  await requirePermission("stock.view");
+  await requireView("trace");
   const { q } = await searchParams;
   const result = q?.trim() ? await traceQuery(q) : null;
 
@@ -125,7 +126,7 @@ export default async function TracePage({ searchParams }: { searchParams: Promis
       </p>
       <form method="get" className="flex max-w-xl gap-3">
         <input name="q" defaultValue={q ?? ""} autoFocus placeholder="BX-…, LOT-…, heat number or booking no." className={inputCls} aria-label="Search" />
-        <button className={`${btnCls} mt-1`}>Trace</button>
+        <span className="mt-1 flex gap-2"><ScanSearch title="Scan a box or lot" hint="A box label, a lot tag or a supplier's heat number." /><button className={btnCls}>Trace</button></span>
       </form>
       {result?.kind === "NONE" && <p className="rounded bg-warn-bg p-3 text-sm text-warn-ink">Nothing found for “{result.query}”. Check the code, or try the supplier heat number.</p>}
       {result?.kind === "FG" && <Fg t={result} />}

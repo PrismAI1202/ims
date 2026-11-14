@@ -7,7 +7,7 @@ import { challanData } from "@/server/services/dispatch";
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getApiUser(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (!can(user.role, "dispatch.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!can(user, "dispatch.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   if (!(await db.dispatch.findUnique({ where: { id }, select: { id: true } }))) {

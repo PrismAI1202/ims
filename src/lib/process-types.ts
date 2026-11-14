@@ -1,4 +1,5 @@
 // Types and constants shared by the Process service and its client view (no server imports here).
+import type { ViewKey } from "./views";
 
 export interface ProcessPhoto { name: string; href?: string }
 export interface ProcessEntry {
@@ -6,7 +7,7 @@ export interface ProcessEntry {
   photos: ProcessPhoto[]; fields: [string, string][];
 }
 export interface ProcessStage {
-  key: string; name: string; role: string; owners: string[]; color: string; rule: string;
+  key: string; view: ViewKey; perm?: string; name: string; role: string; owners: string[]; color: string; rule: string;
   proofs: string[]; link: string; linkLabel: string; desc: string; entries: ProcessEntry[];
 }
 

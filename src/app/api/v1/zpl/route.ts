@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const q = new URL(req.url).searchParams;
-  const need = (p: Permission) => can(user.role, p);
+  const need = (p: Permission) => can(user, p);
   const list = (v: string | null) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 200);
   let zpl = "";
   let name = "labels";
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     });
     name = `lot-${lot.lotNumber}`;
   } else if (q.get("bins")) {
-    if (!need("masters.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
+    if (!need("masters.manage") && !need("bins.manage")) return Response.json({ error: "Forbidden" }, { status: 403 });
     const bins = await db.location.findMany({ where: { code: { in: list(q.get("bins")) } }, orderBy: { code: "asc" } });
     zpl = bins.map((b) => zplBinLabel(b.code)).join("");
     name = "bin-labels";

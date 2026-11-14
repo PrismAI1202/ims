@@ -19,7 +19,7 @@ export interface FgTrace {
   fgLot: { lotNumber: string; itemCode: string; itemName: string; qty: number };
   booking: { number: string; producedAt: Date; shift: string; machine: string; mould: string; shots: number; good: number; rejects: number } | null;
   materials: MaterialOrigin[];
-  dispatches: { dcNumber: string; customer: string; date: Date | null; vehicle: string; boxes: number; qty: number }[];
+  dispatches: { dcNumber: string; customer: string; date: Date | null; vehicle: string | null; boxes: number; qty: number }[];
   warnings: string[];
 }
 

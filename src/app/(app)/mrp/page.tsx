@@ -1,9 +1,14 @@
-import { requirePermission, runAction } from "@/server/auth/guard";
+import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { DownloadLink } from "@/components/download-link";
 import { DomainError } from "@/server/services/inventory";
-import { createPosFromPlan, planMrp } from "@/server/services/mrp";
-import { btnCls, Flash, inputCls } from "@/components/flash";
-import { Badge, Card, DataTable, Mono, PageHeader } from "@/components/ui";
+import { createPosFromPlan, HORIZON_PRESETS, planMrp } from "@/server/services/mrp";
+import { canView } from "@/server/auth/permissions";
+import { dateField } from "@/server/line-form";
+import { MrpWorkspace, type MrpRowView } from "@/components/mrp-table";
+import { TYPE_GROUPS } from "@/lib/item-types";
+import { Flash } from "@/components/flash";
+import Link from "next/link";
+import { Card, PageHeader } from "@/components/ui";
 
 export const instant = false;
 
@@ -15,49 +20,92 @@ const clamp = (v: string | undefined, def: number, min: number, max: number) => 
 async function order(formData: FormData) {
   "use server";
   const user = await requirePermission("mrp.plan");
-  const horizonDays = clamp(String(formData.get("horizon")), 60, 7, 365);
+  const horizonDays = clamp(String(formData.get("horizon")), 30, 7, 365);
   const scrapPct = clamp(String(formData.get("scrap")), 2, 0, 50);
-  let count = 0;
-  await runAction("/mrp", () => `Created ${count} purchase order${count === 1 ? "" : "s"}. Find them under Purchase Orders.`, async () => {
+  // Come back to the same horizon and the same filters, with only the numbers changed.
+  const type = String(formData.get("type") || ""), onlyAction = formData.get("action") === "1";
+  const back = `/mrp?horizon=${horizonDays}&scrap=${scrapPct}${TYPE_GROUPS.some((g) => g.key === type) ? `&type=${type}` : ""}${onlyAction ? "&action=1" : ""}`;
+  let made: { poNumber: string }[] = [];
+  return runAction(back, () => `Created ${made.map((p) => p.poNumber).join(", ")}. Find ${made.length === 1 ? "it" : "them"} under Orders.`, async () => {
+    const expectedDate = dateField(formData.get("expected"));
     const selections = formData.getAll("item").map(String).map((itemId) => {
       const q = String(formData.get(`qty_${itemId}`) || "");
-      return { itemId, qty: q === "" ? undefined : Number(q) };
+      return { itemId, qty: q === "" ? undefined : Number(q), supplierId: String(formData.get(`supplier_${itemId}`) || "") || undefined, expectedDate };
     });
     if (selections.some((s) => s.qty !== undefined && !Number.isFinite(s.qty))) throw new DomainError("A quantity isn't a number.");
-    count = (await createPosFromPlan({ selections, opts: { horizonDays, scrapPct }, userId: user.id })).length;
-  }, `/mrp?horizon=${horizonDays}&scrap=${scrapPct}`);
+    made = await createPosFromPlan({
+      selections, opts: { horizonDays, scrapPct }, userId: user.id,
+      club: formData.get("club") === "1", expedite: formData.get("expedite") === "1", expediteNote: String(formData.get("expediteNote") || ""),
+    });
+  });
 }
 
-const POLICY = { KANBAN: "Kanban (strict min)", ROP: "Reorder point" } as const;
 const date = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "—");
 
 export default async function MrpPage({
   searchParams,
-}: { searchParams: Promise<{ horizon?: string; scrap?: string; error?: string; ok?: string }> }) {
-  await requirePermission("mrp.plan");
+}: { searchParams: Promise<{ horizon?: string; scrap?: string; type?: string; action?: string; error?: string; ok?: string }> }) {
+  const user = await requireView("mrp");
   const sp = await searchParams;
-  const horizonDays = clamp(sp.horizon, 60, 7, 365);
+  const horizonDays = clamp(sp.horizon, 30, 7, 365);
   const scrapPct = clamp(sp.scrap, 2, 0, 50);
-  const { rows, horizonEnd, demandLines } = await planMrp({ horizonDays, scrapPct });
-  const actionable = rows.filter((r) => r.suggested > 0);
-  const buyable = actionable.filter((r) => r.buyable);
+  const { rows, horizonEnd, demandLines, demandSpread } = await planMrp({ horizonDays, scrapPct });
+  const spreadAfterWeek = demandSpread.filter((b) => b.key !== "overdue" && b.key !== "week").reduce((a, b) => a + b.lines, 0);
+  const loaded = demandSpread.reduce((a, b) => a + b.lines, 0);
+  const initialGroup = TYPE_GROUPS.some((g) => g.key === sp.type) ? String(sp.type) : "all";
+
+  const views: MrpRowView[] = rows.map((r) => ({
+    itemId: r.itemId, code: r.code, name: r.name, uom: r.uom, category: r.category, role: r.role, policy: r.policy,
+    gross: r.gross, onHand: r.onHand, onOrder: r.onOrder, inProduction: r.inProduction, plannedDays: r.plannedDays, pendingQc: r.pendingQc,
+    projected: r.projected, suggested: r.suggested, reason: r.reason, inHouse: r.inHouse, buyable: r.buyable,
+    supplier: r.supplier ? { name: r.supplier.name, price: r.supplier.price, leadTimeDays: r.supplier.leadTimeDays } : null,
+    orderBy: r.orderBy ? r.orderBy.toISOString() : null, late: r.late, options: r.options, earliestDue: r.earliestDue ? r.earliestDue.toISOString() : null,
+    minStock: r.minStock, reorderPointLevel: r.reorderPointLevel, maxStock: r.maxStock, safetyStock: r.safetyStock,
+    needBy: r.needBy,
+    demandLines: r.demandLines.map((d) => ({ ...d, dueDate: d.dueDate.toISOString() })),
+    partDrivers: r.partDrivers,
+    openPos: r.openPos.map((p) => ({ ...p, expected: p.expected ? p.expected.toISOString() : null })),
+  }));
+  const can = {
+    demand: canView(user, "demand"), orders: canView(user, "orders"), planning: canView(user, "planning"),
+    quality: canView(user, "quality"), bom: canView(user, "bom"), stock: canView(user, "stock"),
+  };
 
   return (
     <div className="space-y-4">
       <PageHeader eyebrow="BUY & RECEIVE" title="MRP plan" subtitle={`Planning to ${date(horizonEnd)} · ${demandLines} demand line${demandLines === 1 ? "" : "s"} in range`} />
       <p className="max-w-3xl text-sm text-ink-2">
-        Demand in the horizon is netted against stock and open purchase orders, then exploded through each part&apos;s BOM.
-        Parts wanted by an automotive customer follow the strict Kanban minimum; everything else follows its reorder point.
-        Quantities and prices are recalculated when you create orders.
+        What the plan needs in the window, less stock, open POs and the machine plan, worked back through each BOM. Automotive parts hold a strict Kanban minimum; the rest reorder at their reorder point. Open a row to see why.
       </p>
       <Flash error={sp.error} ok={sp.ok} />
 
-      <Card>
-        <form method="get" className="flex flex-wrap items-end gap-3">
-          <label className="text-[13px]">Horizon (days)<input name="horizon" type="number" min="7" max="365" defaultValue={horizonDays} className={`${inputCls} w-28`} /></label>
-          <label className="text-[13px]">Reject allowance %<input name="scrap" type="number" min="0" max="50" step="any" defaultValue={scrapPct} className={`${inputCls} w-28`} /></label>
-          <button className={btnCls}>Recalculate</button>
-        </form>
+      <MrpWorkspace
+        rows={views} horizonDays={horizonDays} scrapPct={scrapPct} presets={HORIZON_PRESETS} can={can} today={new Date().toISOString().slice(0, 10)}
+        initialGroup={initialGroup} initialOnlyAction={sp.action === "1"} action={order}
+      >
+      <Card className="space-y-2.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-display text-sm font-bold">When customers need it</h2>
+          {can.demand && <Link href="/demand" className="text-[13px] font-semibold text-accent">Customer demand →</Link>}
+        </div>
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {demandSpread.map((b) => (
+            <li key={b.key} className={`rounded-xl px-3 py-2 ${b.key === "overdue" && b.lines > 0 ? "bg-danger-bg" : "bg-canvas"}`}>
+              <div className={`font-display text-lg font-extrabold ${b.key === "overdue" && b.lines > 0 ? "text-danger" : ""}`}>{b.parts.toLocaleString()}</div>
+              <div className="text-xs text-ink-2">{b.label}</div>
+              <div className="text-[11px] text-ink-3">{b.lines} line{b.lines === 1 ? "" : "s"}</div>
+            </li>
+          ))}
+        </ul>
+        {loaded === 0 && <p className="text-xs text-ink-3">No customer demand is loaded. Rows below come from stock policy alone.</p>}
+        {loaded > 0 && spreadAfterWeek === 0 && (
+          <p className="rounded-lg bg-info-bg px-3 py-2 text-xs text-info-ink">
+            All the demand loaded is already overdue or due within a week, so the week, month and quarter figures match: a wider horizon adds nothing until later call-offs are loaded.
+          </p>
+        )}
+        {loaded > 0 && demandSpread[0].lines > 0 && (
+          <p className="text-xs text-ink-3">Overdue lines still count in every horizon: they have to be made, whatever the window.</p>
+        )}
       </Card>
 
       <p className="flex gap-4 text-sm font-semibold text-accent print:hidden">
@@ -65,42 +113,7 @@ export default async function MrpPage({
         <DownloadLink href={`/api/v1/export/mrp?format=csv&horizon=${horizonDays}&scrap=${scrapPct}`}>Download CSV</DownloadLink>
       </p>
 
-      <form action={order} className="space-y-3">
-        <input type="hidden" name="horizon" value={horizonDays} />
-        <input type="hidden" name="scrap" value={scrapPct} />
-        <DataTable>
-          <thead><tr>
-            <th></th><th>Item</th><th>Policy</th>
-            <th className="text-right!">Needed</th><th className="text-right!">On hand</th><th className="text-right!">On order</th>
-            <th className="text-right!">Projected</th><th className="text-right!">Suggested</th><th>Supplier</th><th>Order by</th>
-          </tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.itemId} className={`align-top ${r.suggested > 0 ? "" : "text-ink-3"}`}>
-                <td>{r.buyable && r.supplier && <input type="checkbox" name="item" value={r.itemId} defaultChecked aria-label={`Order ${r.code}`} className="size-5 accent-[#c2410c]" />}</td>
-                <td><div className="font-semibold">{r.code}</div><div className="text-xs text-ink-3">{r.name}</div><div className="text-xs text-ink-3">{r.reason}</div></td>
-                <td className="text-xs">{r.role === "FG" ? "Make · " : ""}{POLICY[r.policy]}</td>
-                <td className="text-right"><Mono>{Math.round(r.gross * 10) / 10}</Mono></td><td className="text-right"><Mono>{r.onHand.toLocaleString()}</Mono></td>
-                <td className="text-right"><Mono>{r.incoming.toLocaleString()}</Mono></td>
-                <td className={`text-right ${r.projected < 0 ? "font-semibold text-danger" : ""}`}><Mono>{Math.round(r.projected * 10) / 10}</Mono></td>
-                <td className="text-right font-semibold">
-                  {r.suggested > 0 && r.buyable && r.supplier ? (
-                    <input name={`qty_${r.itemId}`} type="number" step="any" min="0" defaultValue={r.suggested} className="min-h-10 w-24 rounded-lg border border-border px-2 text-right font-mono" aria-label={`Quantity for ${r.code}`} />
-                  ) : r.suggested > 0 ? `${r.suggested.toLocaleString()} ${r.uom}` : "—"}
-                  {r.suggested > 0 && <div className="text-xs font-normal text-ink-3">{r.uom}{r.role === "FG" ? " to produce" : ""}</div>}
-                </td>
-                <td className="text-xs">{r.inHouse && r.suggested > 0 ? "In-house regrind" : r.role === "FG" ? "—" : r.supplier ? <>{r.supplier.name}<div className="text-ink-3">₹{r.supplier.price} · {r.supplier.leadTimeDays}d lead</div></> : r.buyable ? <Badge tone="danger">No supplier price</Badge> : "—"}</td>
-                <td className={`text-xs ${r.late ? "font-semibold text-danger" : ""}`}>{r.orderBy ? `${date(r.orderBy)}${r.late ? " — late" : ""}` : "—"}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && <tr><td className="text-ink-3" colSpan={10}>Nothing to plan. Load demand, or all stock is above its reorder levels.</td></tr>}
-          </tbody>
-        </DataTable>
-        <div className="flex flex-wrap items-center gap-4">
-          <button className={`${btnCls} disabled:opacity-50`} disabled={buyable.length === 0}>Create purchase orders for ticked items</button>
-          <span className="text-xs text-ink-3">{actionable.length} item{actionable.length === 1 ? "" : "s"} need action, {buyable.length} can be ordered now</span>
-        </div>
-      </form>
+      </MrpWorkspace>
     </div>
   );
 }

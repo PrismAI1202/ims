@@ -6,20 +6,19 @@ import { ChevronLeft, ChevronRight, Camera, Eye } from "lucide-react";
 import { Badge, Card, Mono, PageHeader } from "@/components/ui";
 import { PENDING_STATUSES, type ProcessStage } from "@/lib/process-types";
 
-const OWNER_OF_ROLE: Record<string, string> = {
-  STORE_INCHARGE: "Store Incharge", QA_INSPECTOR: "QA Inspector", PRODUCTION_LEAD: "Production Lead",
-  DISPATCH_OFFICER: "Dispatch Officer", ADMIN: "Admin",
-};
-
-export function ProcessView({ role, stagesBySegment }: { role: string; stagesBySegment: { auto: ProcessStage[]; non: ProcessStage[] } }) {
+// A step "needs you" when your role has the screen where that step's work is done, so custom roles work too.
+export function ProcessView({ roleName, views, permissions, stagesBySegment }: {
+  roleName: string; views: readonly string[]; permissions: readonly string[]; stagesBySegment: { auto: ProcessStage[]; non: ProcessStage[] };
+}) {
   const [seg, setSeg] = useState<"auto" | "non">("auto");
   const [open, setOpen] = useState(-1);
   const [entry, setEntry] = useState(0);
 
-  const me = OWNER_OF_ROLE[role] ?? "Store Incharge";
+  const me = roleName;
   const stages = stagesBySegment[seg];
   const openOf = (i: number) => stages[i].entries.filter((e) => PENDING_STATUSES.includes(e.status)).length;
-  const mine = (i: number) => stages[i].owners.includes(me);
+  const owns = (st: ProcessStage) => views.includes(st.view) && (!st.perm || permissions.includes(st.perm));
+  const mine = (i: number) => owns(stages[i]);
   const myOpen = stages.reduce((a, _, i) => a + (mine(i) ? openOf(i) : 0), 0);
   const mySteps = stages.filter((_, i) => mine(i) && openOf(i) > 0).length;
   const allOpen = stages.reduce((a, _, i) => a + openOf(i), 0);
@@ -57,7 +56,7 @@ export function ProcessView({ role, stagesBySegment }: { role: string; stagesByS
         <div className="grid gap-2 md:grid-cols-2">
           {st.entries.map((e, j) => {
             const pending = PENDING_STATUSES.includes(e.status);
-            const act = pending && st.owners.includes(me);
+            const act = pending && owns(st);
             const isOpen = entry === j;
             return (
               <article key={e.id} className="overflow-hidden rounded-[14px] bg-white">

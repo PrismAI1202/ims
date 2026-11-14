@@ -1,80 +1,67 @@
-import type { Permission } from "@/server/auth/permissions";
+import { VIEW_GROUPS, VIEWS, type ViewKey } from "@/lib/views";
 
 export type NavItem = {
   href: string;
   name: string;
   what: string;
   bar: string;
-  perm?: Permission;
+  view?: ViewKey; // omitted: open to every signed-in user
   stub?: boolean; // not built yet
 };
 
 export type NavGroup = { name: string; items: NavItem[] };
 
-/** Module groups from the design's "More" screen. `stub` modules have no functionality yet. */
+/** Module groups from the design's "More" screen, built from the view catalog. */
 export const NAV_GROUPS: NavGroup[] = [
-  {
-    name: "SET UP",
-    items: [
-      { href: "/masters", name: "Admin · Masters", what: "Parts, suppliers, customers, bins, machines and moulds", bar: "#0F5C5C", perm: "masters.manage" },
-      { href: "/users", name: "Users & roles", what: "Add, edit and deactivate users; assign roles", bar: "#0F5C5C", perm: "users.manage" },
-      { href: "/partners", name: "Customers & suppliers", what: "Every customer and vendor with their open and past orders", bar: "#1D4ED8", perm: "stock.view" },
-      { href: "/bom", name: "BOMs", what: "Blend ratios, inserts, and approved alternate grades by vendor", bar: "#C2410C", perm: "bom.manage" },
-      { href: "/equivalents", name: "Equivalent materials", what: "Approved alternate grades grouped by vendor", bar: "#C2410C" },
-      { href: "/demand", name: "Customer demand", what: "Import customer POs and call-off schedules", bar: "#4B5563", perm: "mrp.plan" },
-    ],
-  },
-  {
-    name: "BUY & RECEIVE",
-    items: [
-      { href: "/mrp", name: "MRP plan", what: "Material shortfall from demand, with suggested POs", bar: "#4B5563", perm: "mrp.plan" },
-      { href: "/purchase", name: "Supplier PO", what: "Raise a PO and choose the vendor grade", bar: "#4B5563", perm: "po.manage" },
-      { href: "/grn", name: "Gate entry & GRN", what: "Vehicle, invoice, lot / heat no., bags and weight", bar: "#C2410C", perm: "grn.create" },
-      { href: "/qc", name: "Inward QC", what: "MFI, moisture, COA; hold, release or reject", bar: "#1D4ED8", perm: "qc.inspect" },
-      { href: "/qc/scrap", name: "Scrap approval", what: "Approve scrap raised from the shop floor", bar: "#B42318", perm: "scrap.approve" },
-    ],
-  },
-  {
-    name: "STORE & SHOP FLOOR",
-    items: [
-      { href: "/stock", name: "Stores", what: "Stock and bins, bin-to-bin transfer", bar: "#1E7A46", perm: "stock.view" },
-      { href: "/requests", name: "Material requests", what: "Requisitions from the shop floor", bar: "#1E7A46", perm: "request.create" },
-      { href: "/issue", name: "Issue to shop floor", what: "FIFO issue to machines", bar: "#1E7A46", perm: "stock.issue" },
-      { href: "/scan", name: "Scanner", what: "Scan to issue, transfer or load, works offline", bar: "#15171A", perm: "stock.view" },
-      { href: "/production", name: "Production", what: "Hourly booking, downtime with reason codes, runner and regrind", bar: "#6B4FB0", perm: "production.book" },
-      { href: "/fg", name: "FG & box labels", what: "Pack finished goods and print box labels", bar: "#6B4FB0", perm: "fg.pack" },
-      { href: "/planning", name: "Planning", what: "Which mould runs on which machine, by day", bar: "#4B5563" },
-      { href: "/maintenance", name: "Maintenance", what: "Mould shot life, PM checklists, repairs; machine MTBF / MTTR", bar: "#7A4E14" },
-    ],
-  },
-  {
-    name: "SHIP",
-    items: [
-      { href: "/dispatch", name: "Dispatch", what: "Box labels, pick-list scan, DC and e-way data", bar: "#15171A", perm: "dispatch.manage" },
-      { href: "/returnables", name: "Returnable ledger", what: "Crates and trolleys issued to and returned by customers", bar: "#15171A", perm: "dispatch.manage" },
-    ],
-  },
-  {
-    name: "TRACE & REPORTS",
-    items: [
-      { href: "/trace", name: "Traceability", what: "Back and forward trace of any box or lot", bar: "#1D4ED8", perm: "stock.view" },
-      { href: "/reports/variance", name: "BOM variance", what: "Planned versus actual material use", bar: "#1D4ED8", perm: "reports.view" },
-    ],
-  },
+  ...VIEW_GROUPS.map((g) => ({
+    name: g,
+    items: VIEWS.filter((v) => v.group === g).map((v) => ({ href: v.href, name: v.name, what: v.what, bar: v.bar, view: v.key })),
+  })),
   {
     name: "DEVICE",
     items: [
-      { href: "/account", name: "Account", what: "Change your password", bar: "#585C63" },
-      { href: "/sync", name: "Sync centre", what: "Offline outbox and sync status for this device", bar: "#585C63" },
+      { href: "/account", name: "Account", what: "Password, notifications and offline sync for this device", bar: "#585C63" },
     ],
   },
 ];
 
-/** The five phone tabs from the design. */
-export const TABS = [
-  { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/process", label: "Process", icon: "process" },
-  { href: "/orders", label: "Orders", icon: "orders" },
-  { href: "/metrics", label: "Metrics", icon: "metrics" },
-  { href: "/more", label: "More", icon: "more" },
-] as const;
+/**
+ * What goes in the menus. Material requests and Gate entry & GRN are tabs of Stores, so a role that has Stores reaches them from there
+ * and does not get a second menu entry; a role without Stores (Production for requests) still gets the entry, or it could not reach it.
+ */
+const STORES_TABS = ["requests", "grn"];
+// The scanner is never a menu entry: the camera is a button inside the steps that need it (searches, issue, transfer, loading).
+// The offline scanner screens at /scan are reached from those steps, and the view still controls who may use them.
+const NEVER_IN_MENUS = ["scan"];
+export function menuViews<T extends string>(views: readonly T[]): T[] {
+  return views.filter((v) => !NEVER_IN_MENUS.includes(v) && !(STORES_TABS.includes(v) && views.includes("stock" as T)));
+}
+
+/** A page that has no menu entry of its own lights the entry of the screen it lives in. */
+export const NAV_PARENT: Record<string, string> = { "/requests": "/stock", "/grn": "/stock" };
+export const litPath = (pathname: string, hrefs: readonly string[]) =>
+  [...hrefs].filter((h) => pathname.startsWith(h)).sort((a, b) => b.length - a.length)[0]
+  ?? hrefs.find((h) => Object.entries(NAV_PARENT).some(([child, parent]) => pathname.startsWith(child) && h === parent));
+
+/** The groups and items a user's views allow. */
+export function navFor(allViews: readonly string[]): NavGroup[] {
+  const views = menuViews(allViews);
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => !n.view || views.includes(n.view)) })).filter((g) => g.items.length > 0);
+}
+
+export type Tab = { href: string; label: string; view?: ViewKey };
+
+const TAB_LABEL: Partial<Record<ViewKey, string>> = {
+  masters: "Masters", settings: "Settings", partners: "Partners", demand: "Demand",
+  mrp: "MRP", grn: "Receive", quality: "Quality", stock: "Stores", requests: "Requests", bom: "BOMs", production: "Book", fg: "Goods",
+  maintenance: "Maint.", trace: "Trace", scan: "Scan",
+};
+
+/** Phone tab bar: Home, the first three screens of the user's role (in the role's own order), then More. */
+export function tabsFor(allViews: readonly ViewKey[]): Tab[] {
+  const picks = menuViews(allViews).slice(0, 3).map((key) => {
+    const v = VIEWS.find((x) => x.key === key)!;
+    return { href: v.href, label: TAB_LABEL[key] ?? v.name, view: key };
+  });
+  return [{ href: "/dashboard", label: "Home" }, ...picks, { href: "/more", label: "More" }];
+}

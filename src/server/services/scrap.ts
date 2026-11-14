@@ -62,8 +62,8 @@ export async function approveScrap(input: ApproveScrapInput, db: Db = defaultDb)
   const regrindItemId = await findRegrindItemId(db, booking.bom.lines);
   if (!regrindItemId) throw new DomainError("There is no regrind item for this resin grade. Add one in Masters first.");
   const bin = input.regrindLocationCode
-    ? await db.location.findUnique({ where: { code: input.regrindLocationCode } })
-    : await db.location.findFirst({ where: { type: "STORAGE" }, orderBy: { code: "asc" } });
+    ? await db.location.findFirst({ where: { code: input.regrindLocationCode, active: true } })
+    : await db.location.findFirst({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } });
   if (!bin) throw new DomainError("Regrind bin not found.");
   if (bin.type !== "STORAGE") throw new DomainError("Regrind must be stored in a storage bin.");
 

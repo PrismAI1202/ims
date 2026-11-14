@@ -29,6 +29,8 @@ export interface MrpRow {
   inHouse: boolean; // regrind: made in-house, never bought
   earliestDue: Date | null;
   reason: string;
+  /** For a component: which parts' production asks for it, how many parts, and how much of this material that is. */
+  drivers: { fgItemId: string; parts: number; qty: number }[];
 }
 
 const COMPONENT_CATEGORIES = new Set(["RM_RESIN", "RM_MASTERBATCH", "RM_ADDITIVE", "RM_FILLER", "BOP", "PACKAGING"]);
@@ -79,7 +81,7 @@ export function runMrp(input: { items: MrpItem[]; boms: MrpBom[]; demand: MrpDem
       r = {
         itemId: id, code: it.code, name: it.name, uom: it.uom, category: it.category, role, policy: "ROP",
         gross: 0, onHand: it.onHand, incoming: it.incoming, projected: it.onHand + it.incoming,
-        suggested: 0, inHouse: it.category === "REGRIND", earliestDue: null, reason: "",
+        suggested: 0, inHouse: it.category === "REGRIND", earliestDue: null, reason: "", drivers: [],
       };
       rows.set(id, r);
     }
@@ -128,6 +130,8 @@ export function runMrp(input: { items: MrpItem[]; boms: MrpBom[]; demand: MrpDem
       const r = row(l.itemId, "COMPONENT");
       r.gross += qty;
       r.earliestDue = earliest(r.earliestDue, m.due);
+      const prior = r.drivers.find((d) => d.fgItemId === m.fgItemId);
+      if (prior) { prior.parts += parts; prior.qty += qty; } else r.drivers.push({ fgItemId: m.fgItemId, parts, qty });
       if (m.policy === "KANBAN") r.policy = "KANBAN";
     }
   }
@@ -150,7 +154,7 @@ export function runMrp(input: { items: MrpItem[]; boms: MrpBom[]; demand: MrpDem
       rows.set(it.id, {
         itemId: it.id, code: it.code, name: it.name, uom: it.uom, category: it.category, role: "STOCK", policy: "ROP",
         gross: 0, onHand: it.onHand, incoming: it.incoming, projected, suggested, inHouse: false, earliestDue: null,
-        reason: "At or below reorder point",
+        reason: "At or below reorder point", drivers: [],
       });
     }
   }
