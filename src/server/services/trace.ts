@@ -59,7 +59,7 @@ async function originOf(db: Db, lotId: string, qtyUsed: number | null, depth: nu
   return {
     itemCode: lot.item.code, itemName: lot.item.name, category: lot.item.category,
     lotNumber: lot.lotNumber, supplierLotNo: lot.supplierLotNo, qtyUsed, qcStatus: lot.qcStatus,
-    grn: g ? { number: g.grnNumber, date: g.createdAt, invoice: g.gateEntry?.invoiceNumber ?? null, vehicle: g.gateEntry?.vehicleNumber ?? null, coa: g.coaUrl } : null,
+    grn: g ? { number: g.grnNumber, date: g.createdAt, invoice: g.gateEntry?.invoiceNumber ?? null, vehicle: g.gateEntry?.vehicleNumber ?? null, coa: q?.coaUrl ?? g.coaUrl } : null, // QA's COA replaces the GRN's
     po: g ? { number: g.po.poNumber, supplier: g.po.supplier.name } : null,
     qc: q ? { decision: q.decision, mfi: q.mfi === null ? null : Number(q.mfi), moisturePct: q.moisturePct === null ? null : Number(q.moisturePct), density: q.density === null ? null : Number(q.density), tensile: q.tensile === null ? null : Number(q.tensile), remarks: q.remarks, date: q.inspectedAt } : null,
     regrindFrom,

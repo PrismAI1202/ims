@@ -175,17 +175,26 @@ export interface QcInput {
 
 export async function recordQc(input: QcInput, db: Db = defaultDb) {
   return db.$transaction(async (tx) => {
-    const lot = await tx.lot.findUniqueOrThrow({ where: { id: input.lotId }, include: { balances: { include: { location: true } } } });
+    const lot = await tx.lot.findUniqueOrThrow({
+      where: { id: input.lotId },
+      include: { item: true, grnLine: { include: { grn: { include: { po: true } } } }, balances: { include: { location: true } } },
+    });
     if (lot.qcStatus !== "PENDING_QC") throw new DomainError(`Lot ${lot.lotNumber} is already ${lot.qcStatus}.`);
     if (input.decision === "DEVIATED" && !input.remarks?.trim()) {
       throw new DomainError("A deviation needs remarks.");
+    }
+    // QA verifies the certificate (IATF): an automotive or COA-controlled lot is only released with one, from the GRN or attached here.
+    const coaUrl = input.coaUrl?.trim() || undefined;
+    const grn = lot.grnLine?.grn;
+    if (input.decision !== "REJECTED" && (grn?.po.segment === "AUTOMOTIVE" || lot.item.requiresCoa) && !grn?.coaUrl && !coaUrl) {
+      throw new DomainError(`Lot ${lot.lotNumber} needs the supplier's COA before it can be released. Attach it, or reject the lot.`, ["coaFile", "coaUrl"]);
     }
 
     if (input.countedQty !== undefined && (!Number.isFinite(input.countedQty) || input.countedQty < 0)) throw new DomainError("The counted quantity can't be negative.");
     await tx.qcInspection.create({
       data: {
         lotId: lot.id, decision: input.decision, mfi: input.mfi, moisturePct: input.moisturePct,
-        density: input.density, tensile: input.tensile, remarks: input.remarks, coaUrl: input.coaUrl,
+        density: input.density, tensile: input.tensile, remarks: input.remarks, coaUrl,
         countedQty: input.countedQty, inspectedById: input.userId,
       },
     });

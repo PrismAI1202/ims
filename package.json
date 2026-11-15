@@ -17,7 +17,9 @@
     "typecheck": "next typegen && tsc --noEmit",
     "token:create": "tsx scripts/create-api-token.ts",
     "admin:create": "tsx scripts/create-admin.ts",
-    "demo:reset": "tsx prisma/demo-reset.ts"
+    "demo:reset": "tsx prisma/demo-reset.ts",
+    "record:flows": "tsx --env-file=.env scripts/record-flows.ts",
+    "demo:video": "tsx scripts/demo-video.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -50,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "fake-indexeddb": "^6.2.5",
+    "playwright": "^1.55.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",

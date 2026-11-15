@@ -130,6 +130,18 @@ describe("bookProduction", () => {
     expect(Number(r.booking.runnerKg)).toBe(8); // still logged
   });
 
+  it("holds the regrind actually fed to the grade's limit", async () => {
+    const bom = await saveBom(goodBom(), db); // PP allows 25% regrind
+    for (const [itemId, lotNumber] of [[ids.pp, "L-PP"], [ids.mb, "L-MB"], [ids.rgPP, "L-RG"]]) {
+      await db.lot.create({ data: { lotNumber, itemId, supplierLotNo: "S", receivedQty: 100, qcStatus: "APPROVED" } });
+    }
+    const fed = (pp: number, rg: number) => [{ lotNumber: "L-PP", qty: pp }, { lotNumber: "L-MB", qty: 2 }, { lotNumber: "L-RG", qty: rg }];
+    await expect(bookProduction({ ...booking(), bomId: bom.id, machineId: ids.machine, materialLots: fed(28, 20) }, db))
+      .rejects.toThrow(/regrind lots fed are 40%.*at most 25%/);
+    expect(await db.productionBooking.count()).toBe(0);
+    await expect(bookProduction({ ...booking(), bomId: bom.id, machineId: ids.machine, materialLots: fed(36, 12) }, db)).resolves.toBeTruthy(); // 24%
+  });
+
   it("rejects more parts than shots × cavities and unknown machines", async () => {
     const bom = await saveBom(goodBom(), db);
     await expect(

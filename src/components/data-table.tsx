@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
  * After render it copies each column header onto that column's cells as `data-label`,
  * and marks the first column with a header as the card title (`data-primary`).
  */
-export function StackTable({ children }: { children: React.ReactNode }) {
+export function StackTable({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function StackTable({ children }: { children: React.ReactNode }) {
   return (
     <table
       ref={ref}
-      className="stack-table w-full text-sm md:[&_td]:border-t md:[&_td]:border-line md:[&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3"
+      className={`stack-table w-full text-sm md:[&_td]:border-t md:[&_td]:border-line md:[&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3 ${className}`}
     >
       {children}
     </table>

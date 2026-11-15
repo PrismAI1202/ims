@@ -2,7 +2,8 @@
 
 import { db } from "@/server/db";
 import { requirePermission, runAction } from "@/server/auth/guard";
-import { recordQc } from "@/server/services/inventory";
+import { DomainError, recordQc } from "@/server/services/inventory";
+import { saveUpload } from "@/server/services/storage";
 import { approveScrap } from "@/server/services/scrap";
 import { decidePdi } from "@/server/services/pdi";
 import { decideFirstOff, requestFirstOff } from "@/server/services/firstoff";
@@ -20,7 +21,18 @@ export async function decideInward(formData: FormData) {
   const decision = String(formData.get("decision")) as "APPROVED" | "REJECTED" | "DEVIATED";
   let message = `Lot ${decision.toLowerCase()}.`;
   return runAction(qualityHref("inward"), () => message, async () => {
+    // QA may attach or replace the supplier's certificate while inspecting; an uploaded file wins over a typed reference.
+    let coaUrl = String(formData.get("coaUrl") || "").trim() || undefined;
+    const file = formData.get("coaFile");
+    if (file instanceof File && file.size > 0) {
+      try {
+        coaUrl = await saveUpload({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+      } catch (e) {
+        throw e instanceof DomainError ? new DomainError(e.message, ["coaFile"]) : new DomainError("The certificate could not be saved.", ["coaFile"]);
+      }
+    }
     const lot = await recordQc({
+      coaUrl,
       lotId: String(formData.get("lotId")),
       decision,
       mfi: num(formData.get("mfi")), moisturePct: num(formData.get("moisture")),
