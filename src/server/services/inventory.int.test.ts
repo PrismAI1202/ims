@@ -114,6 +114,21 @@ describe("QC and put-away", () => {
     await expect(recordQc({ lotId: lot.id, decision: "APPROVED" }, db)).rejects.toThrow(DomainError);
   });
 
+  it("QA can't release a lot that should have a COA and has none, but can attach one while inspecting", async () => {
+    const { lot, grn } = await receiveLot(500, "HEAT-A", { segment: "AUTOMOTIVE", coa: "COA-PP-1" });
+    await db.grn.update({ where: { id: grn.id }, data: { coaUrl: null } }); // e.g. a receipt from before the rule
+    await expect(recordQc({ lotId: lot.id, decision: "APPROVED" }, db)).rejects.toThrow(/needs the supplier's COA/);
+    await recordQc({ lotId: lot.id, decision: "DEVIATED", remarks: "COA late", coaUrl: "  COA-PP-1-REV  " }, db);
+    expect((await db.qcInspection.findFirstOrThrow({ where: { lotId: lot.id } })).coaUrl).toBe("COA-PP-1-REV");
+  });
+
+  it("a lot can be rejected without a COA", async () => {
+    await db.item.update({ where: { id: resinId }, data: { requiresCoa: true } });
+    const { lot, grn } = await receiveLot(500, "HEAT-B", { coa: "COA-B" });
+    await db.grn.update({ where: { id: grn.id }, data: { coaUrl: null } });
+    await expect(recordQc({ lotId: lot.id, decision: "REJECTED", remarks: "no certificate" }, db)).resolves.toMatchObject({ qcStatus: "REJECTED" });
+  });
+
   it("a deviation needs remarks", async () => {
     const { lot } = await receiveLot(500, "HEAT-1");
     await expect(recordQc({ lotId: lot.id, decision: "DEVIATED" }, db)).rejects.toThrow(/remarks/);

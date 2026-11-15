@@ -184,13 +184,13 @@ export function StoresTabs({ active, user }: { active: (typeof STORES_TABS)[numb
 }
 
 /**
- * Table with the design's dividers; on phones each row becomes a labelled card (StackTable).
+ * Table with the design's dividers; on phones each row becomes a labelled card.
  * `scroll`: long lists scroll inside their own box (header stays put) instead of stretching the page.
  */
 export function DataTable({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
   return (
-    <div className={`rounded-[14px] bg-white md:overflow-x-auto ${scroll ? "md:max-h-[min(46dvh,28rem)] md:overflow-y-auto md:overscroll-contain md:[&_th]:sticky md:[&_th]:top-0 md:[&_th]:z-10" : ""}`}>
-      <StackTable>{children}</StackTable>
+    <div className={`rounded-[14px] bg-white md:overflow-x-auto ${scroll ? "max-h-[min(46dvh,28rem)] overflow-y-auto overscroll-contain" : ""}`}>
+      <StackTable className={scroll ? "[&_th]:sticky [&_th]:top-0 [&_th]:z-10" : ""}>{children}</StackTable>
     </div>
   );
 }

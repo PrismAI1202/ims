@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { db as defaultDb } from "@/server/db";
 import {
-  expectedConsumption, KIND_CATEGORY, round, runnerKg, validateBomLines, validateBooking,
+  expectedConsumption, KIND_CATEGORY, regrindLimit, regrindShare, round, runnerKg, validateBomLines, validateBooking,
   type BomLineInput,
 } from "./bom-math";
 import { DomainError, nextNumber } from "./inventory";
@@ -42,15 +42,8 @@ export async function saveBomIn(db: Db | Tx, input: SaveBomInput) {
     }
   }
 
-  // Strictest max-regrind among the resins in the blend.
-  const limits = input.lines
-    .filter((l) => l.kind === "RESIN")
-    .map((l) => byId.get(l.itemId)?.maxRegrindPct)
-    .filter((v): v is NonNullable<typeof v> => v !== null && v !== undefined)
-    .map(Number);
-  const regrindLimit = limits.length ? Math.min(...limits) : undefined;
-
-  const errors = validateBomLines(input.lines, regrindLimit);
+  const limit = regrindLimit(input.lines.map((l) => ({ kind: l.kind, maxRegrindPct: byId.get(l.itemId)?.maxRegrindPct?.toNumber() })));
+  const errors = validateBomLines(input.lines, limit);
   if (errors.length) throw new DomainError(errors[0]);
 
   // Regrind must be the same polymer family as the resin it dilutes.
@@ -155,6 +148,13 @@ export async function bookProduction(input: BookProductionInput, db: Db = defaul
     for (const l of bom.lines.filter((x) => x.kind === "RESIN" || x.kind === "MASTERBATCH")) {
       if (!covered.has(l.itemId)) throw new DomainError(`Scan the lot of ${l.item.code} used for this run. Traceability needs it.`);
     }
+  }
+  // The BOM keeps regrind within the grade's limit on paper; hold what was actually fed to the same limit.
+  const kindOf = new Map(bom.lines.map((l) => [l.itemId, l.kind]));
+  const limit = regrindLimit(bom.lines.map((l) => ({ kind: l.kind, maxRegrindPct: l.item.maxRegrindPct?.toNumber() })));
+  const share = regrindShare(cited.map((c) => ({ kind: kindOf.get(lotByNumber.get(c.lotNumber.trim())!.itemId)!, qty: c.qty })));
+  if (limit !== undefined && share !== null && share > limit + 1e-9) {
+    throw new DomainError(`The regrind lots fed are ${round(share, 1)}% of the material used, but this grade allows at most ${limit}% regrind. Use less regrind or more virgin resin.`);
   }
 
   const runnerWeightG = Number(bom.mould.runnerWeightG ?? 0);

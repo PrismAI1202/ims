@@ -53,6 +53,20 @@ export function validateBomLines(lines: BomLineInput[], regrindLimitPct?: number
   return [...new Set(errors)];
 }
 
+// The strictest max-regrind among a BOM's resins (undefined = none configured): regrind dilutes every resin in the blend.
+export function regrindLimit(lines: { kind: BomLineKind; maxRegrindPct?: number | null }[]): number | undefined {
+  const limits = lines.filter((l) => l.kind === "RESIN" && l.maxRegrindPct !== null && l.maxRegrindPct !== undefined).map((l) => Number(l.maxRegrindPct));
+  return limits.length ? Math.min(...limits) : undefined;
+}
+
+// Regrind as a percentage of the blend material actually fed to the machine, by weight (null when no blend material is given).
+export function regrindShare(uses: { kind: BomLineKind; qty: number }[]): number | null {
+  const blend = uses.filter((u) => isBlend(u.kind));
+  const total = blend.reduce((s, u) => s + u.qty, 0);
+  if (!(total > 0)) return null;
+  return round((blend.filter((u) => u.kind === "REGRIND").reduce((s, u) => s + u.qty, 0) / total) * 100, 3);
+}
+
 export interface BookingMath {
   lines: BomLineInput[];
   cavities: number;

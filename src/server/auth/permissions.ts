@@ -118,7 +118,7 @@ export const SYSTEM_ROLES: SystemRole[] = [
   {
     key: "ADMIN", name: "Admin", allAccess: false,
     description: "Plant head and system owner: set-up, users and roles, exceptions and KPIs.",
-    views: ["process", "orders", "metrics", "masters", "settings", "partners", "bom", "maintenance", "trace", "stock"],
+    views: ["process", "orders", "metrics", "masters", "settings", "partners", "bom", "maintenance", "trace", "stock", "demand", "mrp"],
     permissions: ["reorder.view", "bom.manage", "equivalents.manage", "reports.view", "stock.transfer", "stock.adjust", "bins.manage", "partners.manage", "equipment.manage"],
     home: ["plant-overview", "approvals", "needs-you", "stock-health"],
   },
@@ -139,7 +139,7 @@ export const SYSTEM_ROLES: SystemRole[] = [
   {
     key: "PRODUCTION_LEAD", name: "Production Lead", allAccess: false,
     description: "Runs the machines: requests material, books shifts and downtime, packs FG, logs maintenance.",
-    views: ["production", "requests", "fg", "planning", "maintenance", "quality"],
+    views: ["production", "requests", "fg", "planning", "maintenance", "quality", "bom"],
     permissions: ["downtime.log", "maintenance.manage", "firstoff.request", "request.create", "material.return", "fg.pack"],
     home: ["my-machines", "needs-you", "quick-actions"],
   },

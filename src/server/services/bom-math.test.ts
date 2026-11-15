@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { expectedConsumption, runnerKg, validateBomLines, validateBooking, type BomLineInput } from "./bom-math";
+import { expectedConsumption, regrindLimit, regrindShare, runnerKg, validateBomLines, validateBooking, type BomLineInput } from "./bom-math";
+
+describe("regrind on the shop floor", () => {
+  it("takes the strictest limit among the resins, ignoring other lines and resins without one", () => {
+    expect(regrindLimit([{ kind: "RESIN", maxRegrindPct: 25 }, { kind: "RESIN", maxRegrindPct: 20 }, { kind: "REGRIND", maxRegrindPct: 5 }])).toBe(20);
+    expect(regrindLimit([{ kind: "RESIN", maxRegrindPct: null }, { kind: "MASTERBATCH" }])).toBeUndefined();
+  });
+
+  it("measures regrind against blend material only, not inserts or packaging", () => {
+    expect(regrindShare([{ kind: "RESIN", qty: 70 }, { kind: "MASTERBATCH", qty: 5 }, { kind: "REGRIND", qty: 25 }, { kind: "BOP", qty: 400 }])).toBe(25);
+    expect(regrindShare([{ kind: "BOP", qty: 10 }])).toBeNull();
+  });
+});
 
 const good: BomLineInput[] = [
   { itemId: "pp", kind: "RESIN", pct: 70 },

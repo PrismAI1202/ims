@@ -8,6 +8,8 @@ import { CoaRef } from "@/components/coa-ref";
 import { Badge, Card, DataTable, Eyebrow, Mono, ScrollArea } from "@/components/ui";
 import { decideInward } from "../actions";
 
+const n = (v: { toNumber(): number } | null) => (v === null ? "—" : v.toNumber());
+
 export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
   const [pending, bins, recent] = await Promise.all([
     db.lot.findMany({
@@ -15,7 +17,11 @@ export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
       include: { item: true, grnLine: { include: { grn: { include: { po: true } } } }, balances: { where: { qty: { gt: 0 } }, include: { location: true } } },
     }),
     db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
-    db.lot.findMany({ where: { qcStatus: { not: "PENDING_QC" } }, orderBy: { receivedAt: "desc" }, take: 100, include: { item: true } }),
+    // Received lots only (production makes its own FG and regrind lots), with the inspection that decided them.
+    db.lot.findMany({
+      where: { qcStatus: { not: "PENDING_QC" }, grnLineId: { not: null } }, orderBy: { receivedAt: "desc" }, take: 100,
+      include: { item: true, grnLine: { include: { grn: true } }, inspections: { orderBy: { inspectedAt: "desc" }, take: 1 } },
+    }),
   ]);
 
   return (
@@ -51,6 +57,16 @@ export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
                 </p>
               </div>
             </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1 text-[13px]">
+                <div>
+                  {l.grnLine?.grn.coaUrl ? "Replace the COA (optional)" : "Attach the supplier's COA"}{" "}
+                  {!l.grnLine?.grn.coaUrl && (l.grnLine?.grn.po.segment === "AUTOMOTIVE" || l.item.requiresCoa) && <b className="text-danger">(required to release)</b>}
+                </div>
+                <input name="coaFile" type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="COA file" className={`${inputCls} py-2.5 text-xs`} />
+              </div>
+              <label className="text-[13px]">or certificate reference<input name="coaUrl" placeholder="e.g. COA-PP-H2231" className={inputCls} /></label>
+            </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <label className="text-[13px]">MFI (g/10min)<input name="mfi" type="number" step="any" className={inputCls} /></label>
               <label className="text-[13px]">Moisture %<input name="moisture" type="number" step="any" className={inputCls} /></label>
@@ -81,16 +97,25 @@ export async function InwardTab({ q, lot }: { q?: string; lot?: string }) {
       <Eyebrow>RECENTLY DECIDED</Eyebrow>
       <SearchBar q={q} keep={{ tab: "inward" }} scan={{ param: "lot", title: "Scan a lot tag", hint: "Opens that lot's card so you can inspect and count it." }} placeholder="Search lot or item" clearHref="/quality?tab=inward" />
       <DataTable scroll>
-        <thead><tr><th>Lot</th><th>Item</th><th>Status</th><th>Tag</th></tr></thead>
+        <thead><tr><th>Lot</th><th>Item · heat/lot</th><th>Status</th><th>Test results</th><th>COA</th><th>Tag</th></tr></thead>
         <tbody>
-          {recent.filter((l) => matches(q, l.lotNumber, l.item.code, l.item.name, l.qcStatus)).map((l) => (
-            <tr key={l.id}>
-              <td className="font-semibold"><Mono>{l.lotNumber}</Mono></td><td>{l.item.code}</td>
-              <td><Badge tone={l.qcStatus === "APPROVED" ? "ok" : l.qcStatus === "REJECTED" ? "danger" : "warn"}>{l.qcStatus}</Badge></td>
-              <td>{l.qcStatus !== "REJECTED" && <Link className="font-semibold text-accent underline" href={`/qc/tag/${l.id}`} target="_blank">Print QR tag</Link>}</td>
-            </tr>
-          ))}
-          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={4}>Nothing yet.</td></tr>}
+          {recent.filter((l) => matches(q, l.lotNumber, l.item.code, l.item.name, l.qcStatus, l.supplierLotNo)).map((l) => {
+            const t = l.inspections[0];
+            return (
+              <tr key={l.id}>
+                <td className="font-semibold"><Mono>{l.lotNumber}</Mono></td>
+                <td>{l.item.code} · <Mono>{l.supplierLotNo}</Mono></td>
+                <td><Badge tone={l.qcStatus === "APPROVED" ? "ok" : l.qcStatus === "REJECTED" ? "danger" : "warn"}>{l.qcStatus}</Badge></td>
+                <td className="text-xs text-ink-2">
+                  {t ? <>MFI <Mono>{n(t.mfi)}</Mono> · moisture <Mono>{n(t.moisturePct)}</Mono>% · density <Mono>{n(t.density)}</Mono> · tensile <Mono>{n(t.tensile)}</Mono>
+                    <div>{t.inspectedAt.toISOString().slice(0, 10)}{t.remarks && <> · {t.remarks}</>}</div></> : "—"}
+                </td>
+                <td className="text-xs"><CoaRef value={t?.coaUrl ?? l.grnLine?.grn.coaUrl} /></td>
+                <td>{l.qcStatus !== "REJECTED" && <Link className="font-semibold text-accent underline" href={`/qc/tag/${l.id}`} target="_blank">Print QR tag</Link>}</td>
+              </tr>
+            );
+          })}
+          {recent.length === 0 && <tr><td className="text-ink-3" colSpan={6}>Nothing yet.</td></tr>}
         </tbody>
       </DataTable>
     </div>

@@ -3,6 +3,7 @@ import { Form } from "@/components/form";
 import { db } from "@/server/db";
 import { requireView, requirePermission, runAction } from "@/server/auth/guard";
 import { bookProduction } from "@/server/services/production";
+import { isBlend, regrindLimit, type BomLineKind } from "@/server/services/bom-math";
 import type { DowntimeReason } from "@prisma/client";
 import { logDowntime } from "@/server/services/downtime";
 import { mouldRows, pmStatus } from "@/server/services/maintenance";
@@ -20,6 +21,13 @@ export const instant = false;
 
 const LOT_ROWS = 4;
 const optNum = (v: FormDataEntryValue | null) => (v === null || v === "" ? undefined : Number(v));
+
+// "RM-PP 70% + MB-BLK 5% + RG-PP 25% · regrind max 25%": what the operator should be loading into the hopper.
+function blendOf(lines: { kind: BomLineKind; pct: { toNumber(): number } | null; item: { code: string; maxRegrindPct: { toNumber(): number } | null } }[]) {
+  const blend = lines.filter((l) => isBlend(l.kind)).map((l) => `${l.item.code} ${l.pct?.toNumber() ?? 0}%`).join(" + ");
+  const limit = regrindLimit(lines.map((l) => ({ kind: l.kind, maxRegrindPct: l.item.maxRegrindPct?.toNumber() })));
+  return limit === undefined ? blend : `${blend} · regrind max ${limit}%`;
+}
 
 async function book(formData: FormData) {
   "use server";
@@ -93,7 +101,7 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
   const { error, ok, q: rawQ } = await searchParams;
   const q = rawQ?.trim() || undefined;
   const [boms, machines, bins, recent, stops, moulds] = await Promise.all([
-    db.bom.findMany({ include: { fgItem: true, mould: true }, orderBy: { fgItem: { code: "asc" } } }),
+    db.bom.findMany({ include: { fgItem: true, mould: true, lines: { include: { item: true } } }, orderBy: { fgItem: { code: "asc" } } }),
     db.machine.findMany({ where: { active: true }, orderBy: { code: "asc" } }),
     db.location.findMany({ where: { type: "STORAGE", active: true }, orderBy: { code: "asc" } }),
     db.productionBooking.findMany({
@@ -117,8 +125,9 @@ export default async function ProductionPage({ searchParams }: { searchParams: P
           <Form action={book} className="grid gap-3 md:grid-cols-4">
             <label className="text-[13px] md:col-span-2">Part / BOM
               <select name="bomId" required className={inputCls}>
-                {boms.map((b) => <option key={b.id} value={b.id}>{b.fgItem.code} · {b.mould.code} ({b.mould.cavities} cav)</option>)}
+                {boms.map((b) => <option key={b.id} value={b.id}>{b.fgItem.code} · {b.mould.code} ({b.mould.cavities} cav) · {blendOf(b.lines)}</option>)}
               </select>
+              <span className="mt-1 block text-xs text-ink-3">The blend each part is moulded from. Regrind fed to the machine may not go over the limit shown.</span>
             </label>
             <label className="text-[13px]">Machine
               <select name="machineId" required className={inputCls}>{machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}</select>
