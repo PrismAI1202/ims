@@ -34,7 +34,6 @@ const safeBack = (v: FormDataEntryValue | null) => {
   return s.startsWith("/orders") ? s : "/orders";
 };
 
-<<<<<<< Updated upstream
 async function createPo(formData: FormData) {
   "use server";
   const user = await requirePermission("po.manage");
@@ -49,7 +48,8 @@ async function createPo(formData: FormData) {
       lines, userId: user.id,
     });
   }, "/orders?new=po");
-=======
+}
+
 function OrderCard({ o }: { o: OrderRow }) {
   const body = (
     <>
@@ -71,7 +71,6 @@ function OrderCard({ o }: { o: OrderRow }) {
   );
   const cls = "flex min-w-0 flex-col gap-2.5 rounded-[14px] bg-white p-3.5";
   return o.href ? <Link href={o.href} className={cls}>{body}</Link> : <article className={cls}>{body}</article>;
->>>>>>> Stashed changes
 }
 
 async function cancelPo(formData: FormData) {

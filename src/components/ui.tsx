@@ -183,22 +183,14 @@ export function StoresTabs({ active, user }: { active: (typeof STORES_TABS)[numb
   return <SegmentedTabs tabs={tabs.map((t) => ({ href: t.href, label: t.label, active: t.key === active }))} />;
 }
 
-<<<<<<< Updated upstream
-/** Scrollable table wrapper with the design's dividers and mono numerals. */
-/** `scroll`: long lists scroll inside their own box (header stays put) instead of stretching the page. */
+/**
+ * Table with the design's dividers; on phones each row becomes a labelled card (StackTable).
+ * `scroll`: long lists scroll inside their own box (header stays put) instead of stretching the page.
+ */
 export function DataTable({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
   return (
-    <div className={`overflow-x-auto rounded-[14px] bg-white ${scroll ? "max-h-[min(46dvh,28rem)] overflow-y-auto overscroll-contain" : ""}`}>
-      <table className={`w-full text-sm [&_td]:border-t [&_td]:border-line [&_td]:p-3 [&_th]:bg-canvas [&_th]:p-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:text-ink-3 ${scroll ? "[&_th]:sticky [&_th]:top-0 [&_th]:z-10" : ""}`}>
-        {children}
-      </table>
-=======
-/** Table with the design's dividers; on phones each row becomes a labelled card. */
-export function DataTable({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-[14px] bg-white md:overflow-x-auto">
+    <div className={`rounded-[14px] bg-white md:overflow-x-auto ${scroll ? "md:max-h-[min(46dvh,28rem)] md:overflow-y-auto md:overscroll-contain md:[&_th]:sticky md:[&_th]:top-0 md:[&_th]:z-10" : ""}`}>
       <StackTable>{children}</StackTable>
->>>>>>> Stashed changes
     </div>
   );
 }

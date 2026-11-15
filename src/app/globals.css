@@ -62,14 +62,14 @@ body {
   font-size: 15px;
 }
 
-<<<<<<< Updated upstream
 /* A field the form says is missing or wrong (components/form.tsx): red outline and a light red fill. */
 input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] {
   border-color: var(--danger);
   background-color: var(--danger-bg);
   outline: 3px solid color-mix(in srgb, var(--danger) 25%, transparent);
   outline-offset: 0;
-=======
+}
+
 /* Phones: DataTable rows become cards. Labels come from the column headers (components/data-table.tsx). */
 @media (max-width: 47.999rem) {
   .stack-table,
@@ -133,5 +133,4 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
     align-items: center;
     min-height: 44px;
   }
->>>>>>> Stashed changes
 }
